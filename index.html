@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ru"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1F401A">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+<title>Али-Баба · Заявка</title></head>
+<body>
+<!-- ШАПКА: крупный логотип + кнопки истории и настроек -->
+<header class="top">
+  <img class="logo" src="logo.jpg" alt="Али-Баба">
+  <div class="brand"><h1>Али-Баба</h1><p>Приём заявок</p></div>
+  <button class="ib" data-a="hist" aria-label="История">🕘</button>
+  <button class="ib" data-a="set" aria-label="Настройки">⚙️</button>
+</header>
+
+<!-- ДАННЫЕ О КЛИЕНТЕ -->
+<section class="card hdrform">
+  <input type="date" id="d"><select id="c"></select>
+  <input class="full" id="s" list="shops" placeholder="Магазин (например, Славянка)"><datalist id="shops"></datalist>
+  <input class="full" id="a" placeholder="Адрес">
+</section>
+
+<!-- ПОИСК И КАТЕГОРИИ -->
+<div class="tools"><input id="q" type="search" placeholder="🔍  Найти товар"><nav class="chips" id="chips"></nav></div>
+
+<!-- КАТАЛОГ -->
+<main id="list" class="grid"></main>
+
+<!-- ПЛАВАЮЩАЯ ПАНЕЛЬ КОРЗИНЫ -->
+<button id="bar" class="off" data-a="cart"><span id="bn"></span><span id="bs"></span></button>
+
+<!-- ШТОРКА (корзина / история / настройки) -->
+<div id="bd" data-a="x"></div>
+<section id="sheet"><div class="grab" data-a="x"></div><h2 id="st"></h2><div id="sb"></div></section>
+
+<!-- ЗУМ ФОТО -->
+<div id="lb" data-a="lbx"><img alt=""></div>
+
+<script src="app.js"></script>
+</body></html>

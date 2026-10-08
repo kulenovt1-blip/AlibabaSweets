@@ -1,5 +1,5 @@
 /* Service Worker: офлайн-режим. Сначала сеть, при её отсутствии — кэш. */
-const C = 'ab-v12';
+const C = 'ab-v13';
 const A = ['./', 'index.html', 'styles.css', 'app.js', 'logo.jpg', 'icon-192.png', 'icon-512.png', 'manifest.webmanifest'];
 self.addEventListener('install', e => { self.skipWaiting(); e.waitUntil(caches.open(C).then(c => c.addAll(A))) });
 self.addEventListener('activate', e => e.waitUntil(   // удаляем кэши старых версий

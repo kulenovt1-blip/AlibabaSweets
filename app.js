@@ -14,7 +14,7 @@ const DEMO = [['Финики','Финики FINDI caramel','150г','1704','1976'
 
 /* ============ 2. ХЕЛПЕРЫ И СОСТОЯНИЕ ============ */
 /* Версия сборки: должна совпадать с <meta name="ver"> в index.html. Если файлы на хостинге разных версий — покажем красную плашку. */
-const VER = '12';
+const VER = '13';
 { const m = document.querySelector('meta[name=ver]');
   if (!m || m.content != VER) document.body.insertAdjacentHTML('afterbegin', '<div style="background:#C82B27;color:#fff;padding:12px;font-weight:800">Файлы сайта разных версий. Загрузите ВСЕ файлы из архива заново (index.html, styles.css, app.js, sw.js) и обновите страницу дважды.</div>') }
 const ghost = new Proxy(function () {}, { get: (t, k) => k == Symbol.toPrimitive ? () => '' : ghost, set: () => true, apply: () => ghost });   // заглушка вместо отсутствующего элемента — страница не падает целиком
@@ -150,7 +150,8 @@ function histDetail(i) { // полная карточка заявки
 }
 function setView() {
   openSheet('set', 'Настройки');
-  $('#sb').innerHTML = `${CFG.API_URL ? `<button class="ghost" style="margin:0 0 10px" data-a="who">👤 Профиль: ${esc(me || '—')} · сменить</button>` : ''}<div class="sum"><b>Номер оператора WhatsApp</b><input id="op" inputmode="tel" value="${esc(S.op)}" placeholder="77001234567"><p class="m">Код страны и номер, без + и пробелов</p><b>Города (через запятую)</b><input id="ct" value="${esc(S.cities.join(', '))}"></div><button class="send" style="background:var(--g);box-shadow:none" data-a="ss">Сохранить</button><button class="ghost" data-a="rl">Обновить прайс</button>`;
+  $('#sb').innerHTML = `${CFG.API_URL ? `<button class="ghost" style="margin:0 0 10px" data-a="who">👤 Профиль: ${esc(me || '—')} · сменить</button>` : ''}<div class="sum"><b>Номер оператора WhatsApp</b><input id="op" inputmode="tel" value="${esc(S.op)}" placeholder="77001234567"><p class="m">Код страны и номер, без + и пробелов</p><b>Города (через запятую)</b><input id="ct" value="${esc(S.cities.join(', '))}"></div><button class="send" style="background:var(--g);box-shadow:none" data-a="ss">Сохранить</button><button class="ghost" data-a="rl">Обновить прайс</button>
+  <div class="sum m" style="margin-top:12px;font-size:13px"><b>Диагностика</b><br>Версия: ${VER} · адрес: ${esc(location.origin)}<br>Товаров: ${P.length} (с ценой с НДС: ${P.filter(p => p.pv).length}, без НДС: ${P.filter(p => p.pn).length})<br>Режим цен: ${S.mode == 'vat' ? 'с НДС' : 'без НДС'}<br>${CFG.API_URL ? `База: ${syncErr ? '🔴 ' + esc(lastErr) : '✓ подключена'} · торговых в списке: ${trs.length} · профиль: ${esc(me || 'не выбран')}<br>Ждут отправки: заявок ${outbox.length}, правок магазинов ${shopq.length}` : 'База заявок не подключена (API_URL пуст)'}</div>`;
 }
 
 /* ============ 6б. РЕЖИМ ЦЕН (с НДС / без НДС) ============ */
@@ -174,10 +175,17 @@ const shops = () => { if (!$('#sl').hidden) drawDD() };   // обновить о
 function fill() { $('#d').value = H.d || today(); $('#s').value = H.s || ''; $('#a').value = H.a || ''; cities() }
 
 /* ============ 7б. СИНХРОНИЗАЦИЯ, ПОДТВЕРЖДЕНИЕ, ЧЕРНОВИКИ, ПРОФИЛЬ ============ */
-let syncing = false, again = false, syncErr = false, syncAt = '';
+let syncing = false, again = false, syncErr = false, syncAt = '', lastErr = '';
+async function api(url, opt) { // запрос к Apps Script с понятным текстом ошибки
+  let r, t; try { r = await fetch(url, opt); t = await r.text() } catch (e) { throw new Error('браузер не смог связаться со скриптом (интернет, VPN, блокировщик или неверный API_URL)') }
+  let d; try { d = JSON.parse(t) } catch (e) { throw new Error('скрипт вернул не данные, а страницу (HTTP ' + r.status + '): проверьте развёртывание — доступ «Все», выполнять от имени «Я», ссылка заканчивается на /exec') }
+  if (d.error == 'key') throw new Error('ключ не совпадает: KEY в Code.gs и API_KEY в app.js должны быть одинаковыми');
+  if (d.error) throw new Error('скрипт вернул ошибку: ' + d.error);
+  return d;
+}
 function syncStatus() { // строка статуса под названием в шапке
   const n = outbox.length + shopq.length, el = $('#sy'); if (!CFG.API_URL) return;
-  el.textContent = syncing ? '⏳ Синхронизация…' : syncErr ? '🔴 Нет связи с базой' + (n ? ' · ждут: ' + n : '') + ' (нажмите)' : n ? '⏳ Ждут отправки: ' + n : '✓ Синхронизировано ' + syncAt;
+  el.textContent = syncing ? '⏳ Синхронизация…' : syncErr ? '🔴 Нет связи с базой' + (n ? ' · ждут: ' + n : '') + ' (нажмите)' : n ? '⏳ Ждут отправки: ' + n : '✓ Синхронизировано ' + syncAt + (me ? ' · ' + me : '');
 }
 async function sync() { // отправляет накопленные заявки и правки магазинов, затем подтягивает торговых, магазины и историю
   if (!CFG.API_URL) return;
@@ -186,19 +194,19 @@ async function sync() { // отправляет накопленные заяв�
   syncing = true; syncStatus();
   try {
     for (const x of [...shopq]) { // правки магазинов — строго по порядку; при ошибке останавливаемся
-      const r = await (await fetch(CFG.API_URL, { method: 'POST', body: JSON.stringify({ key: CFG.API_KEY, shop: x }) })).json();
-      if (!r.ok) throw 0; shopq = shopq.filter(y => y !== x); LS('shopq', shopq);
+      const r = await api(CFG.API_URL, { method: 'POST', body: JSON.stringify({ key: CFG.API_KEY, shop: x }) });
+      if (!r.ok) throw new Error('скрипт не принял правку магазина'); shopq = shopq.filter(y => y !== x); LS('shopq', shopq);
     }
     for (const o of [...outbox]) {
-      const r = await (await fetch(CFG.API_URL, { method: 'POST', body: JSON.stringify({ key: CFG.API_KEY, order: o }) })).json();
-      if (!r.ok) throw 0; outbox = outbox.filter(x => x.id != o.id); LS('outbox', outbox);
+      const r = await api(CFG.API_URL, { method: 'POST', body: JSON.stringify({ key: CFG.API_KEY, order: o }) });
+      if (!r.ok) throw new Error('скрипт не принял заявку'); outbox = outbox.filter(x => x.id != o.id); LS('outbox', outbox);
     }
-    const d = await (await fetch(`${CFG.API_URL}?action=init&key=${encodeURIComponent(CFG.API_KEY)}&trader=${encodeURIComponent(me)}`)).json();
-    if (d.error) throw 0; trs = d.traders; if (!shopq.length) base = d.shops;   // пока есть неотправленные правки, локальную базу не затираем
+    const d = await api(`${CFG.API_URL}?action=init&key=${encodeURIComponent(CFG.API_KEY)}&trader=${encodeURIComponent(me)}`);
+    trs = d.traders; if (!shopq.length) base = d.shops;   // пока есть неотправленные правки, локальную базу не затираем
     shist = d.hist; LS('trs', trs); LS('base', base); LS('shist', shist); shops();
-    syncErr = false; syncAt = new Date().toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' });
-  } catch (e) { syncErr = true }
-  syncing = false; syncStatus();
+    syncErr = false; lastErr = ''; syncAt = new Date().toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' });
+  } catch (e) { syncErr = true; lastErr = e && e.message || 'неизвестная ошибка' }
+  syncing = false; syncStatus(); if (view == 'who') whoView();   // окно выбора профиля обновляется по готовности данных
   if (again) { again = false; return sync() }
 }
 
@@ -218,7 +226,7 @@ function draftView() {
 }
 function whoView() {
   openSheet('who', 'Кто вы?');
-  $('#sb').innerHTML = trs.map(n => `<button class="send" style="background:var(--g);box-shadow:none;margin:0 0 8px" data-a="me" data-v="${esc(n)}">${esc(n)}</button>`).join('') || '<p class="empty">Список торговых пуст или не загрузился. Добавьте имена на лист «Торговые» и нажмите «Обновить».</p><button class="ghost" data-a="who2">Обновить</button>';
+  $('#sb').innerHTML = trs.map(n => `<button class="send" style="background:var(--g);box-shadow:none;margin:0 0 8px" data-a="me" data-v="${esc(n)}">${esc(n)}</button>`).join('') || `<p class="empty">${syncing ? 'Загрузка списка…' : syncErr ? 'Список не загрузился: ' + esc(lastErr) : 'Список пуст: впишите имена на лист «Торговые» (колонка A, под заголовком «Имя»).'}</p><button class="ghost" data-a="who2">Обновить</button>`;
 }
 
 /* ============ 7в. СПИСОК МАГАЗИНОВ (поиск, выбор, добавление) ============ */

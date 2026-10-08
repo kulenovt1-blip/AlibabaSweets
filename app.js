@@ -5,15 +5,20 @@ const CFG = {
   CITIES: ['Петропавловск', 'Астана', 'Костанай'],
   PRICE_MODE: 'vat',             // режим цен по умолчанию: 'vat' — с НДС, 'net' — без НДС
   SHOW_VAT_LABEL: true,          // пометка «(с НДС)» / «(без НДС)» в последней строке заявки; false — убрать
-  API_URL: '',                   // ссылка на веб-приложение Apps Script (см. README); пусто = без общей базы
-  API_KEY: 'замените-на-свой-ключ' // тот же ключ, что KEY в Code.gs
+  API_URL: 'https://script.google.com/macros/s/AKfycbyF4gfEQ-EHDbK-0JLwQVD96Dori66JtQLI31UUVL6I-sJoPhbUJw2_tF65FClUgece/exec',                   // ссылка на веб-приложение Apps Script (см. README); пусто = без общей базы
+  API_KEY: '3puq8z64' // тот же ключ, что KEY в Code.gs
 };
 // Колонки таблицы: категория | название | граммовка | цена без НДС | цена с НДС | единица (шт/кг/кор) | фото
 const DEMO = [['Финики','Финики FINDI caramel','150г','1704','1976','шт',''],['Мармелад','Кубик Манго','200г','500','600','шт',''],
   ['Орехи','Грецкий орех','1кг','4200','4872','кг','']];
 
 /* ============ 2. ХЕЛПЕРЫ И СОСТОЯНИЕ ============ */
-const $ = s => document.querySelector(s);
+/* Версия сборки: должна совпадать с <meta name="ver"> в index.html. Если файлы на хостинге разных версий — покажем красную плашку. */
+const VER = '10';
+{ const m = document.querySelector('meta[name=ver]');
+  if (!m || m.content != VER) document.body.insertAdjacentHTML('afterbegin', '<div style="background:#C82B27;color:#fff;padding:12px;font-weight:800">Файлы сайта разных версий. Загрузите ВСЕ файлы из архива заново (index.html, styles.css, app.js, sw.js) и обновите страницу дважды.</div>') }
+const ghost = new Proxy(function () {}, { get: (t, k) => k == Symbol.toPrimitive ? () => '' : ghost, set: () => true, apply: () => ghost });   // заглушка вместо отсутствующего элемента — страница не падает целиком
+const $ = s => document.querySelector(s) || ghost;
 const LS = (k, v) => v === undefined ? JSON.parse(localStorage.getItem(k) || 'null') : localStorage.setItem(k, JSON.stringify(v));
 const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const today = () => new Date(Date.now() - new Date().getTimezoneOffset() * 6e4).toISOString().slice(0, 10);

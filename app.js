@@ -127,7 +127,7 @@ function cartView() {
       : `<button class="pe${ch ? ' ch' : ''}" data-a="edit" data-id="${id}">${ch ? `<s>${p.pr}</s>` : ''}${n} ₸ ✏️</button>`;
     return `<div class="it"><img src="${esc(p.f || 'logo.jpg')}" onerror="this.src='logo.jpg'" alt=""><div><b>${esc(p.n)}</b> <span class="m">${esc(p.g)}</span><div style="margin-top:6px">${pe}${ch ? ` <button class="pe" data-a="reset" data-id="${id}">↺</button>` : ''}</div></div><button class="x" data-a="rm" data-id="${id}">✕</button><div class="st" style="grid-column:1/4">${`<button data-a="m" data-id="${id}">−</button><input data-q="${id}" inputmode="decimal" value="${qf(qty(p))}"><button data-a="p" data-id="${id}">+</button>`}<b style="margin-left:auto">${Math.round(n * qty(p))} ₸</b></div></div>`; }).join('') +
   `<div class="sum"><div class="m">Цены: ${S.mode == 'vat' ? 'с НДС' : 'без НДС'}</div><b>Скидка на весь чек</b><div class="dc">${[0, 3, 5, 10].map(x => `<button data-a="disc" data-v="${x}" class="${disc == x ? 'on' : ''}">${x ? x + '%' : 'Нет'}</button>`).join('')}<input id="dc" inputmode="decimal" placeholder="свой %" value="${[0, 3, 5, 10].includes(disc) ? '' : disc}"></div>
-  <div class="r"><span>Сумма</span><b>${total()} ₸</b></div>${disc > 0 ? `<div class="r"><span>Скидка ${disc}%</span><b>−${total() - final()} ₸</b></div>` : ''}<div class="r t"><span>Итого</span><span>${final()} ₸</span></div></div>
+  <div class="r"><span>Сумма</span><b>${total()} ₸</b></div>${disc > 0 ? `<div class="r"><span>Скидка ${disc}\%</span><b>−${total() - final()} ₸</b></div>` : ''}<div class="r t"><span>Итого</span><span>${final()} ₸</span></div></div>
   <button class="send" data-a="send">📲 Отправить в WhatsApp</button><button class="ghost" data-a="dsave">💾 Сохранить как черновик</button><button class="ghost" data-a="new">Новая заявка</button>`;
   const np = document.querySelector('[data-np]'); if (np) np.select();
 }
@@ -164,12 +164,23 @@ function setMode(m) {
 function cities() {
   if (H.c && !S.cities.includes(H.c)) { S.cities.push(H.c); LS('set', S) }
   $('#c').innerHTML = S.cities.map(c => `<option>${esc(c)}</option>`).join('') + '<option value="+">＋ Другой город…</option>';
-  $('#c').value = H.c || S.cities[0]; H.c = $('#c').value;
+  $('#c').value = H.c \vert{}\vert{} S.cities[0]; H.c = $('#c').value;
 }
 const shops = () => { if (!$('#sl').hidden) drawDD() };   // обновить открытый список магазинов
-function fill() { $('#d').value = H.d || today(); $('#s').value = H.s || ''; $('#a').value = H.a || ''; cities() }
+function fill() { $('#d').value = H.d || today(); $('#s').value = H.s \vert{}\vert{} ''; $('#a').value = H.a || ''; cities() }
 
 /* ============ 7б. СИНХРОНИЗАЦИЯ, ПОДТВЕРЖДЕНИЕ, ЧЕРНОВИКИ, ПРОФИЛЬ ============ */
+function fetchJSONP(url) {
+  return new Promise((resolve, reject) => {
+    const cbName = 'cb_' + Math.random().toString(36).slice(2);
+    window[cbName] = data => { delete window[cbName]; script.remove(); resolve(data); };
+    const script = document.createElement('script');
+    script.src = url + (url.includes('?') ? '&' : '?') + 'callback=' + cbName;
+    script.onerror = () => { delete window[cbName]; script.remove(); reject(); };
+    document.body.appendChild(script);
+  });
+}
+
 async function sync() { // отправляет накопленные заявки в таблицу и подтягивает торговых, магазины и историю
   if (!CFG.API_URL || !navigator.onLine) return;
   try {
@@ -180,11 +191,18 @@ async function sync() { // отправляет накопленные заяв�
       const r = await (await fetch(CFG.API_URL, { method: 'POST', body: JSON.stringify({ key: CFG.API_KEY, order: o }) })).json();
       if (!r.ok) throw 0; outbox = outbox.filter(x => x.id != o.id); LS('outbox', outbox);
     }
-    const d = await (await fetch(`${CFG.API_URL}?action=init&key=${encodeURIComponent(CFG.API_KEY)}&trader=${encodeURIComponent(me)}`)).json();
-    if (d.error) throw 0; trs = d.traders; if (!shopq.length) base = d.shops;   // пока есть неотправленные правки, локальную базу не затираем
-     shist = d.hist; LS('trs', trs); LS('base', base); LS('shist', shist); shops();
+    const url = `${CFG.API_URL}?action=init&key=${encodeURIComponent(CFG.API_KEY)}&trader=${encodeURIComponent(me)}`;
+    const d = await fetchJSONP(url);
+    if (d && !d.error) {
+      trs = d.traders || [];
+      if (!shopq.length) base = d.shops || [];
+      shist = d.hist || [];
+      LS('trs', trs); LS('base', base); LS('shist', shist);
+      shops();
+    }
   } catch (e) {}
 }
+
 function checkPending() { // после возврата из WhatsApp спрашиваем, ушла ли заявка
   const o = LS('pending'); if (!o || view == 'pend') return; openSheet('pend', 'Заявка отправлена?');
   $('#sb').innerHTML = `<div class="sum"><b>${esc(o.h.s)}</b><div class="m">${esc(o.h.c || '')} · ${o.sum} ₸</div></div><button class="send" data-a="pyes">✅ Да, отправил</button><button class="ghost" data-a="pno">Нет, вернуться к заявке</button>`;

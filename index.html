@@ -22,12 +22,12 @@
 <section class="card hdrform">
   <div class="seg full" id="seg"></div>
   <input type="date" id="d"><select id="c"></select>
-  <input class="full" id="s" list="shops" placeholder="Магазин (например, Славянка)"><datalist id="shops"></datalist>
+  <div class="cb"><input id="s" autocomplete="off" placeholder="Магазин: выберите или впишите"><div id="sl" class="dd" hidden></div></div>
   <input class="full" id="a" placeholder="Адрес">
 </section>
 
 <!-- ПОИСК И КАТЕГОРИИ -->
-<div class="tools"><input id="q" type="search" placeholder="🔍  Найти товар"><nav class="chips" id="chips"></nav></div>
+<div class="tools"><div class="srow"><input id="q" type="search" placeholder="🔍  Найти товар"><button id="clr" data-a="clr" hidden aria-label="Сбросить корзину">🗑</button></div><nav class="chips" id="chips"></nav></div>
 
 <!-- КАТАЛОГ -->
 <main id="list" class="grid"></main>

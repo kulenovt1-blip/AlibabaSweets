@@ -1,12 +1,12 @@
 /* ============ 1. НАСТРОЙКИ (меняйте только здесь) ============ */
 const CFG = {
-  SHEET_CSV: https: 'docs.google.com/spreadsheets/d/e/2PACX-1vQGyNVUyAyeZVoafaazZmZEQbtmmcyqXV5AJBYxhq1_4SELUbFuujtEr9XHfp9XCLktXud9Sc2Czmf_/pub?gid=928244906&single=true&output=csv',                 // ← ссылка на опубликованный CSV Google Таблицы (см. README.md)
+  SHEET_CSV: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQGyNVUyAyeZVoafaazZmZEQbtmmcyqXV5AJBYxhq1_4SELUbFuujtEr9XHfp9XCLktXud9Sc2Czmf_/pub?gid=928244906&single=true&output=csv',                 // ← ссылка на опубликованный CSV Google Таблицы (см. README.md)
   OPERATOR: '77474331973',       // номер оператора WhatsApp: код страны + номер, без + и пробелов
   CITIES: ['Петропавловск', 'Астана', 'Костанай'],
   PRICE_MODE: 'vat',             // режим цен по умолчанию: 'vat' — с НДС, 'net' — без НДС
   SHOW_VAT_LABEL: true,          // пометка «(с НДС)» / «(без НДС)» в последней строке заявки; false — убрать
-  API_URL: 'https://script.google.com/macros/s/AKfycbyF4gfEQ-EHDbK-0JLwQVD96Dori66JtQLI31UUVL6I-sJoPhbUJw2_tF65FClUgece/exec',                   // ссылка на веб-приложение Apps Script (см. README); пусто = без общей базы
-  API_KEY: '3puq8z64' // тот же ключ, что KEY в Code.gs
+  API_URL: 'https://script.google.com/macros/s/AKfycbzXofkvdmGY2lXE5ZeBuU0GLGrXcBDRx1L_UPLA3VAFO5o1qG2cy3WwjEQQQGGm49OV/exec',                   // ссылка на веб-приложение Apps Script (см. README); пусто = без общей базы
+  API_KEY: '3puq8z64'       // тот же ключ, что KEY в Code.gs
 };
 // Колонки таблицы: категория | название | граммовка | цена без НДС | цена с НДС | единица (шт/кг/кор) | фото
 const DEMO = [['Финики','Финики FINDI caramel','150г','1704','1976','шт',''],['Мармелад','Кубик Манго','200г','500','600','шт',''],

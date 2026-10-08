@@ -5,7 +5,7 @@ const CFG = {
   CITIES: ['Петропавловск', 'Астана', 'Костанай'],
   PRICE_MODE: 'vat',             // режим цен по умолчанию: 'vat' — с НДС, 'net' — без НДС
   SHOW_VAT_LABEL: true,          // пометка «(с НДС)» / «(без НДС)» в последней строке заявки; false — убрать
-  API_URL: '',                   // ссылка на веб-приложение Apps Script (см. README); пусто = без общей базы
+  API_URL: 'https://script.google.com/macros/s/AKfycbzXofkvdmGY2lXE5ZeBuU0GLGrXcBDRx1L_UPLA3VAFO5o1qG2cy3WwjEQQQGGm49OV/exec',                   // ссылка на веб-приложение Apps Script (см. README); пусто = без общей базы
   API_KEY: '3puq8z64'       // тот же ключ, что KEY в Code.gs
 };
 // Колонки таблицы: категория | название | граммовка | цена без НДС | цена с НДС | единица (шт/кг/кор) | фото

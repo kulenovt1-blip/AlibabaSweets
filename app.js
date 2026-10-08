@@ -5,7 +5,7 @@ const CFG = {
   CITIES: ['Петропавловск', 'Астана', 'Костанай'],
   PRICE_MODE: 'vat',             // режим цен по умолчанию: 'vat' — с НДС, 'net' — без НДС
   SHOW_VAT_LABEL: true,          // пометка «(с НДС)» / «(без НДС)» в последней строке заявки; false — убрать
-  API_URL: 'https://script.google.com/macros/s/AKfycbzXofkvdmGY2lXE5ZeBuU0GLGrXcBDRx1L_UPLA3VAFO5o1qG2cy3WwjEQQQGGm49OV/exec',                   // ссылка на веб-приложение Apps Script (см. README); пусто = без общей базы
+  API_URL: '',                   // ссылка на веб-приложение Apps Script (см. README); пусто = без общей базы
   API_KEY: '3puq8z64'       // тот же ключ, что KEY в Code.gs
 };
 // Колонки таблицы: категория | название | граммовка | цена без НДС | цена с НДС | единица (шт/кг/кор) | фото
@@ -14,12 +14,12 @@ const DEMO = [['Финики','Финики FINDI caramel','150г','1704','1976'
 
 /* ============ 2. ХЕЛПЕРЫ И СОСТОЯНИЕ ============ */
 /* Версия сборки: должна совпадать с <meta name="ver"> в index.html. Если файлы на хостинге разных версий — покажем красную плашку. */
-const VER = '10';
+const VER = '12';
 { const m = document.querySelector('meta[name=ver]');
   if (!m || m.content != VER) document.body.insertAdjacentHTML('afterbegin', '<div style="background:#C82B27;color:#fff;padding:12px;font-weight:800">Файлы сайта разных версий. Загрузите ВСЕ файлы из архива заново (index.html, styles.css, app.js, sw.js) и обновите страницу дважды.</div>') }
 const ghost = new Proxy(function () {}, { get: (t, k) => k == Symbol.toPrimitive ? () => '' : ghost, set: () => true, apply: () => ghost });   // заглушка вместо отсутствующего элемента — страница не падает целиком
 const $ = s => document.querySelector(s) || ghost;
-const LS = (k, v) => v === undefined ? JSON.parse(localStorage.getItem(k) || 'null') : localStorage.setItem(k, JSON.stringify(v));
+const LS = (k, v) => { if (v !== undefined) return localStorage.setItem(k, JSON.stringify(v)); try { return JSON.parse(localStorage.getItem(k) || 'null') } catch (e) { return null } };   // битые сохранённые данные не должны ронять приложение
 const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const today = () => new Date(Date.now() - new Date().getTimezoneOffset() * 6e4).toISOString().slice(0, 10);
 const num = v => parseFloat(String(v).replace(/[^\d.,-]/g, '').replace(',', '.')) || 0; // «1 500 ₸» → 1500
@@ -28,6 +28,8 @@ const fd = d => d ? +d.slice(8) + '.' + +d.slice(5, 7) : '';           // 2026-1
 let P = [], cart = LS('cart') || {}, disc = LS('disc') || 0, H = LS('hdr') || { d: today() },
     S = LS('set') || { op: CFG.OPERATOR, cities: CFG.CITIES }, cat = 'Все', Q = '', view = '', editId = '';
 S.mode = S.mode || CFG.PRICE_MODE;
+if (!Array.isArray(S.cities) || !S.cities.length) S.cities = CFG.CITIES; S.op = S.op || CFG.OPERATOR;   // защита от данных старых версий
+if (typeof H != 'object' || Array.isArray(H)) H = { d: today() }; if (typeof cart != 'object' || Array.isArray(cart)) cart = {};
 let me = LS('me') || '', trs = LS('trs') || [], base = LS('base') || [], shist = LS('shist') || [], outbox = LS('outbox') || [], drafts = LS('drafts') || [], shopq = LS('shopq') || [];
 // История = серверная + локальная (ещё не синхронизированная), без дублей
 const allHist = () => { const m = new Map(); [...shist, ...(LS('hist') || [])].forEach(x => m.set(x.id || x.sum + x.h.s + x.h.d, x)); return [...m.values()].sort((a, b) => (b.ts || 0) - (a.ts || 0)) };
@@ -53,7 +55,9 @@ function parseCSV(t) { // разбор CSV с кавычками
   w.push(c); rows.push(w); return rows;
 }
 function photo(u) { // ссылка Google Drive → прямая картинка
-  u = (u || '').trim(); const m = u.match(/\/d\/([\w-]+)|[?&]id=([\w-]+)/);
+  u = (u || '').trim(); if (!u) return '';
+  if (!/^https?:/i.test(u)) return 'img/' + u.replace(/^\/+/, '');   // просто имя файла (например, finiki1.jpg) → папка img/ на сайте; работает офлайн
+  const m = u.match(/\/d\/([\w-]+)|[?&]id=([\w-]+)/);
   return u.includes('drive.google') && m ? `https://drive.google.com/thumbnail?id=${m[1] || m[2]}&sz=w600` : u;
 }
 // Колонки: 0 категория, 1 название, 2 граммовка, 3 цена без НДС, 4 цена с НДС, 5 единица, 6 фото
@@ -170,21 +174,34 @@ const shops = () => { if (!$('#sl').hidden) drawDD() };   // обновить о
 function fill() { $('#d').value = H.d || today(); $('#s').value = H.s || ''; $('#a').value = H.a || ''; cities() }
 
 /* ============ 7б. СИНХРОНИЗАЦИЯ, ПОДТВЕРЖДЕНИЕ, ЧЕРНОВИКИ, ПРОФИЛЬ ============ */
-async function sync() { // отправляет накопленные заявки в таблицу и подтягивает торговых, магазины и историю
-  if (!CFG.API_URL || !navigator.onLine) return;
+let syncing = false, again = false, syncErr = false, syncAt = '';
+function syncStatus() { // строка статуса под названием в шапке
+  const n = outbox.length + shopq.length, el = $('#sy'); if (!CFG.API_URL) return;
+  el.textContent = syncing ? '⏳ Синхронизация…' : syncErr ? '🔴 Нет связи с базой' + (n ? ' · ждут: ' + n : '') + ' (нажмите)' : n ? '⏳ Ждут отправки: ' + n : '✓ Синхронизировано ' + syncAt;
+}
+async function sync() { // отправляет накопленные заявки и правки магазинов, затем подтягивает торговых, магазины и историю
+  if (!CFG.API_URL) return;
+  if (syncing) { again = true; return }                 // уже идёт — повторим после
+  if (!navigator.onLine) { syncErr = true; syncStatus(); return }
+  syncing = true; syncStatus();
   try {
-    try { for (const x of [...shopq]) { // магазины, добавленные вручную через список
+    for (const x of [...shopq]) { // правки магазинов — строго по порядку; при ошибке останавливаемся
       const r = await (await fetch(CFG.API_URL, { method: 'POST', body: JSON.stringify({ key: CFG.API_KEY, shop: x }) })).json();
-      if (r.ok) { shopq = shopq.filter(y => y !== x); LS('shopq', shopq) } } } catch (e) {}
+      if (!r.ok) throw 0; shopq = shopq.filter(y => y !== x); LS('shopq', shopq);
+    }
     for (const o of [...outbox]) {
       const r = await (await fetch(CFG.API_URL, { method: 'POST', body: JSON.stringify({ key: CFG.API_KEY, order: o }) })).json();
       if (!r.ok) throw 0; outbox = outbox.filter(x => x.id != o.id); LS('outbox', outbox);
     }
     const d = await (await fetch(`${CFG.API_URL}?action=init&key=${encodeURIComponent(CFG.API_KEY)}&trader=${encodeURIComponent(me)}`)).json();
     if (d.error) throw 0; trs = d.traders; if (!shopq.length) base = d.shops;   // пока есть неотправленные правки, локальную базу не затираем
-     shist = d.hist; LS('trs', trs); LS('base', base); LS('shist', shist); shops();
-  } catch (e) {}
+    shist = d.hist; LS('trs', trs); LS('base', base); LS('shist', shist); shops();
+    syncErr = false; syncAt = new Date().toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' });
+  } catch (e) { syncErr = true }
+  syncing = false; syncStatus();
+  if (again) { again = false; return sync() }
 }
+
 function checkPending() { // после возврата из WhatsApp спрашиваем, ушла ли заявка
   const o = LS('pending'); if (!o || view == 'pend') return; openSheet('pend', 'Заявка отправлена?');
   $('#sb').innerHTML = `<div class="sum"><b>${esc(o.h.s)}</b><div class="m">${esc(o.h.c || '')} · ${o.sum} ₸</div></div><button class="send" data-a="pyes">✅ Да, отправил</button><button class="ghost" data-a="pno">Нет, вернуться к заявке</button>`;
@@ -291,7 +308,8 @@ $('#s').addEventListener('focus', drawDD); $('#s').addEventListener('input', e =
 $('#sl').addEventListener('pointerdown', e => e.preventDefault());   // не терять фокус поля при тапе по списку
 document.addEventListener('click', e => { if (!e.target.closest('.cb')) $('#sl').hidden = true });
 document.addEventListener('visibilitychange', () => { if (!document.hidden) { checkPending(); sync() } });
-window.addEventListener('online', sync);
-drawSeg(); fill(); shops(); draftBadge(); load(); checkPending();
+window.addEventListener('online', sync); window.addEventListener('offline', () => { syncErr = true; syncStatus() });
+$('#sy').addEventListener('click', () => sync());
+drawSeg(); fill(); shops(); draftBadge(); syncStatus(); load(); checkPending();
 sync().then(() => { if (CFG.API_URL && !me && !LS('pending')) whoView() });
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});

@@ -91,3 +91,5 @@ button:disabled{background:#b9b9a8;color:#fff;transform:none;cursor:default}
 
 /* ===== 12. СБРОС КОРЗИНЫ ===== */
 .srow{display:flex;gap:8px}#clr{flex:none;width:54px;padding:0;font-size:22px;background:#fff;color:var(--r);border:2px solid var(--r)}#clr[hidden]{display:none}
+
+#sy{cursor:pointer;font-size:14px}

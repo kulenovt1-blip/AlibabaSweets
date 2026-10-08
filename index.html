@@ -2,18 +2,27 @@
 <html lang="ru"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="ver" content="10">
+<meta name="ver" content="12">
 <meta name="theme-color" content="#1F401A">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;800;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
+<script>
+/* Показывает любую ошибку скрипта красной плашкой вверху страницы (чтобы не гадать, почему пусто) */
+window.addEventListener('error', function (e) {
+  if (e.target && e.target !== window && e.target.tagName != 'SCRIPT') return;
+  var m = e.target && e.target.tagName == 'SCRIPT' ? 'не загрузился файл ' + e.target.src : e.message + ' [' + String(e.filename || '').split('/').pop() + ':' + e.lineno + ']';
+  var d = document.createElement('div'); d.style.cssText = 'background:#C82B27;color:#fff;padding:12px;font:700 14px sans-serif;position:relative;z-index:99';
+  d.textContent = 'Ошибка: ' + m; (document.body || document.documentElement).prepend(d);
+}, true);
+</script>
 <title>Али-Баба · Заявка</title></head>
 <body>
 <!-- ШАПКА: крупный логотип + кнопки истории и настроек -->
 <header class="top">
   <img class="logo" src="logo.jpg" alt="Али-Баба">
-  <div class="brand"><h1>Али-Баба</h1><p>Приём заявок</p></div>
+  <div class="brand"><h1>Али-Баба</h1><p id="sy">Приём заявок</p></div>
   <button class="ib" data-a="drafts" id="drb" aria-label="Черновики">📁</button>
   <button class="ib" data-a="hist" aria-label="История">🕘</button>
   <button class="ib" data-a="set" aria-label="Настройки">⚙️</button>

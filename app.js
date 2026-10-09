@@ -6,6 +6,7 @@ const CFG = {
   PRICE_MODE: 'vat',             // режим цен по умолчанию: 'vat' — с НДС, 'net' — без НДС
   SHOW_VAT_LABEL: true,          // пометка «(с НДС)» / «(без НДС)» в последней строке заявки; false — убрать
   API_URL: 'https://script.google.com/macros/s/AKfycbzXofkvdmGY2lXE5ZeBuU0GLGrXcBDRx1L_UPLA3VAFO5o1qG2cy3WwjEQQQGGm49OV/exec',                   // ссылка на веб-приложение Apps Script (см. README); пусто = без общей базы
+  UNDO_HOURS: 24,                // сколько часов удалённую заявку можно вернуть
   API_KEY: '3puq8z64'       // тот же ключ, что KEY в Code.gs
 };
 // Колонки таблицы: категория | название | граммовка | цена без НДС | цена с НДС | единица (шт/кг/кор) | фото
@@ -14,7 +15,7 @@ const DEMO = [['Финики','Финики FINDI caramel','150г','1704','1976'
 
 /* ============ 2. ХЕЛПЕРЫ И СОСТОЯНИЕ ============ */
 /* Версия сборки: должна совпадать с <meta name="ver"> в index.html. Если файлы на хостинге разных версий — покажем красную плашку. */
-const VER = '13';
+const VER = '16';
 { const m = document.querySelector('meta[name=ver]');
   if (!m || m.content != VER) document.body.insertAdjacentHTML('afterbegin', '<div style="background:#C82B27;color:#fff;padding:12px;font-weight:800">Файлы сайта разных версий. Загрузите ВСЕ файлы из архива заново (index.html, styles.css, app.js, sw.js) и обновите страницу дважды.</div>') }
 const ghost = new Proxy(function () {}, { get: (t, k) => k == Symbol.toPrimitive ? () => '' : ghost, set: () => true, apply: () => ghost });   // заглушка вместо отсутствующего элемента — страница не падает целиком
@@ -30,9 +31,21 @@ let P = [], cart = LS('cart') || {}, disc = LS('disc') || 0, H = LS('hdr') || { 
 S.mode = S.mode || CFG.PRICE_MODE;
 if (!Array.isArray(S.cities) || !S.cities.length) S.cities = CFG.CITIES; S.op = S.op || CFG.OPERATOR;   // защита от данных старых версий
 if (typeof H != 'object' || Array.isArray(H)) H = { d: today() }; if (typeof cart != 'object' || Array.isArray(cart)) cart = {};
-let me = LS('me') || '', trs = LS('trs') || [], base = LS('base') || [], shist = LS('shist') || [], outbox = LS('outbox') || [], drafts = LS('drafts') || [], shopq = LS('shopq') || [];
+let me = LS('me') || '', trs = LS('trs') || [], base = LS('base') || [], shist = LS('shist') || [], outbox = LS('outbox') || [], drafts = LS('drafts') || [], shopq = LS('shopq') || [], delq = LS('delq') || [];
 // История = серверная + локальная (ещё не синхронизированная), без дублей
-const allHist = () => { const m = new Map(); [...shist, ...(LS('hist') || [])].forEach(x => m.set(x.id || x.sum + x.h.s + x.h.d, x)); return [...m.values()].sort((a, b) => (b.ts || 0) - (a.ts || 0)) };
+const allHist = () => { // история = серверная + локальная; у каждой заявки есть del (время удаления, 0 — не удалена)
+  const sm = new Map(shist.map(x => [x.id, x])), m = new Map();
+  [...shist, ...(LS('hist') || [])].forEach(x => m.set(x.id || x.sum + x.h.s + x.h.d, x));
+  return [...m.values()].map(x => { const q = [...delq].reverse().find(o => o.id == x.id), sv = sm.get(x.id);
+    return { ...x, del: q ? q.del : sv ? (sv.del || 0) : (x.del || 0) } }).sort((a, b) => (b.ts || 0) - (a.ts || 0));
+};
+let histTab = LS('htab') || 'mine';   // вкладка истории: 'mine' — мои, 'all' — все торговые
+const isMine = x => !x.trader || x.trader == me;
+const histById = id => allHist().find(x => x.id == id);
+function delOrder(id, ts) { // ts — время удаления; 0 — вернуть заявку
+  const h = LS('hist') || []; h.forEach(x => { if (x.id == id) x.del = ts }); LS('hist', h);
+  if (CFG.API_URL) { delq = delq.filter(o => o.id != id); delq.push({ id, del: ts, trader: me }); LS('delq', delq); sync() }
+}
 // Позиция в корзине: cart[id] = { q: количество, p: ручная цена (необязательно) }
 const pid = p => p.n + '|' + p.g + '|' + p.u;
 const step = p => p.u == 'кг' ? .5 : 1;
@@ -42,7 +55,7 @@ const find = id => P.find(p => pid(p) == id);
 const lines = () => P.filter(p => qty(p) > 0);
 const total = () => Math.round(lines().reduce((s, p) => s + price(p) * qty(p), 0));
 const final = () => Math.round(total() * (1 - disc / 100));
-const icon = c => { c = c.toLowerCase(); return c.includes('фин') ? '🌴' : c.includes('орех') ? '🥜' : c.includes('сух') ? '🍑' : /комп|напит/.test(c) ? '🥤' : '🍬' };
+const icon = c => { c = c.toLowerCase(); return c.includes('фин') ? '🌴' : c.includes('орех') ? '🥜' : c.includes('сух') ? '🍑' : /комп|напит/.test(c) ? '🥤' : /шоколад|драже/.test(c) ? '🍫' : c.includes('пастил') ? '🍥' : c.includes('ассорти') ? '🎁' : c.includes('чурч') ? '🍇' : '🍬' };
 const save = () => { LS('cart', cart); LS('disc', disc); LS('hdr', H) };
 
 /* ============ 3. ПРАЙС ИЗ GOOGLE ТАБЛИЦЫ ============ */
@@ -60,9 +73,18 @@ function photo(u) { // ссылка Google Drive → прямая картинк
   const m = u.match(/\/d\/([\w-]+)|[?&]id=([\w-]+)/);
   return u.includes('drive.google') && m ? `https://drive.google.com/thumbnail?id=${m[1] || m[2]}&sz=w600` : u;
 }
-// Колонки: 0 категория, 1 название, 2 граммовка, 3 цена без НДС, 4 цена с НДС, 5 единица, 6 фото
-const toProducts = rows => rows.slice(1).filter(r => r[1] && (num(r[3]) > 0 || num(r[4]) > 0)).map(r =>
-  ({ c: r[0].trim() || 'Прочее', n: r[1].trim(), g: (r[2] || '').trim(), pn: num(r[3]), pv: num(r[4]), pr: 0, u: (r[5] || 'шт').trim() || 'шт', f: photo(r[6]) }));
+// Колонки ищутся по заголовкам первой строки: Категория, Название, Граммовка, Цена (без НДС) / Цена, Цена (с НДС), Единица, Фото.
+// Порядок колонок не важен. Если заголовки не распознаны — берётся порядок: категория, название, граммовка, цена без НДС, цена с НДС, единица, фото.
+let hasVat = true;
+function colMap(rows) {
+  const h = (rows[0] || []).map(x => String(x).toLowerCase()), f = re => h.findIndex(x => re.test(x));
+  const m = { c: f(/катег/), n: f(/назв/), g: f(/грам|фасов/), u: f(/един/), f: f(/фото/), pn: -1, pv: -1 };
+  h.forEach((x, i) => { if (/ндс/.test(x)) { if (/без/.test(x)) m.pn = i; else m.pv = i } else if (/^цена/.test(x) && m.pn < 0) m.pn = i });
+  return m.n < 0 || (m.pn < 0 && m.pv < 0) ? { c: 0, n: 1, g: 2, pn: 3, pv: 4, u: 5, f: 6 } : m;
+}
+const toProducts = rows => { const m = colMap(rows), v = (r, i) => i >= 0 ? String(r[i] || '') : ''; hasVat = m.pv >= 0;
+  return rows.slice(1).filter(r => v(r, m.n).trim() && (num(v(r, m.pn)) > 0 || num(v(r, m.pv)) > 0)).map(r =>
+    ({ c: v(r, m.c).trim() || 'Прочее', n: v(r, m.n).trim(), g: v(r, m.g).trim(), pn: num(v(r, m.pn)), pv: num(v(r, m.pv)), pr: 0, u: v(r, m.u).trim() || 'шт', f: photo(v(r, m.f)) })) };
 const applyMode = () => P.forEach(p => p.pr = S.mode == 'vat' ? p.pv : p.pn);   // pr — актуальная цена в выбранном режиме (0 = не указана)
 async function load() {
   let rows, err = '';
@@ -80,6 +102,7 @@ async function load() {
 function note(err, demo, miss = []) { // плашка статуса прайса
   let n = $('#note'); if (!n) { n = document.createElement('div'); n.id = 'note'; n.style.cssText = 'margin:6px 12px;padding:10px 14px;border-radius:14px;font-weight:800;font-size:14px'; $('#list').before(n) }
   const msg = err ? 'Прайс не загружен: ' + err : demo ? 'Показаны демо-товары: в app.js не указана ссылка на таблицу'
+    : !hasVat ? 'В таблице нет колонки «Цена (с НДС)»: режим «С НДС» не работает. Добавьте колонку и нажмите ⚙️ → «Обновить прайс»'
     : miss.length ? `Не заполнена цена (с НДС или без) у ${miss.length} тов.: ${miss.slice(0, 3).join(', ')}${miss.length > 3 ? '…' : ''}` : '';
   n.hidden = !msg; n.style.background = err ? '#fde0de' : '#fff3c4'; n.style.color = err ? '#C82B27' : '#6b5200'; n.textContent = msg;
 }
@@ -136,17 +159,22 @@ function cartView() {
   const np = document.querySelector('[data-np]'); if (np) np.select();
 }
 const ft = ts => ts ? new Date(ts).toLocaleString('ru', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
-function histView() { // список: магазин, когда создана, на какую дату поставка, сумма
-  openSheet('hist', 'История заявок'); const h = allHist();
-  $('#sb').innerHTML = h.map((x, i) => `<div class="hi"><div data-a="hd" data-v="${i}" style="flex:1"><b>${esc(x.h.s || '—')} ›</b><div class="m">Создана: ${ft(x.ts)}</div><div class="m">Поставка на: ${fd(x.h.d)} · ${esc(x.h.c || '')}</div><b style="color:var(--r)">${x.sum} ₸</b><span class="m">${outbox.some(y => y.id == x.id) ? ' ⏳ не передано в базу' : ''}</span></div><button data-a="rep" data-v="${i}" style="padding:14px 16px">Повторить</button></div>`).join('') || '<p class="empty">Отправленных заявок пока нет</p>';
+function histView() { // вкладки «Мои» / «Все заявки»; ниже — «Недавно удалённые» (только свои)
+  openSheet('hist', 'История заявок'); const all = allHist(), now = Date.now(), win = CFG.UNDO_HOURS * 36e5, mine = histTab == 'mine';
+  const act = all.filter(x => !x.del && (!mine || isMine(x))), trash = mine ? all.filter(x => x.del && now - x.del < win && isMine(x)) : [];
+  const left = x => { const m = Math.max(1, Math.round((win - (now - x.del)) / 6e4)); return m >= 60 ? Math.floor(m / 60) + ' ч ' + (m % 60) + ' мин' : m + ' мин' };
+  const nMine = all.filter(x => !x.del && isMine(x)).length, nAll = all.filter(x => !x.del).length;
+  const tabs = CFG.API_URL ? `<div class="seg" style="margin-bottom:12px">${[['mine', 'Мои (' + nMine + ')'], ['all', 'Все заявки (' + nAll + ')']].map(([k, t]) => `<button data-a="htab" data-v="${k}" class="${histTab == k ? 'on' : ''}">${t}</button>`).join('')}</div>` : '';
+  $('#sb').innerHTML = tabs + act.map(x => `<div class="hi"><div data-a="hd" data-v="${esc(x.id)}" style="flex:1"><b>${esc(x.h.s || '—')} ›</b>${!mine || !isMine(x) ? `<div class="m">👤 ${esc(x.trader || '—')}</div>` : ''}<div class="m">Создана: ${ft(x.ts)}</div><div class="m">Поставка на: ${fd(x.h.d)} · ${esc(x.h.c || '')}</div><b style="color:var(--r)">${x.sum} ₸</b><span class="m">${outbox.some(y => y.id == x.id) ? ' ⏳ не передано в базу' : ''}</span></div><div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end"><button data-a="rep" data-v="${esc(x.id)}" style="padding:12px 14px">Повторить</button>${isMine(x) ? `<button class="x" data-a="hdel" data-v="${esc(x.id)}" aria-label="Удалить заявку">🗑</button>` : ''}</div></div>`).join('') || '<p class="empty">Заявок пока нет</p>'
+  + (trash.length ? `<h3 style="margin:18px 0 8px;color:var(--gd)">Недавно удалённые</h3>` + trash.map(x => `<div class="hi" style="opacity:.8"><div style="flex:1"><b>${esc(x.h.s || '—')}</b><div class="m">${ft(x.ts)} · ${x.sum} ₸</div><div class="m">Можно вернуть ещё ${left(x)}</div></div><button data-a="hres" data-v="${esc(x.id)}" style="padding:12px 14px">Вернуть</button></div>`).join('') : '');
 }
-function histDetail(i) { // полная карточка заявки
-  const x = allHist()[i]; if (!x) return; openSheet('hd', 'Заявка'); const R = (k, v) => `<div class="r"><span class="m">${k}</span><b>${v}</b></div>`;
+function histDetail(id) { // полная карточка заявки
+  const x = histById(id); if (!x) return; openSheet('hd', 'Заявка'); const R = (k, v) => `<div class="r"><span class="m">${k}</span><b>${v}</b></div>`;
   const rows = x.items ? x.items.map(t => `<div class="r"><span>${esc(t.n)}${t.g ? ' (' + esc(t.g) + ')' : ''}<br><span class="m">${qf(t.q)}${esc(t.u)} × ${t.o != t.p ? `<s>${t.o}</s> ` : ''}${t.p} ₸</span></span><b>${Math.round(t.p * t.q)} ₸</b></div>`).join('')
     : `<pre style="white-space:pre-wrap;font:inherit;margin:0">${esc(x.text || '')}</pre>`;
   $('#sb').innerHTML = `<div class="sum">${R('Магазин', esc(x.h.s || '—'))}${R('Город', esc(x.h.c || '—'))}${R('Адрес', esc(x.h.a || '—'))}${R('Торговый', esc(x.trader || '—'))}${R('Создана', ft(x.ts))}${R('Поставка на', fd(x.h.d))}${R('Цены', x.m == 'vat' ? 'с НДС' : 'без НДС')}${x.disc ? R('Скидка', x.disc + '%') : ''}</div>
   <div class="sum" style="margin-top:10px"><b>Товары</b>${rows}<div class="r t"><span>Итого</span><span>${x.sum} ₸</span></div></div>
-  <button class="send" data-a="rep" data-v="${i}">Повторить заявку</button><button class="ghost" data-a="hcopy" data-v="${i}">Скопировать текст</button><button class="ghost" data-a="hist">← К списку</button>`;
+  <button class="send" data-a="rep" data-v="${esc(x.id)}">Повторить заявку</button><button class="ghost" data-a="hcopy" data-v="${esc(x.id)}">Скопировать текст</button><button class="ghost" data-a="hist">← К списку</button>${isMine(x) ? `<button class="ghost" style="color:var(--r);border-color:var(--r)" data-a="hdel" data-v="${esc(x.id)}">🗑 Удалить заявку</button>` : ''}`;
 }
 function setView() {
   openSheet('set', 'Настройки');
@@ -184,7 +212,7 @@ async function api(url, opt) { // запрос к Apps Script с понятны�
   return d;
 }
 function syncStatus() { // строка статуса под названием в шапке
-  const n = outbox.length + shopq.length, el = $('#sy'); if (!CFG.API_URL) return;
+  const n = outbox.length + shopq.length + delq.length, el = $('#sy'); if (!CFG.API_URL) return;
   el.textContent = syncing ? '⏳ Синхронизация…' : syncErr ? '🔴 Нет связи с базой' + (n ? ' · ждут: ' + n : '') + ' (нажмите)' : n ? '⏳ Ждут отправки: ' + n : '✓ Синхронизировано ' + syncAt + (me ? ' · ' + me : '');
 }
 async function sync() { // отправляет накопленные заявки и правки магазинов, затем подтягивает торговых, магазины и историю
@@ -201,7 +229,11 @@ async function sync() { // отправляет накопленные заяв�
       const r = await api(CFG.API_URL, { method: 'POST', body: JSON.stringify({ key: CFG.API_KEY, order: o }) });
       if (!r.ok) throw new Error('скрипт не принял заявку'); outbox = outbox.filter(x => x.id != o.id); LS('outbox', outbox);
     }
-    const d = await api(`${CFG.API_URL}?action=init&key=${encodeURIComponent(CFG.API_KEY)}&trader=${encodeURIComponent(me)}`);
+    for (const o of [...delq]) { // удаления и возвраты заявок — после самих заявок
+      const r = await api(CFG.API_URL, { method: 'POST', body: JSON.stringify({ key: CFG.API_KEY, orderOp: o }) });
+      if (!r.ok) throw new Error('скрипт не принял удаление заявки'); delq = delq.filter(x => x !== o); LS('delq', delq);
+    }
+    const d = await api(`${CFG.API_URL}?action=init&key=${encodeURIComponent(CFG.API_KEY)}&trader=${encodeURIComponent(me)}&undo=${CFG.UNDO_HOURS}`);
     trs = d.traders; if (!shopq.length) base = d.shops;   // пока есть неотправленные правки, локальную базу не затираем
     shist = d.hist; LS('trs', trs); LS('base', base); LS('shist', shist); shops();
     syncErr = false; lastErr = ''; syncAt = new Date().toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' });
@@ -271,8 +303,11 @@ document.addEventListener('click', e => {
     const o = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), ts: Date.now(), trader: me, h: { ...H }, cart: JSON.parse(JSON.stringify(cart)), disc, sum: final(), m: S.mode, text: text(), items: lines().map(p => ({ n: p.n, g: p.g, u: p.u, q: qty(p), p: price(p), o: p.pr })) };
     LS('pending', o); location.href = `https://wa.me/${S.op.replace(/\D/g, '')}?text=${encodeURIComponent(o.text)}`; }
   else if (a == 'clr') { if (confirm('Сбросить все выбранные товары?')) { cart = {}; disc = 0; save(); bar(); drawList() } }
-  else if (a == 'hd') histDetail(+v);
-  else if (a == 'hcopy') { try { navigator.clipboard.writeText(allHist()[v].text || '').then(() => alert('Текст скопирован')) } catch (e) { alert('Не удалось скопировать') } }
+  else if (a == 'hd') histDetail(v);
+  else if (a == 'htab') { histTab = v; LS('htab', v); histView() }
+  else if (a == 'hdel') { const x = histById(v); if (x && isMine(x) && confirm('Удалить заявку «' + (x.h.s || '—') + '» на ' + x.sum + ' ₸?\nЕё можно будет вернуть в течение ' + CFG.UNDO_HOURS + ' ч.')) { delOrder(v, Date.now()); histView() } }
+  else if (a == 'hres') { delOrder(v, 0); histView() }
+  else if (a == 'hcopy') { try { navigator.clipboard.writeText(histById(v).text || '').then(() => alert('Текст скопирован')) } catch (e) { alert('Не удалось скопировать') } }
   else if (a == 'sedit') shopEditView(+v);
   else if (a == 'ssave') { const n = $('#en').value.trim().replace(/\s+/g, ' '), c = $('#ec').value, ad = $('#ea').value.trim(); if (!n) return;
     if (norm(n) != norm(eShop) && base.some(b => norm(b.n) == norm(n))) return alert('Магазин с таким названием уже есть');
@@ -295,7 +330,7 @@ document.addEventListener('click', e => {
     cart = x.cart; disc = x.disc; H = { ...x.H }; save(); fill(); closeSheet(); drawList(); bar(); draftBadge() }
   else if (a == 'ddel') { drafts.splice(v, 1); LS('drafts', drafts); draftBadge(); draftView() }
   else if (a == 'who2') sync().then(whoView); else if (a == 'who') whoView(); else if (a == 'me') { me = v; LS('me', me); closeSheet(); sync() }
-  else if (a == 'rep') { const x = allHist()[v]; if (x.m && x.m != S.mode) { S.mode = x.m; LS('set', S); applyMode(); drawSeg() } cart = x.cart; disc = x.disc; H = { ...x.h, d: today() }; save(); fill(); closeSheet(); drawList() }
+  else if (a == 'rep') { const x = histById(v); if (!x) return; if (x.m && x.m != S.mode) { S.mode = x.m; LS('set', S); applyMode(); drawSeg() } cart = x.cart; disc = x.disc; H = { ...x.h, d: today() }; save(); fill(); closeSheet(); drawList() }
   else if (a == 'ss') { S.op = $('#op').value; S.cities = $('#ct').value.split(',').map(s => s.trim()).filter(Boolean); LS('set', S); cities(); closeSheet() }
   else if (a == 'rl') { load(); closeSheet() }
 });

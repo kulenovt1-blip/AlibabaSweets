@@ -29,7 +29,7 @@ input:focus,select:focus{border-color:var(--g)}
 .grid.swap .pc{animation:rise .38s var(--ease) both;animation-delay:calc(var(--i)*40ms)}
 @keyframes rise{from{opacity:0;transform:translateY(18px) scale(.96)}}
 .pc{background:#fff;border-radius:22px;box-shadow:var(--sh);overflow:hidden;display:flex;flex-direction:column}
-.ph{display:block;position:relative;padding:0;border-radius:0;background:var(--y2);aspect-ratio:1}
+.ph{display:block;width:100%;position:relative;padding:0;border-radius:0;background:var(--y2);aspect-ratio:1;overflow:hidden}   /* width:100% — кнопка сама не растягивается, без этого фото с маленьким размером файла выходило меньше остальных */
 .ph img{width:100%;height:100%;object-fit:cover;display:block}
 .tag{position:absolute;left:8px;top:8px;background:var(--gd);color:var(--y);padding:4px 10px;border-radius:999px;font-size:14px;font-weight:900}
 .pb{padding:10px;display:flex;flex-direction:column;gap:4px;flex:1}
@@ -93,3 +93,6 @@ button:disabled{background:#b9b9a8;color:#fff;transform:none;cursor:default}
 .srow{display:flex;gap:8px}#clr{flex:none;width:54px;padding:0;font-size:22px;background:#fff;color:var(--r);border:2px solid var(--r)}#clr[hidden]{display:none}
 
 #sy{cursor:pointer;font-size:14px}
+
+/* ===== 13. БОЛЬШИЕ ЭКРАНЫ (ноутбук): больше колонок и ограниченная ширина ===== */
+@media(min-width:700px){.grid{grid-template-columns:repeat(auto-fill,minmax(210px,1fr))}.grid,.hdrform,.tools{max-width:1100px;margin-left:auto;margin-right:auto}.hdrform{margin-top:-44px}}

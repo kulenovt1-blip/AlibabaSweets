@@ -15,7 +15,7 @@ const DEMO = [['Финики','Финики FINDI caramel','150г','1704','1976'
 
 /* ============ 2. ХЕЛПЕРЫ И СОСТОЯНИЕ ============ */
 /* Версия сборки: должна совпадать с <meta name="ver"> в index.html. Если файлы на хостинге разных версий — покажем красную плашку. */
-const VER = '17';
+const VER = '18';
 { const m = document.querySelector('meta[name=ver]');
   if (!m || m.content != VER) document.body.insertAdjacentHTML('afterbegin', '<div style="background:#C82B27;color:#fff;padding:12px;font-weight:800">Файлы сайта разных версий. Загрузите ВСЕ файлы из архива заново (index.html, styles.css, app.js, sw.js) и обновите страницу дважды.</div>') }
 const ghost = new Proxy(function () {}, { get: (t, k) => k == Symbol.toPrimitive ? () => '' : ghost, set: () => true, apply: () => ghost });   // заглушка вместо отсутствующего элемента — страница не падает целиком
@@ -32,6 +32,9 @@ S.mode = S.mode || CFG.PRICE_MODE;
 if (!Array.isArray(S.cities) || !S.cities.length) S.cities = CFG.CITIES; S.op = S.op || CFG.OPERATOR;   // защита от данных старых версий
 if (typeof H != 'object' || Array.isArray(H)) H = { d: today() }; if (typeof cart != 'object' || Array.isArray(cart)) cart = {};
 let me = LS('me') || '', trs = LS('trs') || [], base = LS('base') || [], shist = LS('shist') || [], outbox = LS('outbox') || [], drafts = LS('drafts') || [], shopq = LS('shopq') || [], delq = LS('delq') || [], delok = LS('delok') || [];   // delok — удаления, принятые сервером, но ещё не подтверждённые выгрузкой
+// Миграция: заявки из старых версий без номера (id) получают его, иначе их нельзя удалить или повторить
+(() => { const h = LS('hist'); if (!Array.isArray(h)) return; let ch = false;
+  h.forEach((x, i) => { if (x && !x.id) { x.id = 'old' + (x.ts || 0).toString(36) + i + Math.random().toString(36).slice(2, 5); ch = true } }); if (ch) LS('hist', h) })();
 // История = серверная + локальная (ещё не синхронизированная), без дублей
 const allHist = () => { // история = серверная + локальная; у каждой заявки есть del (время удаления, 0 — не удалена)
   const sm = new Map(shist.map(x => [x.id, x])), m = new Map();

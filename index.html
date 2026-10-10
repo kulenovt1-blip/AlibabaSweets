@@ -2,11 +2,11 @@
 <html lang="ru"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="ver" content="18">
-<meta name="theme-color" content="#1F401A">
+<meta name="ver" content="19">
+<meta name="theme-color" content="#14301A">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;800;900&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
 <script>
 /* Показывает любую ошибку скрипта красной плашкой вверху страницы (чтобы не гадать, почему пусто) */
@@ -23,9 +23,9 @@ window.addEventListener('error', function (e) {
 <header class="top">
   <img class="logo" src="logo.jpg" alt="Али-Баба">
   <div class="brand"><h1>Али-Баба</h1><p id="sy">Приём заявок</p></div>
-  <button class="ib" data-a="drafts" id="drb" aria-label="Черновики">📁</button>
-  <button class="ib" data-a="hist" aria-label="История">🕘</button>
-  <button class="ib" data-a="set" aria-label="Настройки">⚙️</button>
+  <button class="ib" data-a="drafts" id="drb" aria-label="Черновики"></button>
+  <button class="ib" data-a="hist" aria-label="История"></button>
+  <button class="ib" data-a="set" aria-label="Настройки"></button>
 </header>
 
 <!-- ДАННЫЕ О КЛИЕНТЕ -->
@@ -37,7 +37,7 @@ window.addEventListener('error', function (e) {
 </section>
 
 <!-- ПОИСК И КАТЕГОРИИ -->
-<div class="tools"><div class="srow"><input id="q" type="search" placeholder="🔍  Найти товар"><button id="clr" data-a="clr" hidden aria-label="Сбросить корзину">🗑</button></div><nav class="chips" id="chips"></nav></div>
+<div class="tools"><div class="srow"><div class="sf"><span class="si"></span><input id="q" type="search" placeholder="Найти товар"></div><button id="clr" data-a="clr" hidden aria-label="Сбросить корзину"></button></div><nav class="chips" id="chips"></nav></div>
 
 <!-- КАТАЛОГ -->
 <main id="list" class="grid"></main>

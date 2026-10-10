@@ -15,9 +15,18 @@ const DEMO = [['Финики','Финики FINDI caramel','150г','1704','1976'
 
 /* ============ 2. ХЕЛПЕРЫ И СОСТОЯНИЕ ============ */
 /* Версия сборки: должна совпадать с <meta name="ver"> в index.html. Если файлы на хостинге разных версий — покажем красную плашку. */
-const VER = '18';
+const VER = '19';
 { const m = document.querySelector('meta[name=ver]');
   if (!m || m.content != VER) document.body.insertAdjacentHTML('afterbegin', '<div style="background:#C82B27;color:#fff;padding:12px;font-weight:800">Файлы сайта разных версий. Загрузите ВСЕ файлы из архива заново (index.html, styles.css, app.js, sw.js) и обновите страницу дважды.</div>') }
+const IC = { folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>', clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  sliders: '<path d="M4 6h8M18 6h2M4 12h2M12 12h8M4 18h10M20 18h0"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/>',
+  trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/>', search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>',
+  cart: '<path d="M3 4h2l2.4 11h10.2L20 8H6.2"/><circle cx="9" cy="19" r="1.4"/><circle cx="17" cy="19" r="1.4"/>', send: '<path d="M21 3L10 14M21 3l-7 18-4-7-7-4z"/>',
+  user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>', edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/>', save: '<path d="M5 3h11l3 3v15H5z"/><path d="M8 3v6h7V3M8 21v-7h8v7"/>',
+  check: '<path d="M5 12l5 5 9-10"/>', x: '<path d="M6 6l12 12M18 6L6 18"/>', back: '<path d="M19 12H5M11 6l-6 6 6 6"/>', plus: '<path d="M12 5v14M5 12h14"/>', undo: '<path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/>' };
+const ico = (n, s = 18) => `<svg class="i" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${IC[n]}</svg>`;   // линейные иконки вместо эмодзи
+{ const q = (k, h) => { const e = document.querySelector(k); if (e) e.innerHTML = h };
+  q('.top [data-a=hist]', ico('clock', 21)); q('.top [data-a=set]', ico('sliders', 21)); q('#drb', ico('folder', 21)); q('#clr', ico('trash', 20)); q('.si', ico('search', 18)) }
 const ghost = new Proxy(function () {}, { get: (t, k) => k == Symbol.toPrimitive ? () => '' : ghost, set: () => true, apply: () => ghost });   // заглушка вместо отсутствующего элемента — страница не падает целиком
 const $ = s => document.querySelector(s) || ghost;
 const LS = (k, v) => { if (v !== undefined) return localStorage.setItem(k, JSON.stringify(v)); try { return JSON.parse(localStorage.getItem(k) || 'null') } catch (e) { return null } };   // битые сохранённые данные не должны ронять приложение
@@ -105,7 +114,7 @@ async function load() {
 function note(err, demo, miss = []) { // плашка статуса прайса
   let n = $('#note'); if (!n) { n = document.createElement('div'); n.id = 'note'; n.style.cssText = 'margin:6px 12px;padding:10px 14px;border-radius:14px;font-weight:800;font-size:14px'; $('#list').before(n) }
   const msg = err ? 'Прайс не загружен: ' + err : demo ? 'Показаны демо-товары: в app.js не указана ссылка на таблицу'
-    : !hasVat ? 'В таблице нет колонки «Цена (с НДС)»: режим «С НДС» не работает. Добавьте колонку и нажмите ⚙️ → «Обновить прайс»'
+    : !hasVat ? 'В таблице нет колонки «Цена (с НДС)»: режим «С НДС» не работает. Добавьте колонку и нажмите «Настройки» → «Обновить прайс»'
     : miss.length ? `Не заполнена цена (с НДС или без) у ${miss.length} тов.: ${miss.slice(0, 3).join(', ')}${miss.length > 3 ? '…' : ''}` : '';
   n.hidden = !msg; n.style.background = err ? '#fde0de' : '#fff3c4'; n.style.color = err ? '#C82B27' : '#6b5200'; n.textContent = msg;
 }
@@ -113,11 +122,11 @@ function note(err, demo, miss = []) { // плашка статуса прайс�
 /* ============ 4. КАТАЛОГ ============ */
 function drawChips() {
   $('#chips').innerHTML = ['Все', ...new Set(P.map(p => p.c))].map(c =>
-    `<button class="chip${c == cat ? ' on' : ''}" data-a="cat" data-v="${esc(c)}">${c == 'Все' ? '✨' : icon(c)} ${esc(c)}</button>`).join('');
+    `<button class="chip${c == cat ? ' on' : ''}" data-a="cat" data-v="${esc(c)}">${esc(c)}</button>`).join('');
 }
 const ctl = p => { const id = esc(pid(p)), q = qty(p); if (!p.pr) return `<button class="add" disabled>Нет цены ${S.mode == 'vat' ? 'с НДС' : 'без НДС'}</button>`;   // кнопка «В заявку» или степпер
   return q ? `<div class="st"><button data-a="m" data-id="${id}">−</button><input data-q="${id}" inputmode="decimal" value="${qf(q)}"><button data-a="p" data-id="${id}">+</button></div>`
-           : `<button class="add" data-a="p" data-id="${id}">＋ В заявку</button>`; };
+           : `<button class="add" data-a="p" data-id="${id}">${ico('plus', 18)} В заявку</button>`; };
 function drawList() {
   const l = P.filter(p => (cat == 'Все' || p.c == cat) && p.n.toLowerCase().includes(Q)), el = $('#list');
   el.innerHTML = l.map((p, i) => `<article class="pc" style="--i:${Math.min(i, 8)}"><button class="ph" data-a="zoom" data-src="${esc(p.f || 'logo.jpg')}"><img src="${esc(p.f || 'logo.jpg')}" onerror="this.src='logo.jpg'" loading="lazy" alt="">${p.g ? `<span class="tag">${esc(p.g)}</span>` : ''}</button><div class="pb"><b>${esc(p.n)}</b><span class="pr">${p.pr ? p.pr + ' ₸' : '—'} <small>/ ${p.u}</small></span><div class="ctl" data-c="${esc(pid(p))}">${ctl(p)}</div></div></article>`).join('') || '<p class="empty">Ничего не найдено</p>';
@@ -132,7 +141,7 @@ function setQ(p, v) {
 }
 function bar(bump) {
   const n = lines().length; $('#clr').hidden = !n; $('#bar').classList.toggle('off', !n || view != '' && view != undefined && document.body.classList.contains('sh'));
-  $('#bn').textContent = '🛒 ' + n + ' поз.'; $('#bs').textContent = final() + ' ₸';
+  $('#bn').innerHTML = ico('cart', 20) + '<span>' + n + ' поз.</span>'; $('#bs').textContent = final() + ' ₸';
   if (bump) { const b = $('#bar'); b.classList.remove('bump'); void b.offsetWidth; b.classList.add('bump') }
 }
 
@@ -154,11 +163,11 @@ function cartView() {
   if (!L.length) { $('#sb').innerHTML = '<p class="empty">Корзина пуста. Добавьте товары из каталога.</p>'; return }
   $('#sb').innerHTML = L.map(p => { const id = esc(pid(p)), n = price(p), ch = n != p.pr;
     const pe = editId == pid(p) ? `<input class="np" data-np="${id}" inputmode="decimal" value="${n}">`
-      : `<button class="pe${ch ? ' ch' : ''}" data-a="edit" data-id="${id}">${ch ? `<s>${p.pr}</s>` : ''}${n} ₸ ✏️</button>`;
-    return `<div class="it"><img src="${esc(p.f || 'logo.jpg')}" onerror="this.src='logo.jpg'" alt=""><div><b>${esc(p.n)}</b> <span class="m">${esc(p.g)}</span><div style="margin-top:6px">${pe}${ch ? ` <button class="pe" data-a="reset" data-id="${id}">↺</button>` : ''}</div></div><button class="x" data-a="rm" data-id="${id}">✕</button><div class="st" style="grid-column:1/4">${`<button data-a="m" data-id="${id}">−</button><input data-q="${id}" inputmode="decimal" value="${qf(qty(p))}"><button data-a="p" data-id="${id}">+</button>`}<b style="margin-left:auto">${Math.round(n * qty(p))} ₸</b></div></div>`; }).join('') +
+      : `<button class="pe${ch ? ' ch' : ''}" data-a="edit" data-id="${id}">${ch ? `<s>${p.pr}</s>` : ''}${n} ₸ ${ico('edit', 14)}</button>`;
+    return `<div class="it"><img src="${esc(p.f || 'logo.jpg')}" onerror="this.src='logo.jpg'" alt=""><div><b>${esc(p.n)}</b> <span class="m">${esc(p.g)}</span><div style="margin-top:6px">${pe}${ch ? ` <button class="pe" data-a="reset" data-id="${id}">${ico('undo', 14)}</button>` : ''}</div></div><button class="x" data-a="rm" data-id="${id}" aria-label="Убрать">${ico('x', 16)}</button><div class="st" style="grid-column:1/4">${`<button data-a="m" data-id="${id}">−</button><input data-q="${id}" inputmode="decimal" value="${qf(qty(p))}"><button data-a="p" data-id="${id}">+</button>`}<b style="margin-left:auto">${Math.round(n * qty(p))} ₸</b></div></div>`; }).join('') +
   `<div class="sum"><div class="m">Цены: ${S.mode == 'vat' ? 'с НДС' : 'без НДС'}</div><b>Скидка на весь чек</b><div class="dc">${[0, 3, 5, 10].map(x => `<button data-a="disc" data-v="${x}" class="${disc == x ? 'on' : ''}">${x ? x + '%' : 'Нет'}</button>`).join('')}<input id="dc" inputmode="decimal" placeholder="свой %" value="${[0, 3, 5, 10].includes(disc) ? '' : disc}"></div>
   <div class="r"><span>Сумма</span><b>${total()} ₸</b></div>${disc > 0 ? `<div class="r"><span>Скидка ${disc}%</span><b>−${total() - final()} ₸</b></div>` : ''}<div class="r t"><span>Итого</span><span>${final()} ₸</span></div></div>
-  <button class="send" data-a="send">📲 Отправить в WhatsApp</button><button class="ghost" data-a="dsave">💾 Сохранить как черновик</button><button class="ghost" data-a="new">Новая заявка</button>`;
+  <button class="send" data-a="send">${ico('send', 20)} Отправить в WhatsApp</button><button class="ghost" data-a="dsave">${ico('save', 18)} Сохранить как черновик</button><button class="ghost" data-a="new">Новая заявка</button>`;
   const np = document.querySelector('[data-np]'); if (np) np.select();
 }
 const ft = ts => ts ? new Date(ts).toLocaleString('ru', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
@@ -168,7 +177,7 @@ function histView() { // вкладки «Мои» / «Все заявки»; н
   const left = x => { const m = Math.max(1, Math.round((win - (now - x.del)) / 6e4)); return m >= 60 ? Math.floor(m / 60) + ' ч ' + (m % 60) + ' мин' : m + ' мин' };
   const nMine = all.filter(x => !x.del && isMine(x)).length, nAll = all.filter(x => !x.del).length;
   const tabs = CFG.API_URL ? `<div class="seg" style="margin-bottom:12px">${[['mine', 'Мои (' + nMine + ')'], ['all', 'Все заявки (' + nAll + ')']].map(([k, t]) => `<button data-a="htab" data-v="${k}" class="${histTab == k ? 'on' : ''}">${t}</button>`).join('')}</div>` : '';
-  $('#sb').innerHTML = tabs + act.map(x => `<div class="hi"><div data-a="hd" data-v="${esc(x.id)}" style="flex:1"><b>${esc(x.h.s || '—')} ›</b>${!mine || !isMine(x) ? `<div class="m">👤 ${esc(x.trader || '—')}</div>` : ''}<div class="m">Создана: ${ft(x.ts)}</div><div class="m">Поставка на: ${fd(x.h.d)} · ${esc(x.h.c || '')}</div><b style="color:var(--r)">${x.sum} ₸</b><span class="m">${outbox.some(y => y.id == x.id) ? ' ⏳ не передано в базу' : ''}</span></div><div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end"><button data-a="rep" data-v="${esc(x.id)}" style="padding:12px 14px">Повторить</button>${isMine(x) ? `<button class="x" data-a="hdel" data-v="${esc(x.id)}" aria-label="Удалить заявку">🗑</button>` : ''}</div></div>`).join('') || '<p class="empty">Заявок пока нет</p>'
+  $('#sb').innerHTML = tabs + act.map(x => `<div class="hi"><div data-a="hd" data-v="${esc(x.id)}" style="flex:1"><b>${esc(x.h.s || '—')} ›</b>${!mine || !isMine(x) ? `<div class="m who">${ico('user', 13)} ${esc(x.trader || '—')}</div>` : ''}<div class="m">Создана: ${ft(x.ts)}</div><div class="m">Поставка на: ${fd(x.h.d)} · ${esc(x.h.c || '')}</div><b style="color:var(--r)">${x.sum} ₸</b><span class="m">${outbox.some(y => y.id == x.id) ? ' · не передано в базу' : ''}</span></div><div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end"><button data-a="rep" data-v="${esc(x.id)}" style="padding:12px 14px">Повторить</button>${isMine(x) ? `<button class="x" data-a="hdel" data-v="${esc(x.id)}" aria-label="Удалить заявку">${ico('trash', 18)}</button>` : ''}</div></div>`).join('') || '<p class="empty">Заявок пока нет</p>'
   + (trash.length ? `<h3 style="margin:18px 0 8px;color:var(--gd)">Недавно удалённые</h3>` + trash.map(x => `<div class="hi" style="opacity:.8"><div style="flex:1"><b>${esc(x.h.s || '—')}</b><div class="m">${ft(x.ts)} · ${x.sum} ₸</div><div class="m">Можно вернуть ещё ${left(x)}</div></div><button data-a="hres" data-v="${esc(x.id)}" style="padding:12px 14px">Вернуть</button></div>`).join('') : '');
 }
 function histDetail(id) { // полная карточка заявки
@@ -177,12 +186,12 @@ function histDetail(id) { // полная карточка заявки
     : `<pre style="white-space:pre-wrap;font:inherit;margin:0">${esc(x.text || '')}</pre>`;
   $('#sb').innerHTML = `<div class="sum">${R('Магазин', esc(x.h.s || '—'))}${R('Город', esc(x.h.c || '—'))}${R('Адрес', esc(x.h.a || '—'))}${R('Торговый', esc(x.trader || '—'))}${R('Создана', ft(x.ts))}${R('Поставка на', fd(x.h.d))}${R('Цены', x.m == 'vat' ? 'с НДС' : 'без НДС')}${x.disc ? R('Скидка', x.disc + '%') : ''}</div>
   <div class="sum" style="margin-top:10px"><b>Товары</b>${rows}<div class="r t"><span>Итого</span><span>${x.sum} ₸</span></div></div>
-  <button class="send" data-a="rep" data-v="${esc(x.id)}">Повторить заявку</button><button class="ghost" data-a="hcopy" data-v="${esc(x.id)}">Скопировать текст</button><button class="ghost" data-a="hist">← К списку</button>${isMine(x) ? `<button class="ghost" style="color:var(--r);border-color:var(--r)" data-a="hdel" data-v="${esc(x.id)}">🗑 Удалить заявку</button>` : ''}`;
+  <button class="send" data-a="rep" data-v="${esc(x.id)}">Повторить заявку</button><button class="ghost" data-a="hcopy" data-v="${esc(x.id)}">Скопировать текст</button><button class="ghost" data-a="hist">${ico('back', 18)} К списку</button>${isMine(x) ? `<button class="ghost" style="color:var(--r);border-color:var(--r)" data-a="hdel" data-v="${esc(x.id)}">${ico('trash', 18)} Удалить заявку</button>` : ''}`;
 }
 function setView() {
   openSheet('set', 'Настройки');
-  $('#sb').innerHTML = `${CFG.API_URL ? `<button class="ghost" style="margin:0 0 10px" data-a="who">👤 Профиль: ${esc(me || '—')} · сменить</button>` : ''}<div class="sum"><b>Номер оператора WhatsApp</b><input id="op" inputmode="tel" value="${esc(S.op)}" placeholder="77001234567"><p class="m">Код страны и номер, без + и пробелов</p><b>Города (через запятую)</b><input id="ct" value="${esc(S.cities.join(', '))}"></div><button class="send" style="background:var(--g);box-shadow:none" data-a="ss">Сохранить</button><button class="ghost" data-a="rl">Обновить прайс</button>
-  <div class="sum m" style="margin-top:12px;font-size:13px"><b>Диагностика</b><br>Версия: ${VER} · адрес: ${esc(location.origin)}<br>Товаров: ${P.length} (с ценой с НДС: ${P.filter(p => p.pv).length}, без НДС: ${P.filter(p => p.pn).length})<br>Режим цен: ${S.mode == 'vat' ? 'с НДС' : 'без НДС'}<br>${CFG.API_URL ? `База: ${syncErr ? '🔴 ' + esc(lastErr) : '✓ подключена'} · торговых в списке: ${trs.length} · профиль: ${esc(me || 'не выбран')}<br>Ждут отправки: заявок ${outbox.length}, правок магазинов ${shopq.length}` : 'База заявок не подключена (API_URL пуст)'}</div>`;
+  $('#sb').innerHTML = `${CFG.API_URL ? `<button class="ghost" style="margin:0 0 10px" data-a="who">${ico('user', 18)} Профиль: ${esc(me || '—')} · сменить</button>` : ''}<div class="sum"><b>Номер оператора WhatsApp</b><input id="op" inputmode="tel" value="${esc(S.op)}" placeholder="77001234567"><p class="m">Код страны и номер, без + и пробелов</p><b>Города (через запятую)</b><input id="ct" value="${esc(S.cities.join(', '))}"></div><button class="send" style="background:var(--g);box-shadow:none" data-a="ss">Сохранить</button><button class="ghost" data-a="rl">Обновить прайс</button>
+  <div class="sum m" style="margin-top:12px;font-size:13px"><b>Диагностика</b><br>Версия: ${VER} · адрес: ${esc(location.origin)}<br>Товаров: ${P.length} (с ценой с НДС: ${P.filter(p => p.pv).length}, без НДС: ${P.filter(p => p.pn).length})<br>Режим цен: ${S.mode == 'vat' ? 'с НДС' : 'без НДС'}<br>${CFG.API_URL ? `База: ${syncErr ? 'ошибка: ' + esc(lastErr) : 'подключена'} · торговых в списке: ${trs.length} · профиль: ${esc(me || 'не выбран')}<br>Ждут отправки: заявок ${outbox.length}, правок магазинов ${shopq.length}` : 'База заявок не подключена (API_URL пуст)'}</div>`;
 }
 
 /* ============ 6б. РЕЖИМ ЦЕН (с НДС / без НДС) ============ */
@@ -216,7 +225,7 @@ async function api(url, opt) { // запрос к Apps Script с понятны�
 }
 function syncStatus() { // строка статуса под названием в шапке
   const n = outbox.length + shopq.length + delq.length, el = $('#sy'); if (!CFG.API_URL) return;
-  el.textContent = syncWarn ? '⚠️ Сервер не сохранил удаление — обновите Code.gs (нажмите)' : syncing ? '⏳ Синхронизация…' : syncErr ? '🔴 Нет связи с базой' + (n ? ' · ждут: ' + n : '') + ' (нажмите)' : n ? '⏳ Ждут отправки: ' + n : '✓ Синхронизировано ' + syncAt + (me ? ' · ' + me : '');
+  el.textContent = syncWarn ? 'Сервер не сохранил удаление — обновите Code.gs (нажмите)' : syncing ? 'Синхронизация…' : syncErr ? 'Нет связи с базой' + (n ? ' · ждут: ' + n : '') + ' (нажмите)' : n ? 'Ждут отправки: ' + n : 'Синхронизировано ' + syncAt + (me ? ' · ' + me : '');
 }
 async function sync() { // отправляет накопленные заявки и правки магазинов, затем подтягивает торговых, магазины и историю
   if (!CFG.API_URL) return;
@@ -253,9 +262,9 @@ async function sync() { // отправляет накопленные заяв�
 
 function checkPending() { // после возврата из WhatsApp спрашиваем, ушла ли заявка
   const o = LS('pending'); if (!o || view == 'pend') return; openSheet('pend', 'Заявка отправлена?');
-  $('#sb').innerHTML = `<div class="sum"><b>${esc(o.h.s)}</b><div class="m">${esc(o.h.c || '')} · ${o.sum} ₸</div></div><button class="send" data-a="pyes">✅ Да, отправил</button><button class="ghost" data-a="pno">Нет, вернуться к заявке</button>`;
+  $('#sb').innerHTML = `<div class="sum"><b>${esc(o.h.s)}</b><div class="m">${esc(o.h.c || '')} · ${o.sum} ₸</div></div><button class="send" data-a="pyes">${ico('check', 20)} Да, отправил</button><button class="ghost" data-a="pno">Нет, вернуться к заявке</button>`;
 }
-const draftBadge = () => $('#drb').textContent = '📁' + (drafts.length || '');
+const draftBadge = () => $('#drb').innerHTML = ico('folder', 21) + (drafts.length ? '<em class="bdg">' + drafts.length + '</em>' : '');
 function draftSave() { // черновик хранит всё состояние заявки; корзина очищается для следующего магазина
   if (!lines().length) return alert('Заявка пуста');
   drafts.unshift({ H: { ...H }, cart: JSON.parse(JSON.stringify(cart)), disc, m: S.mode, n: lines().length, sum: final(), t: Date.now() }); LS('drafts', drafts);
@@ -263,7 +272,7 @@ function draftSave() { // черновик хранит всё состояни�
 }
 function draftView() {
   openSheet('dr', 'Черновики');
-  $('#sb').innerHTML = drafts.map((x, i) => `<div class="hi"><div><b>${esc(x.H.s || 'Без названия')}</b><div class="m">${x.n} поз. · ${new Date(x.t).toLocaleString('ru', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })}</div><b style="color:var(--r)">${x.sum} ₸</b></div><div><button data-a="dopen" data-v="${i}" style="padding:12px 14px">Открыть</button> <button class="x" data-a="ddel" data-v="${i}">✕</button></div></div>`).join('') || '<p class="empty">Черновиков нет</p>';
+  $('#sb').innerHTML = drafts.map((x, i) => `<div class="hi"><div><b>${esc(x.H.s || 'Без названия')}</b><div class="m">${x.n} поз. · ${new Date(x.t).toLocaleString('ru', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })}</div><b style="color:var(--r)">${x.sum} ₸</b></div><div><button data-a="dopen" data-v="${i}" style="padding:12px 14px">Открыть</button> <button class="x" data-a="ddel" data-v="${i}" aria-label="Удалить">${ico('x', 16)}</button></div></div>`).join('') || '<p class="empty">Черновиков нет</p>';
 }
 function whoView() {
   openSheet('who', 'Кто вы?');
@@ -286,7 +295,7 @@ function upShop(n, c, a) { if (!n) return; const o = base.find(b => norm(b.n) ==
 function addShop(n) { upShop(n, H.c, H.a); if (CFG.API_URL) { shopq.push({ n, c: H.c || '', a: H.a || '' }); LS('shopq', shopq); sync() } }
 function drawDD() {
   const raw = $('#s').value.trim(), v = norm(raw); ddL = shopList().filter(x => norm(x.n).includes(v));
-  $('#sl').innerHTML = ddL.map((x, i) => `<div class="dr"><button class="di" data-a="pick" data-v="${i}"><b>${esc(x.n)}</b><span class="m">${esc([x.c, x.a].filter(Boolean).join(' · '))}</span></button><button class="ed" data-a="sedit" data-v="${i}" aria-label="Изменить">✏️</button></div>`).join('')
+  $('#sl').innerHTML = ddL.map((x, i) => `<div class="dr"><button class="di" data-a="pick" data-v="${i}"><b>${esc(x.n)}</b><span class="m">${esc([x.c, x.a].filter(Boolean).join(' · '))}</span></button><button class="ed" data-a="sedit" data-v="${i}" aria-label="Изменить">${ico('edit', 18)}</button></div>`).join('')
     + (v && !ddL.some(x => norm(x.n) == v) ? `<button class="di add2" data-a="padd">＋ Добавить «${esc(raw)}»</button>` : '')
     || '<p class="m" style="padding:10px">Магазинов пока нет — впишите название</p>';
   $('#sl').hidden = false;

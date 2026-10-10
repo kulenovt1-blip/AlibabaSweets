@@ -15,7 +15,7 @@ const DEMO = [['Финики','Финики FINDI caramel','150г','1704','1976'
 
 /* ============ 2. ХЕЛПЕРЫ И СОСТОЯНИЕ ============ */
 /* Версия сборки: должна совпадать с <meta name="ver"> в index.html. Если файлы на хостинге разных версий — покажем красную плашку. */
-const VER = '16';
+const VER = '17';
 { const m = document.querySelector('meta[name=ver]');
   if (!m || m.content != VER) document.body.insertAdjacentHTML('afterbegin', '<div style="background:#C82B27;color:#fff;padding:12px;font-weight:800">Файлы сайта разных версий. Загрузите ВСЕ файлы из архива заново (index.html, styles.css, app.js, sw.js) и обновите страницу дважды.</div>') }
 const ghost = new Proxy(function () {}, { get: (t, k) => k == Symbol.toPrimitive ? () => '' : ghost, set: () => true, apply: () => ghost });   // заглушка вместо отсутствующего элемента — страница не падает целиком
@@ -31,12 +31,12 @@ let P = [], cart = LS('cart') || {}, disc = LS('disc') || 0, H = LS('hdr') || { 
 S.mode = S.mode || CFG.PRICE_MODE;
 if (!Array.isArray(S.cities) || !S.cities.length) S.cities = CFG.CITIES; S.op = S.op || CFG.OPERATOR;   // защита от данных старых версий
 if (typeof H != 'object' || Array.isArray(H)) H = { d: today() }; if (typeof cart != 'object' || Array.isArray(cart)) cart = {};
-let me = LS('me') || '', trs = LS('trs') || [], base = LS('base') || [], shist = LS('shist') || [], outbox = LS('outbox') || [], drafts = LS('drafts') || [], shopq = LS('shopq') || [], delq = LS('delq') || [];
+let me = LS('me') || '', trs = LS('trs') || [], base = LS('base') || [], shist = LS('shist') || [], outbox = LS('outbox') || [], drafts = LS('drafts') || [], shopq = LS('shopq') || [], delq = LS('delq') || [], delok = LS('delok') || [];   // delok — удаления, принятые сервером, но ещё не подтверждённые выгрузкой
 // История = серверная + локальная (ещё не синхронизированная), без дублей
 const allHist = () => { // история = серверная + локальная; у каждой заявки есть del (время удаления, 0 — не удалена)
   const sm = new Map(shist.map(x => [x.id, x])), m = new Map();
   [...shist, ...(LS('hist') || [])].forEach(x => m.set(x.id || x.sum + x.h.s + x.h.d, x));
-  return [...m.values()].map(x => { const q = [...delq].reverse().find(o => o.id == x.id), sv = sm.get(x.id);
+  return [...m.values()].map(x => { const q = [...delq].reverse().find(o => o.id == x.id) || delok.find(o => o.id == x.id), sv = sm.get(x.id);
     return { ...x, del: q ? q.del : sv ? (sv.del || 0) : (x.del || 0) } }).sort((a, b) => (b.ts || 0) - (a.ts || 0));
 };
 let histTab = LS('htab') || 'mine';   // вкладка истории: 'mine' — мои, 'all' — все торговые
@@ -203,7 +203,7 @@ const shops = () => { if (!$('#sl').hidden) drawDD() };   // обновить о
 function fill() { $('#d').value = H.d || today(); $('#s').value = H.s || ''; $('#a').value = H.a || ''; cities() }
 
 /* ============ 7б. СИНХРОНИЗАЦИЯ, ПОДТВЕРЖДЕНИЕ, ЧЕРНОВИКИ, ПРОФИЛЬ ============ */
-let syncing = false, again = false, syncErr = false, syncAt = '', lastErr = '';
+let syncWarn = false, syncing = false, again = false, syncErr = false, syncAt = '', lastErr = '';
 async function api(url, opt) { // запрос к Apps Script с понятным текстом ошибки
   let r, t; try { r = await fetch(url, opt); t = await r.text() } catch (e) { throw new Error('браузер не смог связаться со скриптом (интернет, VPN, блокировщик или неверный API_URL)') }
   let d; try { d = JSON.parse(t) } catch (e) { throw new Error('скрипт вернул не данные, а страницу (HTTP ' + r.status + '): проверьте развёртывание — доступ «Все», выполнять от имени «Я», ссылка заканчивается на /exec') }
@@ -213,7 +213,7 @@ async function api(url, opt) { // запрос к Apps Script с понятны�
 }
 function syncStatus() { // строка статуса под названием в шапке
   const n = outbox.length + shopq.length + delq.length, el = $('#sy'); if (!CFG.API_URL) return;
-  el.textContent = syncing ? '⏳ Синхронизация…' : syncErr ? '🔴 Нет связи с базой' + (n ? ' · ждут: ' + n : '') + ' (нажмите)' : n ? '⏳ Ждут отправки: ' + n : '✓ Синхронизировано ' + syncAt + (me ? ' · ' + me : '');
+  el.textContent = syncWarn ? '⚠️ Сервер не сохранил удаление — обновите Code.gs (нажмите)' : syncing ? '⏳ Синхронизация…' : syncErr ? '🔴 Нет связи с базой' + (n ? ' · ждут: ' + n : '') + ' (нажмите)' : n ? '⏳ Ждут отправки: ' + n : '✓ Синхронизировано ' + syncAt + (me ? ' · ' + me : '');
 }
 async function sync() { // отправляет накопленные заявки и правки магазинов, затем подтягивает торговых, магазины и историю
   if (!CFG.API_URL) return;
@@ -232,13 +232,19 @@ async function sync() { // отправляет накопленные заяв�
     for (const o of [...delq]) { // удаления и возвраты заявок — после самих заявок
       const r = await api(CFG.API_URL, { method: 'POST', body: JSON.stringify({ key: CFG.API_KEY, orderOp: o }) });
       if (!r.ok) throw new Error('скрипт не принял удаление заявки'); delq = delq.filter(x => x !== o); LS('delq', delq);
+      if (r.applied === false && r.reason == 'not_owner') { // сервер отказал: заявка принадлежит другому профилю — возвращаем её в список и объясняем
+        const h = LS('hist') || []; h.forEach(x => { if (x.id == o.id) x.del = 0 }); LS('hist', h);
+        alert('Эту заявку нельзя удалить: она создана профилем «' + (r.owner || '—') + '».'); if (view == 'hist') histView(); continue }
+      if (r.applied !== false) { delok.push({ id: o.id, del: o.del, t: Date.now() }); LS('delok', delok) }   // запоминаем, пока выгрузка не подтвердит
     }
     const d = await api(`${CFG.API_URL}?action=init&key=${encodeURIComponent(CFG.API_KEY)}&trader=${encodeURIComponent(me)}&undo=${CFG.UNDO_HOURS}`);
     trs = d.traders; if (!shopq.length) base = d.shops;   // пока есть неотправленные правки, локальную базу не затираем
-    shist = d.hist; LS('trs', trs); LS('base', base); LS('shist', shist); shops();
+    syncWarn = false; delok = delok.filter(o => { const sv = d.hist.find(x => x.id == o.id); if (!sv) return false;   // подтверждение удаления / возврата выгрузкой
+      if (!!sv.del == !!o.del) return false; syncWarn = true; return Date.now() - o.t < 6e5 });                      // не совпало: сервер не применил — предупреждаем, пока не истёк срок
+    LS('delok', delok); shist = d.hist; LS('trs', trs); LS('base', base); LS('shist', shist); shops();
     syncErr = false; lastErr = ''; syncAt = new Date().toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' });
   } catch (e) { syncErr = true; lastErr = e && e.message || 'неизвестная ошибка' }
-  syncing = false; syncStatus(); if (view == 'who') whoView();   // окно выбора профиля обновляется по готовности данных
+  syncing = false; syncStatus(); if (view == 'who') whoView(); if (view == 'hist') histView();   // окно выбора профиля обновляется по готовности данных
   if (again) { again = false; return sync() }
 }
 

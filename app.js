@@ -5,7 +5,7 @@ const CFG = {
   CITIES: ['Петропавловск', 'Астана', 'Костанай'],
   PRICE_MODE: 'vat',             // режим цен по умолчанию: 'vat' — с НДС, 'net' — без НДС
   SHOW_VAT_LABEL: true,          // пометка «(с НДС)» / «(без НДС)» в последней строке заявки; false — убрать
-  API_URL: 'https://script.google.com/macros/s/AKfycbzXofkvdmGY2lXE5ZeBuU0GLGrXcBDRx1L_UPLA3VAFO5o1qG2cy3WwjEQQQGGm49OV/exec',                   // ссылка на веб-приложение Apps Script (см. README); пусто = без общей базы
+  API_URL: '',                   // ссылка на веб-приложение Apps Script (см. README); пусто = без общей базы
   UNDO_HOURS: 24,                // сколько часов удалённую заявку можно вернуть
   API_KEY: '3puq8z64'       // тот же ключ, что KEY в Code.gs
 };
@@ -15,7 +15,7 @@ const DEMO = [['Финики','Финики FINDI caramel','150г','1704','1976'
 
 /* ============ 2. ХЕЛПЕРЫ И СОСТОЯНИЕ ============ */
 /* Версия сборки: должна совпадать с <meta name="ver"> в index.html. Если файлы на хостинге разных версий — покажем красную плашку. */
-const VER = '19';
+const VER = '21';
 { const m = document.querySelector('meta[name=ver]');
   if (!m || m.content != VER) document.body.insertAdjacentHTML('afterbegin', '<div style="background:#C82B27;color:#fff;padding:12px;font-weight:800">Файлы сайта разных версий. Загрузите ВСЕ файлы из архива заново (index.html, styles.css, app.js, sw.js) и обновите страницу дважды.</div>') }
 const IC = { folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>', clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
@@ -177,7 +177,9 @@ function histView() { // вкладки «Мои» / «Все заявки»; н
   const left = x => { const m = Math.max(1, Math.round((win - (now - x.del)) / 6e4)); return m >= 60 ? Math.floor(m / 60) + ' ч ' + (m % 60) + ' мин' : m + ' мин' };
   const nMine = all.filter(x => !x.del && isMine(x)).length, nAll = all.filter(x => !x.del).length;
   const tabs = CFG.API_URL ? `<div class="seg" style="margin-bottom:12px">${[['mine', 'Мои (' + nMine + ')'], ['all', 'Все заявки (' + nAll + ')']].map(([k, t]) => `<button data-a="htab" data-v="${k}" class="${histTab == k ? 'on' : ''}">${t}</button>`).join('')}</div>` : '';
-  $('#sb').innerHTML = tabs + act.map(x => `<div class="hi"><div data-a="hd" data-v="${esc(x.id)}" style="flex:1"><b>${esc(x.h.s || '—')} ›</b>${!mine || !isMine(x) ? `<div class="m who">${ico('user', 13)} ${esc(x.trader || '—')}</div>` : ''}<div class="m">Создана: ${ft(x.ts)}</div><div class="m">Поставка на: ${fd(x.h.d)} · ${esc(x.h.c || '')}</div><b style="color:var(--r)">${x.sum} ₸</b><span class="m">${outbox.some(y => y.id == x.id) ? ' · не передано в базу' : ''}</span></div><div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end"><button data-a="rep" data-v="${esc(x.id)}" style="padding:12px 14px">Повторить</button>${isMine(x) ? `<button class="x" data-a="hdel" data-v="${esc(x.id)}" aria-label="Удалить заявку">${ico('trash', 18)}</button>` : ''}</div></div>`).join('') || '<p class="empty">Заявок пока нет</p>'
+  const d0 = new Date(); d0.setHours(0, 0, 0, 0); const td = all.filter(x => !x.del && (!mine || isMine(x)) && (x.ts || 0) >= d0.getTime()), tn = td.length, tw = tn % 10 == 1 && tn % 100 != 11 ? 'заявка' : [2, 3, 4].includes(tn % 10) && ![12, 13, 14].includes(tn % 100) ? 'заявки' : 'заявок';
+  const dsum = tn ? `<div class="day"><span>Сегодня</span><b>${tn} ${tw} · ${td.reduce((a, x) => a + (+x.sum || 0), 0)} ₸</b></div>` : '';   // итоги за сегодня
+  $('#sb').innerHTML = tabs + dsum + act.map(x => `<div class="hi"><div data-a="hd" data-v="${esc(x.id)}" style="flex:1"><b>${esc(x.h.s || '—')} ›</b>${!mine || !isMine(x) ? `<div class="m who">${ico('user', 13)} ${esc(x.trader || '—')}</div>` : ''}<div class="m">Создана: ${ft(x.ts)}</div><div class="m">Поставка на: ${fd(x.h.d)} · ${esc(x.h.c || '')}</div><b style="color:var(--r)">${x.sum} ₸</b><span class="m">${CFG.API_URL && outbox.some(y => y.id == x.id) ? ' · не передано в базу' : ''}</span></div><div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end"><button data-a="rep" data-v="${esc(x.id)}" style="padding:12px 14px">Повторить</button>${isMine(x) ? `<button class="x" data-a="hdel" data-v="${esc(x.id)}" aria-label="Удалить заявку">${ico('trash', 18)}</button>` : ''}</div></div>`).join('') || '<p class="empty">Заявок пока нет</p>'
   + (trash.length ? `<h3 style="margin:18px 0 8px;color:var(--gd)">Недавно удалённые</h3>` + trash.map(x => `<div class="hi" style="opacity:.8"><div style="flex:1"><b>${esc(x.h.s || '—')}</b><div class="m">${ft(x.ts)} · ${x.sum} ₸</div><div class="m">Можно вернуть ещё ${left(x)}</div></div><button data-a="hres" data-v="${esc(x.id)}" style="padding:12px 14px">Вернуть</button></div>`).join('') : '');
 }
 function histDetail(id) { // полная карточка заявки
@@ -190,7 +192,7 @@ function histDetail(id) { // полная карточка заявки
 }
 function setView() {
   openSheet('set', 'Настройки');
-  $('#sb').innerHTML = `${CFG.API_URL ? `<button class="ghost" style="margin:0 0 10px" data-a="who">${ico('user', 18)} Профиль: ${esc(me || '—')} · сменить</button>` : ''}<div class="sum"><b>Номер оператора WhatsApp</b><input id="op" inputmode="tel" value="${esc(S.op)}" placeholder="77001234567"><p class="m">Код страны и номер, без + и пробелов</p><b>Города (через запятую)</b><input id="ct" value="${esc(S.cities.join(', '))}"></div><button class="send" style="background:var(--g);box-shadow:none" data-a="ss">Сохранить</button><button class="ghost" data-a="rl">Обновить прайс</button>
+  $('#sb').innerHTML = `${CFG.API_URL ? `<button class="ghost" style="margin:0 0 10px" data-a="who">${ico('user', 18)} Профиль: ${esc(me || '—')} · сменить</button>` : ''}<div class="sum"><b>Номер оператора WhatsApp</b><input id="op" inputmode="tel" value="${esc(S.op)}" placeholder="77001234567"><p class="m">Код страны и номер, без + и пробелов</p><b>Города (через запятую)</b><input id="ct" value="${esc(S.cities.join(', '))}"></div><button class="send" style="background:var(--g);box-shadow:none" data-a="ss">Сохранить</button><button class="ghost" data-a="rl">Обновить прайс</button>${standalone ? '' : `<button class="ghost" data-a="inst">${ico('plus', 18)} Установить на главный экран</button>`}<button class="ghost" data-a="csv">${ico('save', 18)} Экспорт истории (CSV)</button>
   <div class="sum m" style="margin-top:12px;font-size:13px"><b>Диагностика</b><br>Версия: ${VER} · адрес: ${esc(location.origin)}<br>Товаров: ${P.length} (с ценой с НДС: ${P.filter(p => p.pv).length}, без НДС: ${P.filter(p => p.pn).length})<br>Режим цен: ${S.mode == 'vat' ? 'с НДС' : 'без НДС'}<br>${CFG.API_URL ? `База: ${syncErr ? 'ошибка: ' + esc(lastErr) : 'подключена'} · торговых в списке: ${trs.length} · профиль: ${esc(me || 'не выбран')}<br>Ждут отправки: заявок ${outbox.length}, правок магазинов ${shopq.length}` : 'База заявок не подключена (API_URL пуст)'}</div>`;
 }
 
@@ -318,6 +320,8 @@ document.addEventListener('click', e => {
   else if (a == 'new') { if (confirm('Очистить текущую заявку?')) { cart = {}; disc = 0; save(); closeSheet(); drawList() } }
   else if (a == 'send') {
     if (!H.s || !lines().length) return alert('Укажите магазин и добавьте товары');
+    const dup = allHist().find(x => !x.del && isMine(x) && norm(x.h.s || '') == norm(H.s) && x.sum == final() && Date.now() - (x.ts || 0) < 10 * 6e4);   // защита от двойной отправки
+    if (dup && !confirm('Похожая заявка («' + H.s + '», ' + final() + ' ₸) уже создана ' + Math.max(1, Math.round((Date.now() - dup.ts) / 6e4)) + ' мин назад.\nОтправить ещё раз?')) return;
     const o = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), ts: Date.now(), trader: me, h: { ...H }, cart: JSON.parse(JSON.stringify(cart)), disc, sum: final(), m: S.mode, text: text(), items: lines().map(p => ({ n: p.n, g: p.g, u: p.u, q: qty(p), p: price(p), o: p.pr })) };
     LS('pending', o); location.href = `https://wa.me/${S.op.replace(/\D/g, '')}?text=${encodeURIComponent(o.text)}`; }
   else if (a == 'clr') { if (confirm('Сбросить все выбранные товары?')) { cart = {}; disc = 0; save(); bar(); drawList() } }
@@ -326,6 +330,9 @@ document.addEventListener('click', e => {
   else if (a == 'hdel') { const x = histById(v); if (x && isMine(x) && confirm('Удалить заявку «' + (x.h.s || '—') + '» на ' + x.sum + ' ₸?\nЕё можно будет вернуть в течение ' + CFG.UNDO_HOURS + ' ч.')) { delOrder(v, Date.now()); histView() } }
   else if (a == 'hres') { delOrder(v, 0); histView() }
   else if (a == 'hcopy') { try { navigator.clipboard.writeText(histById(v).text || '').then(() => alert('Текст скопирован')) } catch (e) { alert('Не удалось скопировать') } }
+  else if (a == 'inst') { if (instEv) { instEv.prompt(); instEv.userChoice.finally(() => { instEv = null; hideInst() }) } else alert('Android (Chrome): меню ⋮ → «Установить приложение» или «Добавить на главный экран».\niPhone (Safari): «Поделиться» → «На экран Домой».') }
+  else if (a == 'instx') { LS('instx', 1); hideInst() }
+  else if (a == 'csv') exportCsv();
   else if (a == 'sedit') shopEditView(+v);
   else if (a == 'ssave') { const n = $('#en').value.trim().replace(/\s+/g, ' '), c = $('#ec').value, ad = $('#ea').value.trim(); if (!n) return;
     if (norm(n) != norm(eShop) && base.some(b => norm(b.n) == norm(n))) return alert('Магазин с таким названием уже есть');
@@ -366,6 +373,34 @@ $('#c').onchange = e => { if (e.target.value == '+') { const n = (prompt('Наз
 
 /* ============ 9. СТАРТ ============ */
 $('#s').addEventListener('focus', drawDD); $('#s').addEventListener('input', e => { H.s = e.target.value; save(); drawDD() });
+// Свайп вниз закрывает шторку: тянуть можно за полоску, заголовок или за содержимое, если оно прокручено до верха
+(() => { const sh = document.getElementById('sheet'); if (!sh) return; let y0 = 0, dy = 0, on = false, drag = false, t0 = 0;
+  const head = e => !!e.target.closest('.grab,#st');
+  sh.addEventListener('touchstart', e => { on = e.touches.length == 1 && (head(e) || (sh.scrollTop <= 0 && !e.target.closest('input,select,textarea'))); drag = false; dy = 0; if (on) { y0 = e.touches[0].clientY; t0 = Date.now() } }, { passive: true });
+  sh.addEventListener('touchmove', e => { if (!on) return; dy = e.touches[0].clientY - y0;
+    if (!drag && dy < -6) { on = false; return }                    // двигают вверх — это прокрутка, не свайп
+    if (dy > 6 && (head(e) || sh.scrollTop <= 0)) { drag = true; sh.style.transition = 'none'; sh.style.transform = 'translateY(' + Math.max(0, dy) + 'px)'; if (e.cancelable) e.preventDefault() } }, { passive: false });
+  const end = e => { if (!on) return; on = false; sh.style.transition = ''; sh.style.transform = '';
+    if (drag) { if (e.cancelable) e.preventDefault(); drag = false; if (dy > 110 || (dy > 50 && Date.now() - t0 < 250)) { closeSheet(); drawList() } } };
+  sh.addEventListener('touchend', end, { passive: false }); sh.addEventListener('touchcancel', end, { passive: false }) })();
+// Установка на главный экран: плашка (Android Chrome) и кнопка в настройках
+let instEv = null; const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+const hideInst = () => { const e = document.getElementById('inst'); if (e) e.remove() };
+function showInst() { if (standalone || LS('instx') || !instEv || document.getElementById('inst')) return; const d = document.createElement('div'); d.id = 'inst'; d.className = 'inst';
+  d.innerHTML = `<span>Установите приложение на главный экран</span><button data-a="inst">Установить</button><button class="ix" data-a="instx" aria-label="Скрыть">${ico('x', 16)}</button>`; document.body.prepend(d) }
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); instEv = e; showInst() });
+window.addEventListener('appinstalled', () => { instEv = null; hideInst() });
+// Экспорт истории в CSV (разделитель «;», кодировка UTF-8 с BOM — открывается в Excel)
+function exportCsv() {
+  const q = v => { v = String(v == null ? '' : v); return /[;"\n\r]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v }, n = v => String(v == null ? '' : v).replace('.', ','),
+    dt = ts => { if (!ts) return ''; const d = new Date(ts), z = k => String(k).padStart(2, '0'); return d.getFullYear() + '-' + z(d.getMonth() + 1) + '-' + z(d.getDate()) + ' ' + z(d.getHours()) + ':' + z(d.getMinutes()) },
+    list = allHist().filter(x => !x.del).sort((a, b) => (a.ts || 0) - (b.ts || 0));
+  if (!list.length) return alert('Нет заявок для выгрузки');
+  const rows = [['Создана', 'Торговый', 'Магазин', 'Город', 'Адрес', 'Поставка на', 'Цены', 'Скидка %', 'Сумма заявки', 'Товар', 'Граммовка', 'Ед.', 'Кол-во', 'Цена', 'Сумма позиции']];
+  list.forEach(x => { const h = x.h || {}, head = [dt(x.ts), x.trader || '', h.s || '', h.c || '', h.a || '', h.d || '', x.m == 'vat' ? 'с НДС' : 'без НДС', n(x.disc || 0), n(x.sum)];
+    (x.items && x.items.length ? x.items : [null]).forEach(i => rows.push(head.concat(i ? [i.n, i.g || '', i.u || '', n(i.q), n(i.p), n(Math.round(i.p * i.q))] : ['', '', '', '', '', ''])) ) });
+  const blob = new Blob(['\ufeff' + rows.map(r => r.map(q).join(';')).join('\r\n')], { type: 'text/csv;charset=utf-8' }), a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = 'zayavki-' + today() + '.csv'; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove() }, 1500) }
 $('#sl').addEventListener('pointerdown', e => e.preventDefault());   // не терять фокус поля при тапе по списку
 document.addEventListener('click', e => { if (!e.target.closest('.cb')) $('#sl').hidden = true });
 document.addEventListener('visibilitychange', () => { if (!document.hidden) { checkPending(); sync() } });

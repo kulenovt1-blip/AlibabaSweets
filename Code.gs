@@ -1,9 +1,12 @@
 /* Али-Баба: приём заявок. Вставьте в Расширения → Apps Script ТОЙ ЖЕ таблицы, где лежит прайс. */
 const KEY = '3puq8z64';   // тот же ключ, что API_KEY в app.js
-const SRV = 24;           // версия серверной части (видна в «Настройки → Диагностика»)
-const SHOP_HEAD = ['Магазин', 'Город', 'Адрес', 'ID', 'Статус', 'Заметка', 'Кем (статус)', 'Когда (статус, мс)', 'Контакт', 'Телефон', 'Район', 'Посл. заказ (мс)', 'Посл. визит (мс)', 'Итог визита', 'Кем (визит)'];
+const SRV = 25;           // версия серверной части (видна в «Настройки → Диагностика»)
+const SHOP_HEAD = ['Магазин', 'Город', 'Адрес', 'ID', 'Статус', 'Заметка', 'Кем (статус)', 'Когда (статус, мс)', 'Контакт', 'Телефон', 'Район', 'Посл. заказ (мс)', 'Посл. визит (мс)', 'Итог визита', 'Кем (визит)', 'Тип', 'План визита (мс)', 'Открытый вопрос'];
 
-function doGet(e) {                      // отдаёт торговых, магазины, получателей и историю: окно «7 дней у всех / 30 дней свои» или заявки за выбранный день
+// Любая ошибка скрипта возвращается как понятный JSON, а не как страница ошибки Google (её браузер показывает как «нет связи»)
+function doGet(e) { try { return doGet_(e) } catch (err) { return out({ error: 'server: ' + (err && err.message || err) }) } }
+function doPost(e) { try { return doPost_(e) } catch (err) { return out({ error: 'server: ' + (err && err.message || err) }) } }
+function doGet_(e) {                     // отдаёт торговых, магазины, получателей и историю: окно «7 дней у всех / 30 дней свои» или заявки за выбранный день
   const p = e.parameter; if (p.key !== KEY) return out({ error: 'key' });
   const undo = (+p.undo || 24) * 36e5, now = Date.now(), D = 864e5;
   if (p.action === 'range') {            // заявки всех торговых, созданные в [from, to) — для старых дней по запросу
@@ -30,13 +33,13 @@ function ordersIn(from, to, undo, now) { // заявки, созданные в 
     try { const o = JSON.parse(r[11]), t = +o.ts || ms(r[0]); if (t < from || t >= to) return; o.del = dl; rows.push(o) } catch (_) {} });
   return rows;
 }
-function doPost(e) {                     // записывает заявку, визит или правку магазина (повтор того же ID игнорируется)
+function doPost_(e) {                    // записывает заявку, визит или правку магазина (повтор того же ID игнорируется)
   const d = JSON.parse(e.postData.contents); if (d.key !== KEY) return out({ error: 'key' });
   const lock = LockService.getScriptLock(); lock.waitLock(20000);
   try {
     if (d.shop) { const x = d.shop;
-      if (x.op == 'del') delShop(x.old, x.id); else if (x.op == 'edit') editShop(x.old, x.n, x.c, x.a, x.id);
-      else if (x.op == 'status') setStatus(x); else if (x.op == 'info') setInfo(x); else upShop(x.n, x.c, x.a, x.id);
+      if (x.op == 'del') delShop(x.old, x.id); else if (x.op == 'edit') editShop(x.old, x.n, x.c, x.a, x.id, x.ty);
+      else if (x.op == 'status') setStatus(x); else if (x.op == 'info') setInfo(x); else if (x.op == 'meta') setMeta(x); else upShop(x.n, x.c, x.a, x.id, x.ty);
       return out({ ok: 1 }) }
     if (d.visit) { addVisit(d.visit); return out({ ok: 1 }) }
     if (d.visitCancel) return out({ ok: 1, applied: cancelVisit(d.visitCancel) });   // отмена своей последней отметки визита
@@ -93,9 +96,9 @@ function readShops() {
   const s = shopSheet(), n = s.getLastRow(); if (n < 2) return [];
   const L = x => +x || 0, T = x => String(x == null ? '' : x).trim();
   return s.getRange(2, 1, n - 1, SHOP_HEAD.length).getValues().map((r, i) => ({ r: i + 2, n: T(r[0]), c: T(r[1]), a: T(r[2]), id: T(r[3]), st: T(r[4]), nt: T(r[5]), sb: T(r[6]), sa: L(r[7]),
-    ct: T(r[8]), tl: T(r[9]), rg: T(r[10]), lo: L(r[11]), lv: L(r[12]), lb: T(r[13]), lw: T(r[14]) })).filter(x => x.n);
+    ct: T(r[8]), tl: T(r[9]), rg: T(r[10]), lo: L(r[11]), lv: L(r[12]), lb: T(r[13]), lw: T(r[14]), ty: T(r[15]), pl: L(r[16]), fq: T(r[17]) })).filter(x => x.n);
 }
-const pub = x => ({ id: x.id, n: x.n, c: x.c, a: x.a, st: x.st, nt: x.nt, sb: x.sb, sa: x.sa, ct: x.ct, tl: x.tl, rg: x.rg, lo: x.lo, lv: x.lv, lb: x.lb, lw: x.lw });
+const pub = x => ({ id: x.id, n: x.n, c: x.c, a: x.a, st: x.st, nt: x.nt, sb: x.sb, sa: x.sa, ct: x.ct, tl: x.tl, rg: x.rg, lo: x.lo, lv: x.lv, lb: x.lb, lw: x.lw, ty: x.ty, pl: x.pl, fq: x.fq });
 function ensureIds() {                   // каждому магазину без ID присваиваем его (один раз; под блокировкой)
   let list = readShops(); if (!list.some(x => !x.id)) return list;
   const lock = LockService.getScriptLock(); lock.waitLock(20000);
@@ -103,22 +106,23 @@ function ensureIds() {                   // каждому магазину бе
   return list;
 }
 const findShop = (list, id, name, city) => (id && list.find(x => x.id == id)) || (name && list.find(x => same(x.n, name) && (!city || !x.c || same(x.c, city)))) || null;   // одинаковое название в разных городах — разные магазины
-function upShop(n, c, a, id) {           // находит магазин (по ID, затем по названию) или создаёт; возвращает номер строки
+function upShop(n, c, a, id, ty) {           // находит магазин (по ID, затем по названию) или создаёт; возвращает номер строки
   n = String(n || '').trim(); if (!n) return 0;
   const s = shopSheet(), list = readShops(), x = findShop(list, id, n, c);
   if (x) { if (!x.c && c) s.getRange(x.r, 2).setValue(c); if (!x.a && a) s.getRange(x.r, 3).setValue(a);
     if (!x.id) s.getRange(x.r, 4).setValue(id && !list.some(y => y.id == id) ? String(id) : newId());
     return x.r }
   s.appendRow([n, c || '', a || '', id && !list.some(y => y.id == id) ? String(id) : newId()]);
+  if (ty) s.getRange(s.getLastRow(), 16).setValue(String(ty));
   return s.getLastRow();
 }
 function delShop(old, id) {              // удаляет магазин из общей базы (заявки и журнал не трогает)
   const s = shopSheet(), list = readShops();
   list.filter(x => (id && x.id == id) || same(x.n, old)).map(x => x.r).sort((a, b) => b - a).forEach(r => s.deleteRow(r));
 }
-function editShop(old, n, c, a, id) {    // меняет название, город и адрес (ID, статус и контакты сохраняются)
+function editShop(old, n, c, a, id, ty) {    // меняет название, город и адрес (ID, статус и контакты сохраняются)
   const s = shopSheet(), x = findShop(readShops(), id, old);
-  if (x) s.getRange(x.r, 1, 1, 3).setValues([[n, c || '', a || '']]); else upShop(n, c, a, id);
+  if (x) { s.getRange(x.r, 1, 1, 3).setValues([[n, c || '', a || '']]); if (ty !== undefined) s.getRange(x.r, 16).setValue(String(ty || '')) } else upShop(n, c, a, id, ty);
 }
 function setStatus(x) {                  // статус магазина + запись в журнал; повтор той же отметки (rid) игнорируется
   if (x.rid && hasLog(x.rid)) return;
@@ -130,11 +134,15 @@ function setStatus(x) {                  // статус магазина + за
 function setInfo(x) {                    // контакт, телефон, район
   const r = upShop(x.n, x.c, x.a, x.id); if (r) shopSheet().getRange(r, 9, 1, 3).setValues([[x.ct || '', x.tl || '', x.rg || '']]);
 }
+function setMeta(x) {                    // тип точки, запланированный визит (мс, 0 — нет), открытый вопрос
+  const r = upShop(x.n, x.c, x.a, x.id, x.ty); if (r) shopSheet().getRange(r, 16, 1, 3).setValues([[String(x.ty || ''), +x.pl || '', String(x.fq || '')]]);
+}
 function addVisit(v) {                   // визит: строка в журнале + «посл. визит» магазина
   if (v.id && hasLog(v.id)) return;
   const r = upShop(v.shop, v.c, v.a, v.sid), ts = +v.ts || Date.now();
   logRow(v.id || newId(), v.shop, v.sid, v.trader, 'visit', v.val || '', v.note || '', ts);
-  if (r) { const s = shopSheet(); if (ts >= (+s.getRange(r, 13).getValue() || 0)) s.getRange(r, 13, 1, 3).setValues([[ts, v.val || '', v.trader || '']]) }
+  if (r) { const s = shopSheet(); if (ts >= (+s.getRange(r, 13).getValue() || 0)) s.getRange(r, 13, 1, 3).setValues([[ts, v.val || '', v.trader || '']]);
+    const pl = +s.getRange(r, 17).getValue() || 0; if (pl && pl <= ts) s.getRange(r, 17).setValue('') }   // визит выполняет запланированный визит
 }
 function logRow(id, shop, sid, who, kind, val, note, ts) { sh('Визиты').appendRow([new Date(), id, shop, sid || '', who || '', kind, val, note, ts]) }
 function hasLog(id) { const s = sh('Визиты'), n = s.getLastRow(); return n > 1 && s.getRange(2, 2, n - 1, 1).getValues().flat().map(String).indexOf(String(id)) >= 0 }

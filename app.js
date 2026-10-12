@@ -16,8 +16,8 @@ const DEMO = [['Финики','Финики FINDI caramel','150г','1704','1976'
 
 /* ============ 2. ХЕЛПЕРЫ И СОСТОЯНИЕ ============ */
 /* Версия сборки: должна совпадать с <meta name="ver"> в index.html. Если файлы на хостинге разных версий — покажем красную плашку. */
-const VER = '24';
-const NEED = 24;   // нужная версия Code.gs на сервере
+const VER = '25';
+const NEED = 25;   // нужная версия Code.gs на сервере
 { const m = document.querySelector('meta[name=ver]');
   if (!m || m.content != VER) document.body.insertAdjacentHTML('afterbegin', '<div style="background:#C82B27;color:#fff;padding:12px;font-weight:800">Файлы сайта разных версий. Загрузите ВСЕ файлы из архива заново (index.html, styles.css, app.js, sw.js) и обновите страницу дважды.</div>') }
 const IC = { folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>', clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
@@ -188,14 +188,16 @@ function unsnap(z) { cart = JSON.parse(z.cart); disc = z.disc; eo = z.eo; H = JS
 /* ============ 6. ШТОРКА: корзина, история, настройки ============ */
 function openSheet(v, title) { view = v; $('#st').textContent = title; document.body.classList.add('sh'); bar(); }
 function closeSheet() { view = ''; editId = ''; document.body.classList.remove('sh'); bar(); }
+function drawRc() { // выбор получателя в шапке — такой же селектор, как город; автоподбор по городу, можно сменить
+  const el = $('#rch'); if (!rcp.length) { el.hidden = true; return } const c = rcPick(); el.hidden = false;
+  el.innerHTML = rcp.map(r => `<option value="${esc(r.n)}">Кому: ${esc(r.n)}</option>`).join(''); el.value = c.n }
 function rcPick() { // получатель: выбранный вручную, иначе подходящий по городу (приоритет: город указан → по умолчанию), иначе запасной номер из настроек
   if (!rcp.length) return { n: '', p: S.op, c: [] };
   const x = H.r && rcp.find(r => r.n == H.r); if (x) return x;
   const c = norm(H.c), sc = r => (r.c.length ? (r.c.some(k => norm(k) == c) ? 2 : -9) : 0) + (r.d ? 1 : 0), L = rcp.map(r => [sc(r), r]).sort((a, b) => b[0] - a[0]);
   return L[0][1];
 }
-const rcBlock = () => !rcp.length ? `<p class="m" style="margin:12px 2px 0">Получатель: номер из настроек (${esc(S.op)})</p>`
-  : `<div class="sum" style="margin-top:12px"><b>Кому отправить</b><select id="rc" style="margin:6px 0 0">${rcp.map(r => `<option value="${esc(r.n)}" ${r.n == rcPick().n ? 'selected' : ''}>${esc(r.n)}${r.c.length ? ' · ' + esc(r.c.join(', ')) : ''}</option>`).join('')}</select></div>`;
+const rcBlock = () => `<p class="m" style="margin:12px 2px 0">Получатель: <b>${esc(rcPick().n || 'запасной номер')}</b> · меняется на главном экране, под адресом</p>`;
 function cartView() {
   if (view != 'cart') openSheet('cart', 'Ваша заявка');
   const L = lines();
@@ -241,8 +243,15 @@ function histDetail(id) { // полная карточка заявки
 }
 function setView() {
   openSheet('set', 'Настройки');
-  $('#sb').innerHTML = `${CFG.API_URL ? `<button class="ghost" style="margin:0 0 10px" data-a="who">${ico('user', 18)} Профиль: ${esc(me || '—')} · сменить</button>` : ''}<div class="sum"><b>Получатели заявок</b><p class="m" style="margin:4px 0 10px">${rcp.length ? rcp.map(r => esc(r.n) + (r.c.length ? ' (' + esc(r.c.join(', ')) + ')' : '') + (r.d ? ' ★' : '') + ' · ' + esc(r.p)).join('<br>') + '<br>Список ведётся на листе «Получатели» таблицы — общий для всех.' : CFG.API_URL ? 'Список пуст: заполните лист «Получатели» (имя, телефон, города, по умолчанию). Пока используется запасной номер.' : 'Общая база не подключена — используется номер ниже.'}</p><b>Запасной номер WhatsApp</b><input id="op" inputmode="tel" value="${esc(S.op)}" placeholder="77001234567"><p class="m">Используется, только если лист «Получатели» пуст. Код страны и номер, без + и пробелов</p><b>Города (через запятую)</b><input id="ct" value="${esc(S.cities.join(', '))}"></div><button class="send" style="background:var(--g);box-shadow:none" data-a="ss">Сохранить</button><button class="ghost" data-a="rl">Обновить прайс</button>${standalone ? '' : `<button class="ghost" data-a="inst">${ico('plus', 18)} Установить на главный экран</button>`}<button class="ghost" data-a="csv">${ico('save', 18)} Экспорт истории (CSV)</button><button class="ghost" data-a="bak">${ico('down', 18)} Сохранить данные устройства (файл)</button><button class="ghost" data-a="imp">${ico('up', 18)} Загрузить данные из файла</button><input type="file" id="impf" accept=".json,application/json" hidden>
-  <div class="sum m" style="margin-top:12px;font-size:13px"><b>Диагностика</b><br>Версия: ${VER}${CFG.API_URL ? ' · Code.gs: ' + (srvV || 'не определена') + (srvV && srvV < NEED ? ' (устарел!)' : '') : ''} · адрес: ${esc(location.origin)}<br>Товаров: ${P.length} (с ценой с НДС: ${P.filter(p => p.pv).length}, без НДС: ${P.filter(p => p.pn).length})<br>Режим цен: ${S.mode == 'vat' ? 'с НДС' : 'без НДС'}<br>${CFG.API_URL ? `База: ${syncErr ? 'ошибка: ' + esc(lastErr) : 'подключена'} · торговых в списке: ${trs.length} · профиль: ${esc(me || 'не выбран')}<br>Ждут отправки: заявок ${outbox.length}, правок магазинов ${shopq.length}, визитов ${visq.length}` : 'База заявок не подключена (API_URL пуст)'}</div>`;
+  const rl = rcp.length ? rcp.map(r => esc(r.n) + (r.c.length ? ' (' + esc(r.c.join(', ')) + ')' : '') + (r.d ? ' ★' : '') + ' · ' + esc(r.p)).join('<br>') + '<br><span class="m">Список ведётся на листе «Получатели» таблицы и общий для всех. Выбирается получатель на главном экране.</span>' : CFG.API_URL ? 'Список пуст: заполните лист «Получатели» (имя, телефон, города, по умолчанию). Пока заявки уходят на запасной номер.' : 'Общая база не подключена — заявки уходят на запасной номер.';
+  $('#sb').innerHTML = `${CFG.API_URL ? `<button class="ghost" style="margin:0 0 10px" data-a="who">${ico('user', 18)} Профиль: ${esc(me || '—')} · сменить</button>` : ''}
+  <details class="sc" open><summary>Оформление</summary><b>Города (через запятую)</b><input id="ct" value="${esc(S.cities.join(', '))}"><button class="ghost" data-a="rl">Обновить прайс</button>${standalone ? '' : `<button class="ghost" data-a="inst">${ico('plus', 18)} Установить на главный экран</button>`}</details>
+  <details class="sc"><summary>Заявки</summary><p class="m" style="margin:0 0 4px">Свою заявку можно изменить в течение ${CFG.EDIT_HOURS} ч и удалить с возможностью вернуть в течение ${CFG.UNDO_HOURS} ч — в «Истории».</p><button class="ghost" data-a="csv">${ico('save', 18)} Экспорт истории (CSV)</button></details>
+  <details class="sc"><summary>Получатели</summary><p class="m" style="margin:0 0 8px;line-height:1.5">${rl}</p>
+    <details class="mini"><summary>Запасной номер WhatsApp</summary><input id="op" inputmode="tel" value="${esc(S.op)}" placeholder="77001234567"><p class="m" style="margin:0">Используется, только если лист «Получатели» пуст. Код страны и номер, без + и пробелов.</p></details></details>
+  <details class="sc"><summary>Данные</summary><p class="m" style="margin:0 0 4px">Черновики, избранное и неотправленное хранятся на этом устройстве. Файл поможет перенести их на новый телефон или на другой адрес сайта.</p><button class="ghost" data-a="bak">${ico('down', 18)} Сохранить данные устройства (файл)</button><button class="ghost" data-a="imp">${ico('up', 18)} Загрузить данные из файла</button><input type="file" id="impf" accept=".json,application/json" hidden></details>
+  <details class="sc"><summary>Служебная информация</summary><div class="m" style="font-size:13px;line-height:1.5">Версия: ${VER}${CFG.API_URL ? ' · Code.gs: ' + (srvV || 'не определена') + (srvV && srvV < NEED ? ' (устарел!)' : '') : ''} · адрес: ${esc(location.origin)}<br>Товаров: ${P.length} (с ценой с НДС: ${P.filter(p => p.pv).length}, без НДС: ${P.filter(p => p.pn).length})<br>Режим цен: ${S.mode == 'vat' ? 'с НДС' : 'без НДС'}<br>${CFG.API_URL ? `База: ${syncErr ? 'ошибка: ' + esc(lastErr) : 'подключена'} · торговых в списке: ${trs.length} · профиль: ${esc(me || 'не выбран')}<br>Ждут отправки: заявок ${outbox.length}, правок магазинов ${shopq.length}, визитов ${visq.length}` : 'База заявок не подключена (API_URL пуст)'}</div></details>
+  <button class="send" style="background:var(--g);box-shadow:none" data-a="ss">Сохранить</button>`;
 }
 
 /* ============ 6б. РЕЖИМ ЦЕН (с НДС / без НДС) ============ */
@@ -260,7 +269,7 @@ function setMode(m) {
 function cities() {
   if (H.c && !S.cities.includes(H.c)) { S.cities.push(H.c); LS('set', S) }
   $('#c').innerHTML = S.cities.map(c => `<option>${esc(c)}</option>`).join('') + '<option value="+">＋ Другой город…</option>';
-  $('#c').value = H.c || S.cities[0]; H.c = $('#c').value;
+  $('#c').value = H.c || S.cities[0]; H.c = $('#c').value; drawRc();
 }
 const shops = () => { if (!$('#sl').hidden) drawDD() };   // обновить открытый список магазинов
 function fill() { fixDate(); $('#d').min = today(); $('#d').value = H.d; $('#s').value = H.s || ''; $('#a').value = H.a || ''; cities(); shopWarn() }
@@ -291,7 +300,7 @@ async function sync() { // отправляет накопленные заяв�
   if (!navigator.onLine) { syncErr = true; syncStatus(); return }
   syncing = true; syncStatus();
   try {
-    const new23 = x => x.op == 'status' || x.op == 'info';   // эти операции понимает только Code.gs v23+
+    const new23 = x => x.op == 'status' || x.op == 'info' || x.op == 'meta';   // эти операции понимает только Code.gs v23+
     for (const x of [...shopq]) { // правки магазинов — строго по порядку; при ошибке останавливаемся
       if (new23(x) && srvV < NEED) continue;
       const r = await api(CFG.API_URL, { method: 'POST', body: JSON.stringify({ key: CFG.API_KEY, shop: x }) });
@@ -317,7 +326,7 @@ async function sync() { // отправляет накопленные заяв�
       if (r.applied !== false) { delok.push({ id: o.id, del: o.del, t: Date.now() }); LS('delok', delok) }   // запоминаем, пока выгрузка не подтвердит
     }
     const d = await api(`${CFG.API_URL}?action=init&key=${encodeURIComponent(CFG.API_KEY)}&trader=${encodeURIComponent(me)}&undo=${CFG.UNDO_HOURS}`);
-    trs = d.traders; srvV = d.srv || 0; LS('srv', srvV); if (Array.isArray(d.rcp)) { rcp = d.rcp; LS('rcp', rcp) }
+    trs = d.traders; srvV = d.srv || 0; LS('srv', srvV); if (Array.isArray(d.rcp)) { rcp = d.rcp; LS('rcp', rcp); drawRc() }
     if (!shopq.length && !visq.length) { const m = new Map(base.map(b => [b.id, b])); base = d.shops.map(x => { const o = m.get(x.id); return o ? Object.assign(o, x) : x }) }   // объекты магазинов сохраняем (на них ссылаются открытая карточка и кнопки «Отменить»)   // пока есть неотправленные правки, локальную базу не затираем
     if (srvV >= NEED && (shopq.some(new23) || visq.length)) again = true;   // версия сервера стала известна — досылаем отметки
     syncWarn = false; delok = delok.filter(o => { const sv = d.hist.find(x => x.id == o.id); if (!sv) return false;   // подтверждение удаления / возврата выгрузкой
@@ -363,7 +372,7 @@ const findBase = (n, c) => base.find(b => norm(b.n) == norm(n) && sameCity(b, c)
 let cMine = 0, cErr = '', cKey = '', ddL = [], eSh = null, cSh = null, cLog = null, shMode = 'all', shSt = '', shCity = null, shQ = '', cSt = '';
 function shopEditView(x) { // правка названия, города, адреса / удаление магазина в общей базе
   eSh = x; $('#sl').hidden = true; openSheet('shop', 'Магазин');
-  $('#sb').innerHTML = `<div class="sum"><b>Название</b><input id="en" value="${esc(x.n)}"><b>Город</b><select id="ec">${[...new Set([...S.cities, x.c].filter(Boolean))].map(c => `<option ${c == x.c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select><b>Адрес</b><input id="ea" value="${esc(x.a)}"></div><button class="send" style="background:var(--g);box-shadow:none" data-a="ssave">Сохранить</button><button class="ghost" data-a="scard" data-v="${esc(x.id || '')}">${ico('back', 18)} Назад</button><button class="ghost" style="color:var(--r);border-color:var(--r)" data-a="sdel">Удалить магазин</button>`;
+  $('#sb').innerHTML = `<div class="sum"><b>Название</b><input id="en" value="${esc(x.n)}"><b>Город</b><select id="ec">${[...new Set([...S.cities, x.c].filter(Boolean))].map(c => `<option ${c == x.c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select><b>Адрес</b><input id="ea" value="${esc(x.a)}"><b>Тип точки</b><select id="ety">${tyOpts(x.ty)}</select></div><button class="send" style="background:var(--g);box-shadow:none" data-a="ssave">Сохранить</button><button class="ghost" data-a="scard" data-v="${esc(x.id || '')}">${ico('back', 18)} Назад</button><button class="ghost" style="color:var(--r);border-color:var(--r)" data-a="sdel">Удалить магазин</button>`;
 }
 function shopList() { // база без дублей (по ID, иначе название + город); магазины текущего города — выше
   const m = new Map(); base.forEach(b => { const k = b.id || norm(b.n) + '|' + norm(b.c); if (!m.has(k)) m.set(k, b) });
@@ -375,27 +384,56 @@ function upShop(n, c, a, id) { if (!n) return null; let o = (id && byId(id)) || 
 function addShop(n) { const o = upShop(n, H.c, H.a); H.sid = o.id; if (CFG.API_URL) { shopq.push({ n, c: H.c || '', a: H.a || '', id: o.id }); LS('shopq', shopq); sync() } }
 function drawDD() {
   const raw = $('#s').value.trim(), v = norm(raw); ddL = shopList().filter(x => norm(x.n).includes(v));
-  $('#sl').innerHTML = ddL.map((x, i) => `<div class="dr"><button class="di" data-a="pick" data-v="${i}"><b>${esc(x.n)}</b><span class="m">${esc([x.c, x.a].filter(Boolean).join(' · '))}</span>${x.st && x.st != 'neu' ? pill(x.st) : ''}</button><button class="ed" data-a="sedit" data-v="${i}" aria-label="Карточка магазина">${ico('edit', 18)}</button></div>`).join('')
+  $('#sl').innerHTML = ddL.map((x, i) => `<div class="dr"><button class="di" data-a="pick" data-v="${i}"><b>${esc(x.n)}</b><span class="m">${esc([x.ty, x.c, x.a].filter(Boolean).join(' · '))}</span>${x.st && x.st != 'neu' ? pill(x.st) : ''}</button><button class="ed" data-a="sedit" data-v="${i}" aria-label="Карточка магазина">${ico('edit', 18)}</button></div>`).join('')
     + (v && !ddL.some(x => norm(x.n) == v && sameCity(x, H.c)) ? `<button class="di add2" data-a="padd">＋ Добавить «${esc(raw)}»</button>` : '')
     || '<p class="m" style="padding:10px">Магазинов пока нет — впишите название</p>';
   $('#sl').hidden = false;
 }
 function selShop(x) { H.s = x.n; H.a = x.a || ''; H.sid = x.id || ''; if (x.c) { H.c = x.c; H.r = ''; cities() } $('#s').value = H.s; $('#a').value = H.a; save(); shopWarn() }
-// --- раздел «Магазины» ---
+// --- раздел «Магазины»: «Все магазины» — справочник, «Кого посетить» — рабочий список на день по управляемым правилам ---
+const TY = ['магазин', 'минимаркет', 'супермаркет'];   // тип торговой точки
+const RT0 = { plan: true, visit: true, vd: 14, order: true, od: 30, q: true };
+let RT = { ...RT0, ...(LS('rt') || {}) }, shT = '';
+const tyOpts = cur => `<option value="">Не указан</option>${TY.map(t => `<option ${t == cur ? 'selected' : ''}>${t}</option>`).join('')}`;
+function dueInfo(b) { // почему магазин попал в список визитов и насколько это срочно; null — не попадает
+  const t0 = dayMs(Date.now()), D = 864e5, tags = []; let sc = 0;
+  const done = b.lv && dayMs(b.lv) == t0, planned = RT.plan && b.pl && b.pl <= t0 + D - 1;
+  if (planned) { const d = Math.round((t0 - dayMs(b.pl)) / D); tags.push(d > 0 ? 'План: был ' + fd(isoDay(b.pl)) : 'План: сегодня'); sc += 1000 + d }
+  if ((b.st == 'no' || b.st == 'closed') && !planned) return null;   // «не заходить» и «закрыт» не предлагаем, если визит не запланирован вручную
+  if (RT.q && b.fq) { tags.push('Вопрос: ' + (b.fq.length > 40 ? b.fq.slice(0, 40) + '…' : b.fq)); sc += 500 }
+  if (done && !(RT.q && b.fq)) return null;                          // визит уже отмечен сегодня
+  if (!done) {
+    const lc = lastC(b), dv = lc ? Math.floor((t0 - dayMs(lc)) / D) : 0;
+    if (RT.visit && (!lc || dv >= RT.vd)) { tags.push(lc ? 'Не были ' + dv + ' дн.' : 'Не были'); sc += lc ? dv : 60 }
+    if (RT.order && b.lo && Math.floor((t0 - dayMs(b.lo)) / D) >= RT.od) { const d = Math.floor((t0 - dayMs(b.lo)) / D); tags.push('Заказа не было ' + d + ' дн.'); sc += d / 2 }
+    else if (RT.order && !b.lo && b.lv && !tags.some(x => x.startsWith('Не были'))) { tags.push('Заказов ещё не было'); sc += 20 }
+  }
+  return tags.length ? { tags, sc } : null;
+}
 function shopsView() {
   openSheet('shops', 'Магазины'); if (shCity === null) shCity = H.c || '';
-  const cs = [...new Set([...S.cities, ...base.map(b => b.c)].filter(Boolean))];
-  $('#sb').innerHTML = `<div class="seg" style="margin-bottom:10px">${[['all', 'Все магазины'], ['route', 'Кого навестить']].map(([k, t]) => `<button data-a="shm" data-v="${k}" class="${shMode == k ? 'on' : ''}">${t}</button>`).join('')}</div>
-  <div class="sfl"><select id="shc"><option value="">Все города</option>${cs.map(c => `<option ${c == shCity ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>${shMode == 'all' ? `<select id="shs"><option value="">Любой статус</option><option value="none" ${shSt == 'none' ? 'selected' : ''}>Не были / без статуса</option>${Object.keys(ST).map(k => `<option value="${k}" ${k == shSt ? 'selected' : ''}>${ST[k][0]}</option>`).join('')}</select>` : ''}</div>
+  const cs = [...new Set([...S.cities, ...base.map(b => b.c)].filter(Boolean))], route = shMode == 'route';
+  $('#sb').innerHTML = `<div class="seg" style="margin-bottom:10px">${[['all', 'Все магазины'], ['route', 'Кого посетить']].map(([k, t]) => `<button data-a="shm" data-v="${k}" class="${shMode == k ? 'on' : ''}">${t}</button>`).join('')}</div>
+  ${route ? `<p class="m" style="margin:0 2px 8px">Рабочий список на день: сюда попадают только магазины, которым нужен визит по выбранным ниже правилам. Решаете вы: правила можно менять, а любой магазин — запланировать вручную в его карточке.</p>
+  <details class="rt"><summary>Что попадает в список</summary>
+    <label><input type="checkbox" id="rtp" ${RT.plan ? 'checked' : ''}><span>Запланированные на сегодня (и просроченные)</span></label>
+    <label><input type="checkbox" id="rtv" ${RT.visit ? 'checked' : ''}><span>Давно не было визита или заказа — более <input type="number" id="rtvd" min="1" max="365" value="${RT.vd}" class="nn"> дн.</span></label>
+    <label><input type="checkbox" id="rto" ${RT.order ? 'checked' : ''}><span>Давно не было заказов — более <input type="number" id="rtod" min="1" max="365" value="${RT.od}" class="nn"> дн.</span></label>
+    <label><input type="checkbox" id="rtq" ${RT.q ? 'checked' : ''}><span>Есть открытый вопрос или заметка</span></label>
+    <p class="m" style="margin:6px 0 0">Статусы «Не заходить» и «Закрыт» не предлагаются (кроме вручную запланированных). Магазин с визитом, отмеченным сегодня, из списка уходит.</p></details>` : ''}
+  <div class="sfl"><select id="shc"><option value="">Все города</option>${cs.map(c => `<option ${c == shCity ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select><select id="sht"><option value="">Любой тип</option>${TY.map(t => `<option ${t == shT ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
+  ${route ? '' : `<div class="sfl"><select id="shs"><option value="">Любой статус</option><option value="none" ${shSt == 'none' ? 'selected' : ''}>Не были / без статуса</option>${Object.keys(ST).map(k => `<option value="${k}" ${k == shSt ? 'selected' : ''}>${ST[k][0]}</option>`).join('')}</select></div>`}
   <input id="shq" placeholder="Найти магазин" value="${esc(shQ)}" style="margin-bottom:10px"><div id="shl"></div><button class="ghost" data-a="shn">${ico('plus', 18)} Новый магазин</button>`;
   drawShops();
 }
 function drawShops() {
-  const route = shMode == 'route', q = norm(shQ); let L = base.filter(b => (!shCity || norm(b.c) == norm(shCity)) && norm(b.n).includes(q));
-  if (route) L = L.filter(b => b.st != 'no' && b.st != 'closed').sort((a, b) => lastC(a) - lastC(b) || a.n.localeCompare(b.n, 'ru'));
-  else { if (shSt) L = L.filter(b => shSt == 'none' ? !b.st : b.st == shSt); L = L.sort((a, b) => a.n.localeCompare(b.n, 'ru')) }
-  $('#shl').innerHTML = L.map(b => `<button class="shi" data-a="scard" data-v="${esc(b.id || 'n:' + b.n)}"><div style="flex:1;min-width:0"><b>${esc(b.n)}</b><div class="m">${esc([b.c, b.a].filter(Boolean).join(' · '))}</div><div class="m">Контакт: ${ago(lastC(b))}${b.lo ? ' · заказ ' + ago(b.lo) : ''}</div></div>${pillOf(b)}</button>`).join('')
-    || `<p class="empty">${route ? 'Некого навещать: добавьте магазины или смените город' : 'Магазинов не найдено'}</p>`;
+  const route = shMode == 'route', q = norm(shQ); let L = base.filter(b => (!shCity || norm(b.c) == norm(shCity)) && (!shT || b.ty == shT) && norm(b.n).includes(q)), head = '';
+  if (route) { const t0 = dayMs(Date.now()), doneN = L.filter(b => b.lv && dayMs(b.lv) == t0).length;
+    L = L.map(b => ({ b, d: dueInfo(b) })).filter(x => x.d).sort((x, y) => y.d.sc - x.d.sc || x.b.n.localeCompare(y.b.n, 'ru'));
+    head = `<div class="m" style="margin:0 2px 8px"><b>К посещению: ${L.length}</b>${doneN ? ' · сегодня отмечено визитов: ' + doneN : ''}</div>`;
+    $('#shl').innerHTML = head + (L.map(({ b, d }) => `<button class="shi" data-a="scard" data-v="${esc(b.id || 'n:' + b.n)}"><div style="flex:1;min-width:0"><b>${esc(b.n)}</b><div class="m">${esc([b.ty, b.c, b.a].filter(Boolean).join(' · '))}</div><div class="tg">${d.tags.map(t => `<span>${esc(t)}</span>`).join('')}</div></div>${b.st ? pill(b.st) : ''}</button>`).join('') || '<p class="empty">По выбранным правилам визитов не требуется. Измените правила или запланируйте визит в карточке магазина.</p>'); return }
+  if (shSt) L = L.filter(b => shSt == 'none' ? !b.st : b.st == shSt); L = L.sort((a, b) => a.n.localeCompare(b.n, 'ru'));
+  $('#shl').innerHTML = L.map(b => `<button class="shi" data-a="scard" data-v="${esc(b.id || 'n:' + b.n)}"><div style="flex:1;min-width:0"><b>${esc(b.n)}</b><div class="m">${esc([b.ty, b.c, b.a].filter(Boolean).join(' · '))}</div><div class="m">Контакт: ${ago(lastC(b))}${b.lo ? ' · заказ ' + ago(b.lo) : ''}</div></div>${pillOf(b)}</button>`).join('') || '<p class="empty">Магазинов не найдено</p>';
 }
 const shopById = v => String(v).startsWith('n:') ? base.find(b => b.n == v.slice(2)) : byId(v);
 function shopCard(v) {
@@ -403,17 +441,21 @@ function shopCard(v) {
   if (cKey != (x.id || x.n)) { cKey = x.id || x.n; cLog = null; cMine = 0; cErr = ''; cSt = x.st || '-'; loadLog(x) } cSh = x;
   openSheet('shopc', x.n); const log = cLog;
   const ch = (k, t, cls) => `<button data-a="${k}" ${cls ? 'class="' + cls + '"' : ''}`;
-  $('#sb').innerHTML = `<div class="sum"><div class="m">${esc([x.c, x.a].filter(Boolean).join(' · ') || 'без адреса')}</div>
+  $('#sb').innerHTML = `<div class="sum"><div class="m">${esc([x.ty, x.c, x.a].filter(Boolean).join(' · ') || 'без адреса')}</div>${x.fq ? `<div class="sw bad" style="margin-top:8px">Открытый вопрос: ${esc(x.fq)}</div>` : ''}${x.pl ? `<div class="sw ok" style="margin-top:8px">Визит запланирован на ${fd(isoDay(x.pl))}</div>` : ''}
     <div style="margin-top:6px">${pillOf(x) || '<span class="m">Без статуса</span>'}${x.sb ? `<span class="m"> · ${esc(x.sb)}, ${fd(isoDay(x.sa))}</span>` : ''}</div>${x.nt ? `<div style="margin-top:6px">${esc(x.nt)}</div>` : ''}
     <div class="m" style="margin-top:6px">Последний заказ: ${ago(x.lo)} · визит: ${ago(x.lv)}${x.lb ? ' (' + esc(x.lb) + (x.lw ? ', ' + esc(x.lw) : '') + ')' : ''}</div></div>
   <button class="send" data-a="sord" data-v="${esc(x.id || '')}">${ico('cart', 20)} Создать заявку</button>
+  <div class="sum" style="margin-top:12px"><b>План и вопросы</b><div class="m" style="margin-top:4px">Попадают в список «Кого посетить»</div>
+    <div class="pr2"><input type="date" id="pld" min="${today()}" value="${x.pl ? isoDay(x.pl) : today()}"><button data-a="plan">${x.pl ? 'Перенести' : 'Запланировать'}</button>${x.pl ? '<button class="ghost2" data-a="planx">Убрать</button>' : ''}</div>
+    <input id="fqi" placeholder="Открытый вопрос / что не забыть" value="${esc(x.fq || '')}" style="margin:10px 0 0"><div class="pr2"><button data-a="fqs">Сохранить вопрос</button>${x.fq ? '<button class="ghost2" data-a="fqx">Решён</button>' : ''}</div>
+    <b style="display:block;margin-top:12px">Тип точки</b><select id="tys" style="margin:6px 0 0">${tyOpts(x.ty)}</select></div>
   <div class="sum" style="margin-top:12px"><b>Отметить визит</b><input id="vn" placeholder="Заметка к визиту (необязательно)" style="margin:8px 0"><div class="vg">${VO.map((t, i) => `<button data-a="vis" data-v="${i}">${t}</button>`).join('')}</div>
     <div class="m" style="margin-top:8px">${myLast(x) ? 'Ваш последний визит сюда: ' + ft(myLast(x)) : 'Вы здесь ещё не отмечались'}</div>${myLast(x) ? '<button class="ghost" style="margin-top:6px" data-a="vcan">Отменить мою последнюю отметку визита</button>' : ''}</div>
   <div class="sum" style="margin-top:12px"><b>Статус</b><div class="sg"><button data-a="sst" data-v="-" class="${cSt == '-' ? 'on' : ''}" style="--c:#7C7A69;grid-column:1/3">Не были (без статуса)</button>${Object.keys(ST).map(k => `<button data-a="sst" data-v="${k}" class="${cSt == k ? 'on' : ''}" style="--c:${ST[k][1]}">${ST[k][0]}</button>`).join('')}</div>
     <div id="stw" ${cSt == '-' ? 'hidden' : ''}><input id="stn" placeholder="Заметка${cSt == 'no' ? ' (причина — обязательно)' : ''}" value="${esc(x.nt || '')}" style="margin:10px 0 0"></div><button class="send" style="background:var(--g);box-shadow:none;margin-top:10px" data-a="sstsave">Сохранить статус</button></div>
   <div class="sum" style="margin-top:12px"><b>Контакт покупателя</b> <span class="m">(необязательно)</span><input id="ict" placeholder="Имя, должность" value="${esc(x.ct || '')}" style="margin:8px 0"><input id="itl" inputmode="tel" placeholder="Телефон" value="${esc(x.tl || '')}" style="margin:0 0 8px"><input id="irg" placeholder="Район / ориентир" value="${esc(x.rg || '')}" style="margin:0 0 8px">
     <button class="ghost" style="margin-top:0" data-a="sinfo">${ico('save', 18)} Сохранить контакт</button>${x.tl ? `<a class="ghost" style="text-decoration:none" href="tel:${esc(x.tl.replace(/[^\d+]/g, ''))}">${ico('phone', 18)} Позвонить</a>` : ''}</div>
-  <div class="sum" style="margin-top:12px"><b>Журнал отметок</b><div class="m">Кто и когда ставил статус и отмечал визиты в этом магазине</div>${log === null ? '<div class="m" style="margin-top:6px">Загружаю…</div>' : log === false ? `<div class="m" style="margin-top:6px">Журнал не загрузился: ${esc(cErr)}.${/action|key|не данные/.test(cErr) ? ' Скорее всего, Code.gs не обновлён до версии ' + NEED + ': в Apps Script нужно «Развернуть → Управление развёртываниями → ✏️ → Новая версия».' : ''}</div><button class="ghost" data-a="slog">Повторить</button>` : log.length ? log.map(l => `<div class="r" style="display:block;padding:6px 0;border-top:1px solid var(--line)"><span class="m">${ft(l.ts)} · ${esc(l.who || '—')}</span><div>${l.kind == 'status' ? (l.val ? 'Статус: ' + esc((ST[l.val] || [l.val])[0]) : 'Статус снят (не были)') : 'Визит: ' + esc(l.val)}${l.nt ? ' — ' + esc(l.nt) : ''}</div></div>`).join('') : '<div class="m" style="margin-top:6px">Отметок пока нет</div>'}</div>
+  <div class="sum" style="margin-top:12px"><b>Журнал отметок</b><div class="m">Кто и когда ставил статус и отмечал визиты в этом магазине</div>${log === null ? '<div class="m" style="margin-top:6px">Загружаю…</div>' : log === false ? `<div class="m" style="margin-top:6px">Журнал не загрузился: ${esc(cErr)}.${/не смог связаться/.test(cErr) ? ' Если заявки и магазины при этом работают, значит, скрипт упал именно на этом запросе. Обновите Code.gs до версии ' + NEED + ' (после этого ошибка скрипта будет показана текстом); точную причину видно в Apps Script → «Выполнения».' : /action|key|не данные/.test(cErr) ? ' Скорее всего, Code.gs не обновлён до версии ' + NEED + ': в Apps Script нужно «Развернуть → Управление развёртываниями → ✏️ → Новая версия».' : ''}</div><button class="ghost" data-a="slog">Повторить</button>` : log.length ? log.map(l => `<div class="r" style="display:block;padding:6px 0;border-top:1px solid var(--line)"><span class="m">${ft(l.ts)} · ${esc(l.who || '—')}</span><div>${l.kind == 'status' ? (l.val ? 'Статус: ' + esc((ST[l.val] || [l.val])[0]) : 'Статус снят (не были)') : 'Визит: ' + esc(l.val)}${l.nt ? ' — ' + esc(l.nt) : ''}</div></div>`).join('') : '<div class="m" style="margin-top:6px">Отметок пока нет</div>'}</div>
   <button class="ghost" data-a="sedit2">${ico('edit', 18)} Изменить название / город / адрес</button><button class="ghost" data-a="shops">${ico('back', 18)} К списку</button>`;
 }
 async function loadLog(x) {
@@ -424,13 +466,14 @@ async function loadLog(x) {
   catch (e) { if (cKey == k) { cLog = false; cErr = e.message || 'ошибка'; redraw() } }
 }
 const myLast = x => Math.max(cMine || 0, x.lw == me ? x.lv || 0 : 0);   // когда этот профиль последний раз отмечал визит в магазине
+function saveMeta(x) { LS('base', base); if (CFG.API_URL) { shopq.push({ op: 'meta', id: x.id || '', n: x.n, c: x.c, a: x.a, ty: x.ty || '', pl: x.pl || 0, fq: x.fq || '' }); LS('shopq', shopq); sync() } }
 function setShopStatus(x, st, nt) { // статус магазина: локально сразу, на сервер через очередь; прежние отметки остаются в журнале
   const at = Date.now(); x.st = st; x.nt = nt; x.sb = me; x.sa = at; LS('base', base); logLocal(x, 'status', st, nt); shopWarn();
   if (CFG.API_URL) { shopq.push({ op: 'status', id: x.id || '', n: x.n, c: x.c, a: x.a, st, nt, by: me, at, rid: 'r' + at.toString(36) + Math.random().toString(36).slice(2, 6) }); LS('shopq', shopq); sync() } }
 const logLocal = (x, kind, val, nt) => { if (Array.isArray(cLog)) cLog.unshift({ ts: Date.now(), who: me, kind, val, nt }) };
 function shopNew() {
   openSheet('shopn', 'Новый магазин');
-  $('#sb').innerHTML = `<div class="sum"><b>Название</b><input id="nn" placeholder="Например: Магнум №3"><b>Город</b><select id="nc">${S.cities.map(c => `<option ${c == (shCity || H.c) ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select><b>Адрес</b><input id="na"></div><button class="send" style="background:var(--g);box-shadow:none" data-a="shns">Создать</button><button class="ghost" data-a="shops">${ico('back', 18)} К списку</button>`;
+  $('#sb').innerHTML = `<div class="sum"><b>Название</b><input id="nn" placeholder="Например: Магнум №3"><b>Город</b><select id="nc">${S.cities.map(c => `<option ${c == (shCity || H.c) ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select><b>Адрес</b><input id="na"><b>Тип точки</b><select id="nty">${tyOpts('')}</select></div><button class="send" style="background:var(--g);box-shadow:none" data-a="shns">Создать</button><button class="ghost" data-a="shops">${ico('back', 18)} К списку</button>`;
 }
 
 /* ============ 8. СОБЫТИЯ ============ */
@@ -486,9 +529,9 @@ document.addEventListener('click', e => {
   else if (a == 'shops') shopsView(); else if (a == 'shm') { shMode = v; shopsView() }
   else if (a == 'scard') { cKey = ''; shopCard(v) } else if (a == 'sedit2') shopEditView(cSh)
   else if (a == 'shn') shopNew()
-  else if (a == 'shns') { const n = $('#nn').value.trim().replace(/\s+/g, ' '), c = $('#nc').value, ad = $('#na').value.trim(); if (!n) return;
+  else if (a == 'shns') { const n = $('#nn').value.trim().replace(/\s+/g, ' '), c = $('#nc').value, ad = $('#na').value.trim(), ty = $('#nty').value; if (!n) return;
     if (findBase(n, c)) return alert('Такой магазин в этом городе уже есть');
-    const o = upShop(n, c, ad); if (CFG.API_URL) { shopq.push({ n, c, a: ad, id: o.id }); LS('shopq', shopq); sync() } cKey = ''; shopCard(o.id) }
+    const o = upShop(n, c, ad); o.ty = ty; LS('base', base); if (CFG.API_URL) { shopq.push({ n, c, a: ad, id: o.id, ty }); LS('shopq', shopq); sync() } cKey = ''; shopCard(o.id) }
   else if (a == 'sord') { selShop(cSh); closeSheet(); drawList() }
   else if (a == 'sst') { cSt = v; document.querySelectorAll('.sg button').forEach(e => e.classList.toggle('on', e.dataset.v == v)); $('#stw').hidden = v == '-'; $('#stn').placeholder = 'Заметка' + (v == 'no' ? ' (причина — обязательно)' : '') }
   else if (a == 'sstsave') { const x = cSh, none = cSt == '-', st = none ? '' : cSt, nt = none ? '' : $('#stn').value.trim(); if (!cSt) return alert('Выберите статус');
@@ -501,7 +544,7 @@ document.addEventListener('click', e => {
   else if (a == 'vis') { const x = cSh, nt = $('#vn').value.trim(), val = VO[+v], ts = Date.now(), my = myLast(x);
     if (my && dayMs(my) == dayMs(ts) && !confirm('Вы уже отмечали визит в этот магазин сегодня (' + new Date(my).toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' }) + ').\nОтметить ещё раз?')) return;
     const prev = { lv: x.lv, lb: x.lb, lw: x.lw }, pm = cMine, vid = 'v' + ts.toString(36) + Math.random().toString(36).slice(2, 6);
-    x.lv = ts; x.lb = val; x.lw = me; cMine = ts; LS('base', base); logLocal(x, 'visit', val, nt);
+    if (x.pl && x.pl <= ts) x.pl = 0; x.lv = ts; x.lb = val; x.lw = me; cMine = ts; LS('base', base); logLocal(x, 'visit', val, nt);
     if (CFG.API_URL) { visq.push({ id: vid, shop: x.n, sid: x.id || '', c: x.c, a: x.a, trader: me, ts, val, note: nt }); LS('visq', visq); sync() }
     toast('Изменено: визит «' + val + '»', () => { const i = visq.findIndex(y => y.id == vid);
       if (i >= 0) { visq.splice(i, 1); LS('visq', visq) } else if (CFG.API_URL) { visq.push({ cancel: 1, id: 'c' + Date.now().toString(36), shop: x.n, sid: x.id || '', trader: me }); LS('visq', visq); sync() }
@@ -513,12 +556,16 @@ document.addEventListener('click', e => {
     if (Array.isArray(cLog)) { const k = cLog.findIndex(l => l.kind == 'visit' && l.who == me); if (k >= 0) cLog.splice(k, 1); const rest = cLog.find(l => l.kind == 'visit'), mine2 = cLog.find(l => l.kind == 'visit' && l.who == me);
       x.lv = rest ? rest.ts : 0; x.lb = rest ? rest.val : ''; x.lw = rest ? rest.who : ''; cMine = mine2 ? mine2.ts : 0 } else { x.lv = 0; x.lb = ''; x.lw = ''; cMine = 0 }
     LS('base', base); toast('Отметка визита отменена'); shopCard(x.id || 'n:' + x.n) }
+  else if (a == 'plan' || a == 'planx' || a == 'fqs' || a == 'fqx') { const x = cSh;
+    if (a == 'plan') { const v2 = $('#pld').value; if (!v2 || v2 < today()) return alert('Выберите сегодняшнюю или будущую дату'); const [y, m, d] = v2.split('-').map(Number); x.pl = new Date(y, m - 1, d).getTime() }
+    else if (a == 'planx') x.pl = 0; else if (a == 'fqs') x.fq = $('#fqi').value.trim(); else x.fq = '';
+    saveMeta(x); shopCard(x.id || 'n:' + x.n) }
   else if (a == 'slog') { cLog = null; cErr = ''; shopCard(cSh.id || 'n:' + cSh.n); loadLog(cSh) }
-  else if (a == 'ssave') { const n = $('#en').value.trim().replace(/\s+/g, ' '), c = $('#ec').value, ad = $('#ea').value.trim(); if (!n) return;
+  else if (a == 'ssave') { const n = $('#en').value.trim().replace(/\s+/g, ' '), c = $('#ec').value, ad = $('#ea').value.trim(), ty = $('#ety').value; if (!n) return;
     if (base.some(b => b !== eSh && norm(b.n) == norm(n) && norm(b.c) == norm(c))) return alert('Магазин с таким названием в этом городе уже есть');
-    const old = eSh.n; eSh.n = n; eSh.c = c; eSh.a = ad; LS('base', base);
+    const old = eSh.n; eSh.n = n; eSh.c = c; eSh.a = ad; eSh.ty = ty; LS('base', base);
     if (curShop() === eSh || (H.sid && H.sid == eSh.id)) { H.s = n; H.a = ad; H.c = c; cities(); $('#s').value = n; $('#a').value = ad; save() }
-    if (CFG.API_URL) { shopq.push({ op: 'edit', id: eSh.id || '', old, n, c, a: ad }); LS('shopq', shopq); sync() } cKey = ''; shopCard(eSh.id || 'n:' + n) }
+    if (CFG.API_URL) { shopq.push({ op: 'edit', id: eSh.id || '', old, n, c, a: ad, ty }); LS('shopq', shopq); sync() } cKey = ''; shopCard(eSh.id || 'n:' + n) }
   else if (a == 'sdel') { if (!confirm('Удалить магазин «' + eSh.n + '» из общей базы? Старые заявки и журнал сохранятся.')) return;
     const x = eSh; base = base.filter(b => b !== x); LS('base', base);
     if (H.sid && H.sid == x.id || norm(H.s) == norm(x.n)) { clrShop(); $('#s').value = ''; $('#a').value = ''; save(); shopWarn() }
@@ -545,9 +592,12 @@ document.addEventListener('change', e => { const t = e.target;
   if (t.dataset.q !== undefined) setQ(find(t.dataset.q), num(t.value));
   else if (t.dataset.np !== undefined) { const n = num(t.value), id = t.dataset.np; if (n > 0) { n == find(id).pr ? delete cart[id].p : cart[id].p = n; save() } editId = ''; bar(); cartView() }
   else if (t.id == 'dc') { disc = Math.min(100, num(t.value)); save(); bar(); cartView() }
-  else if (t.id == 'rc') { H.r = t.value; save() }
+  else if (t.id == 'rch') { H.r = t.value; save() }
   else if (t.id == 'cd') { if (!t.value || t.value < today()) { H.dm = 0; fixDate(); alert('Прошедшую дату выбрать нельзя. Поставлена ближайшая пятница.') } else { H.d = t.value; H.dm = 1 } save(); fill(); cartView() }
   else if (t.id == 'htr') { hTr = t.value; histView() }
+  else if (t.id == 'tys') { cSh.ty = t.value; saveMeta(cSh) }
+  else if (t.id == 'sht') { shT = t.value; shopsView() }
+  else if (/^rt(p|v|o|q|vd|od)$/.test(t.id)) { const k = { rtp: 'plan', rtv: 'visit', rto: 'order', rtq: 'q', rtvd: 'vd', rtod: 'od' }[t.id]; RT[k] = t.type == 'checkbox' ? t.checked : Math.max(1, Math.min(365, +t.value || RT0[k])); LS('rt', RT); drawShops() }
   else if (t.id == 'shc') { shCity = t.value; shopsView() } else if (t.id == 'shs') { shSt = t.value; shopsView() }
   else if (t.id == 'impf') importBackup(t.files[0]); });
 document.addEventListener('input', e => { if (e.target.id == 'shq') { shQ = e.target.value; drawShops() } });

@@ -2,9 +2,10 @@
 <html lang="ru"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="ver" content="21">
+<meta name="ver" content="23">
 <meta name="theme-color" content="#14301A">
 <link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
@@ -24,7 +25,8 @@ window.addEventListener('error', function (e) {
   <img class="logo" src="logo.jpg" alt="Али-Баба">
   <div class="brand"><h1>Али-Баба</h1><p id="sy">Приём заявок</p></div>
   <button class="ib" data-a="drafts" id="drb" aria-label="Черновики"></button>
-  <button class="ib" data-a="hist" aria-label="История"></button>
+  <button class="ib" data-a="shops" aria-label="Магазины"></button>
+  <button class="ib" data-a="hopen" aria-label="История"></button>
   <button class="ib" data-a="set" aria-label="Настройки"></button>
 </header>
 
@@ -34,6 +36,7 @@ window.addEventListener('error', function (e) {
   <input type="date" id="d"><select id="c"></select>
   <div class="cb"><input id="s" autocomplete="off" placeholder="Магазин: выберите или впишите"><div id="sl" class="dd" hidden></div></div>
   <input class="full" id="a" placeholder="Адрес">
+  <div id="sw" class="sw full" hidden></div>
 </section>
 
 <!-- ПОИСК И КАТЕГОРИИ -->

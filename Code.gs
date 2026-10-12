@@ -1,6 +1,6 @@
 /* Али-Баба: приём заявок. Вставьте в Расширения → Apps Script ТОЙ ЖЕ таблицы, где лежит прайс. */
 const KEY = '3puq8z64';   // тот же ключ, что API_KEY в app.js
-const SRV = 23;           // версия серверной части (видна в «Настройки → Диагностика»)
+const SRV = 24;           // версия серверной части (видна в «Настройки → Диагностика»)
 const SHOP_HEAD = ['Магазин', 'Город', 'Адрес', 'ID', 'Статус', 'Заметка', 'Кем (статус)', 'Когда (статус, мс)', 'Контакт', 'Телефон', 'Район', 'Посл. заказ (мс)', 'Посл. визит (мс)', 'Итог визита', 'Кем (визит)'];
 
 function doGet(e) {                      // отдаёт торговых, магазины, получателей и историю: окно «7 дней у всех / 30 дней свои» или заявки за выбранный день
@@ -10,7 +10,7 @@ function doGet(e) {                      // отдаёт торговых, ма�
     const from = +p.from, to = +p.to; if (!(from > 0) || !(to > from) || to - from > 40 * D) return out({ error: 'range' });
     return out({ hist: ordersIn(from, to, undo, now).reverse() });
   }
-  if (p.action === 'visits') return out({ log: visitsOf(String(p.sid || ''), String(p.name || ''), Math.min(+p.limit || 15, 50)) });   // журнал отметок одного магазина
+  if (p.action === 'visits') return out({ log: visitsOf(String(p.sid || ''), String(p.name || ''), Math.min(+p.limit || 15, 50)), mine: myVisit(String(p.sid || ''), String(p.name || ''), String(p.me || '')) });   // журнал отметок одного магазина + время моего последнего визита
   if (p.action !== 'init') return out({ error: 'action' });
   const traders = sh('Торговые').getDataRange().getValues().slice(1).map(r => String(r[0]).trim()).filter(Boolean);
   const shops = ensureIds().map(pub);
@@ -39,6 +39,8 @@ function doPost(e) {                     // записывает заявку, �
       else if (x.op == 'status') setStatus(x); else if (x.op == 'info') setInfo(x); else upShop(x.n, x.c, x.a, x.id);
       return out({ ok: 1 }) }
     if (d.visit) { addVisit(d.visit); return out({ ok: 1 }) }
+    if (d.visitCancel) return out({ ok: 1, applied: cancelVisit(d.visitCancel) });   // отмена своей последней отметки визита
+    if (d.rcpOp) return out(rcpOp(d.rcpOp));                                           // добавление / правка / удаление получателя
     if (d.orderOp) { const r = setDeleted(d.orderOp.id, d.orderOp.del, d.orderOp.trader); return out({ ok: 1, applied: r.applied, reason: r.reason, owner: r.owner }) }   // удаление / возврат заявки
     const o = d.order, s = sh('Заявки');
     const ids = s.getLastRow() > 1 ? s.getRange(2, 2, s.getLastRow() - 1, 1).getValues().flat() : [];
@@ -136,6 +138,30 @@ function addVisit(v) {                   // визит: строка в журн
 }
 function logRow(id, shop, sid, who, kind, val, note, ts) { sh('Визиты').appendRow([new Date(), id, shop, sid || '', who || '', kind, val, note, ts]) }
 function hasLog(id) { const s = sh('Визиты'), n = s.getLastRow(); return n > 1 && s.getRange(2, 2, n - 1, 1).getValues().flat().map(String).indexOf(String(id)) >= 0 }
+function myVisit(sid, name, who) {       // время последнего визита этого торгового в магазине (0 — не был)
+  const s = sh('Визиты'), n = s.getLastRow(); if (n < 2 || !who) return 0; let t = 0;
+  s.getRange(2, 3, n - 1, 7).getValues().forEach(r => { if (((sid && String(r[1]) === sid) || (name && same(r[0], name))) && String(r[2]) === who && r[3] === 'visit') t = Math.max(t, +r[6] || 0) });
+  return t;
+}
+function cancelVisit(v) {                // удаляет последнюю отметку визита торгового и пересчитывает «посл. визит» магазина
+  const s = sh('Визиты'), n = s.getLastRow(); if (n < 2) return false;
+  const rows = s.getRange(2, 3, n - 1, 7).getValues(), sid = String(v.sid || ''), name = String(v.shop || ''), mt = r => (sid && String(r[1]) === sid) || (name && same(r[0], name));
+  let at = -1, bt = -1; rows.forEach((r, i) => { if (mt(r) && r[3] === 'visit') { if (String(r[2]) === String(v.trader) && (+r[6] || 0) >= bt) { bt = +r[6] || 0; at = i } } });
+  if (at < 0) return false;
+  s.deleteRow(at + 2); rows.splice(at, 1);
+  let last = null; rows.forEach(r => { if (mt(r) && r[3] === 'visit' && (!last || (+r[6] || 0) >= (+last[6] || 0))) last = r });
+  const x = findShop(readShops(), sid, name, ''); if (x) shopSheet().getRange(x.r, 13, 1, 3).setValues([last ? [+last[6] || 0, String(last[4]), String(last[2])] : ['', '', '']]);
+  return true;
+}
+function rcpOp(x) {                      // получатели заявок: add / edit (по старому имени) / del
+  const s = sh('Получатели'), n = s.getLastRow(), v = n > 1 ? s.getRange(2, 1, n - 1, 1).getValues().flat().map(String) : [];
+  const i = v.findIndex(a => same(a, x.old || x.n)), row = [String(x.n || '').trim(), String(x.p || '').trim(), (x.c || []).join(', '), x.d ? 'да' : ''];
+  if (x.op === 'del') { if (i >= 0) s.deleteRow(i + 2) }
+  else { if (!row[0] || !row[1]) return { ok: 1, applied: false, reason: 'empty' };
+    if (x.op === 'add') { if (v.some(a => same(a, row[0]))) return { ok: 1, applied: false, reason: 'exists' }; s.appendRow(row) }
+    else if (i >= 0) s.getRange(i + 2, 1, 1, 4).setValues([row]); else s.appendRow(row) }
+  return { ok: 1, applied: true, rcp: recipients() };
+}
 function visitsOf(sid, name, limit) {    // последние отметки по магазину (новые сверху)
   const s = sh('Визиты'), n = s.getLastRow(); if (n < 2) return [];
   const v = s.getRange(2, 3, n - 1, 7).getValues(), res = [];   // колонки C..I

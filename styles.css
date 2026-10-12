@@ -138,3 +138,8 @@ button:disabled{background:#c5c2b2;color:#fff;border-color:#c5c2b2;transform:non
 .vg{display:grid;grid-template-columns:1fr 1fr;gap:6px}.vg button{background:var(--y2);color:var(--gd);padding:11px 4px;font-size:13.5px;border:1px solid var(--line)}
 a.ghost{text-decoration:none}
 @media(max-width:380px){.ib{width:36px;height:36px}.top{gap:6px}}
+
+/* ===== 17. УВЕДОМЛЕНИЕ «ИЗМЕНЕНО · ОТМЕНИТЬ» ===== */
+#toast{position:fixed;left:12px;right:12px;bottom:calc(84px + env(safe-area-inset-bottom,0px));z-index:15;display:flex;align-items:center;justify-content:space-between;gap:10px;background:#1E261C;color:#fff;padding:11px 12px 11px 16px;border-radius:12px;box-shadow:0 10px 28px rgba(0,0,0,.35);font-size:14.5px;font-weight:600;opacity:0;transform:translateY(14px);pointer-events:none;transition:opacity .2s,transform .25s var(--ease);max-width:520px;margin:0 auto}
+#toast.on{opacity:1;transform:none;pointer-events:auto}
+#toast button{background:transparent;color:var(--y);border:1px solid rgba(201,164,85,.6);padding:8px 14px;flex:none}

@@ -16,7 +16,8 @@ const DEMO = [['Финики','Финики FINDI caramel','150г','1704','1976'
 
 /* ============ 2. ХЕЛПЕРЫ И СОСТОЯНИЕ ============ */
 /* Версия сборки: должна совпадать с <meta name="ver"> в index.html. Если файлы на хостинге разных версий — покажем красную плашку. */
-const VER = '23';
+const VER = '24';
+const NEED = 24;   // нужная версия Code.gs на сервере
 { const m = document.querySelector('meta[name=ver]');
   if (!m || m.content != VER) document.body.insertAdjacentHTML('afterbegin', '<div style="background:#C82B27;color:#fff;padding:12px;font-weight:800">Файлы сайта разных версий. Загрузите ВСЕ файлы из архива заново (index.html, styles.css, app.js, sw.js) и обновите страницу дважды.</div>') }
 const IC = { folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>', clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
@@ -152,8 +153,9 @@ function drawList() {
   el.classList.remove('swap'); void el.offsetWidth; el.classList.add('swap'); // перезапуск анимации
 }
 function setQ(p, v) {
-  const k = pid(p), old = qty(p); v = Math.max(0, Math.round(v * 100) / 100) || 0;
+  const k = pid(p), old = qty(p), prev = cart[k]; v = Math.max(0, Math.round(v * 100) / 100) || 0;
   if (!v) delete cart[k]; else cart[k] = { ...cart[k], q: v };
+  if (!v && old) toast('Изменено: «' + p.n + '» убран', () => { cart[k] = prev; save(); bar(); drawList(); if (view == 'cart') cartView() });
   save(); bar(v > old);
   document.querySelectorAll(`[data-c="${CSS.escape(k)}"]`).forEach(e => { e.innerHTML = ctl(p); e.classList.remove('pop'); void e.offsetWidth; e.classList.add('pop') });
   if (view == 'cart') cartView();
@@ -173,6 +175,16 @@ function text() {
   return t + (disc > 0 ? `Сумма.${total()}\nИтого со скидкой.${final()}${label}` : `Итого.${total()}${label}`);
 }
 
+/* ============ 5б. ОТМЕНА ПОСЛЕДНЕГО ДЕЙСТВИЯ (всплывающее «Изменено» + «Отменить») ============ */
+let toastT = 0, toastFn = null, leaving = false, lastBack = 0;   // leaving — намеренный уход (WhatsApp, перезагрузка): защиту не включаем
+function toast(msg, undo) { // обратимые действия не переспрашиваем, а даём несколько секунд на отмену
+  let el = document.getElementById('toast'); if (!el) { el = document.createElement('div'); el.id = 'toast'; document.body.appendChild(el) }
+  toastFn = undo || null; el.innerHTML = `<span>${esc(msg)}</span>${undo ? '<button data-a="undo">Отменить</button>' : ''}`; el.className = 'on';
+  clearTimeout(toastT); toastT = setTimeout(() => { el.className = ''; toastFn = null }, undo ? 7000 : 3000);
+}
+const snap = () => ({ cart: JSON.stringify(cart), disc, eo, H: JSON.stringify(H) });   // снимок заявки для отмены
+function unsnap(z) { cart = JSON.parse(z.cart); disc = z.disc; eo = z.eo; H = JSON.parse(z.H); save(); fill(); bar(); drawList(); if (view == 'cart') cartView() }
+
 /* ============ 6. ШТОРКА: корзина, история, настройки ============ */
 function openSheet(v, title) { view = v; $('#st').textContent = title; document.body.classList.add('sh'); bar(); }
 function closeSheet() { view = ''; editId = ''; document.body.classList.remove('sh'); bar(); }
@@ -188,8 +200,9 @@ function cartView() {
   if (view != 'cart') openSheet('cart', 'Ваша заявка');
   const L = lines();
   if (!L.length) { $('#sb').innerHTML = '<p class="empty">Корзина пуста. Добавьте товары из каталога.</p>'; return }
+  const dBlock = `<div class="sum" style="margin-bottom:10px"><b>Дата поставки</b><input type="date" id="cd" min="${today()}" value="${esc(H.d || '')}" style="margin:6px 0 0"></div>`;
   const eoo = eo && histById(eo), banner = eo ? `<div class="sw bad" style="margin-bottom:10px">Правка заявки «${esc(eoo ? eoo.h.s : '')}»${eoo ? ' от ' + ft(eoo.ts) : ''}. Старая версия будет заменена.<button class="ghost" style="margin-top:8px;padding:8px" data-a="eoc">Отменить правку</button></div>` : '';
-  $('#sb').innerHTML = banner + L.map(p => { const id = esc(pid(p)), n = price(p), ch = n != p.pr;
+  $('#sb').innerHTML = banner + dBlock + L.map(p => { const id = esc(pid(p)), n = price(p), ch = n != p.pr;
     const pe = editId == pid(p) ? `<input class="np" data-np="${id}" inputmode="decimal" value="${n}">`
       : `<button class="pe${ch ? ' ch' : ''}" data-a="edit" data-id="${id}">${ch ? `<s>${p.pr}</s>` : ''}${n} ₸ ${ico('edit', 14)}</button>`;
     return `<div class="it"><img src="${esc(p.f || 'logo.jpg')}" onerror="this.src='logo.jpg'" alt=""><div><b>${esc(p.n)}</b> <span class="m">${esc(p.g)}</span><div style="margin-top:6px">${pe}${ch ? ` <button class="pe" data-a="reset" data-id="${id}">${ico('undo', 14)}</button>` : ''}</div></div><button class="x" data-a="rm" data-id="${id}" aria-label="Убрать">${ico('x', 16)}</button><div class="st" style="grid-column:1/4">${`<button data-a="m" data-id="${id}">−</button><input data-q="${id}" inputmode="decimal" value="${qf(qty(p))}"><button data-a="p" data-id="${id}">+</button>`}<b style="margin-left:auto">${Math.round(n * qty(p))} ₸</b></div></div>`; }).join('') +
@@ -229,7 +242,7 @@ function histDetail(id) { // полная карточка заявки
 function setView() {
   openSheet('set', 'Настройки');
   $('#sb').innerHTML = `${CFG.API_URL ? `<button class="ghost" style="margin:0 0 10px" data-a="who">${ico('user', 18)} Профиль: ${esc(me || '—')} · сменить</button>` : ''}<div class="sum"><b>Получатели заявок</b><p class="m" style="margin:4px 0 10px">${rcp.length ? rcp.map(r => esc(r.n) + (r.c.length ? ' (' + esc(r.c.join(', ')) + ')' : '') + (r.d ? ' ★' : '') + ' · ' + esc(r.p)).join('<br>') + '<br>Список ведётся на листе «Получатели» таблицы — общий для всех.' : CFG.API_URL ? 'Список пуст: заполните лист «Получатели» (имя, телефон, города, по умолчанию). Пока используется запасной номер.' : 'Общая база не подключена — используется номер ниже.'}</p><b>Запасной номер WhatsApp</b><input id="op" inputmode="tel" value="${esc(S.op)}" placeholder="77001234567"><p class="m">Используется, только если лист «Получатели» пуст. Код страны и номер, без + и пробелов</p><b>Города (через запятую)</b><input id="ct" value="${esc(S.cities.join(', '))}"></div><button class="send" style="background:var(--g);box-shadow:none" data-a="ss">Сохранить</button><button class="ghost" data-a="rl">Обновить прайс</button>${standalone ? '' : `<button class="ghost" data-a="inst">${ico('plus', 18)} Установить на главный экран</button>`}<button class="ghost" data-a="csv">${ico('save', 18)} Экспорт истории (CSV)</button><button class="ghost" data-a="bak">${ico('down', 18)} Сохранить данные устройства (файл)</button><button class="ghost" data-a="imp">${ico('up', 18)} Загрузить данные из файла</button><input type="file" id="impf" accept=".json,application/json" hidden>
-  <div class="sum m" style="margin-top:12px;font-size:13px"><b>Диагностика</b><br>Версия: ${VER}${CFG.API_URL ? ' · Code.gs: ' + (srvV || 'не определена') + (srvV && srvV < 23 ? ' (устарел!)' : '') : ''} · адрес: ${esc(location.origin)}<br>Товаров: ${P.length} (с ценой с НДС: ${P.filter(p => p.pv).length}, без НДС: ${P.filter(p => p.pn).length})<br>Режим цен: ${S.mode == 'vat' ? 'с НДС' : 'без НДС'}<br>${CFG.API_URL ? `База: ${syncErr ? 'ошибка: ' + esc(lastErr) : 'подключена'} · торговых в списке: ${trs.length} · профиль: ${esc(me || 'не выбран')}<br>Ждут отправки: заявок ${outbox.length}, правок магазинов ${shopq.length}, визитов ${visq.length}` : 'База заявок не подключена (API_URL пуст)'}</div>`;
+  <div class="sum m" style="margin-top:12px;font-size:13px"><b>Диагностика</b><br>Версия: ${VER}${CFG.API_URL ? ' · Code.gs: ' + (srvV || 'не определена') + (srvV && srvV < NEED ? ' (устарел!)' : '') : ''} · адрес: ${esc(location.origin)}<br>Товаров: ${P.length} (с ценой с НДС: ${P.filter(p => p.pv).length}, без НДС: ${P.filter(p => p.pn).length})<br>Режим цен: ${S.mode == 'vat' ? 'с НДС' : 'без НДС'}<br>${CFG.API_URL ? `База: ${syncErr ? 'ошибка: ' + esc(lastErr) : 'подключена'} · торговых в списке: ${trs.length} · профиль: ${esc(me || 'не выбран')}<br>Ждут отправки: заявок ${outbox.length}, правок магазинов ${shopq.length}, визитов ${visq.length}` : 'База заявок не подключена (API_URL пуст)'}</div>`;
 }
 
 /* ============ 6б. РЕЖИМ ЦЕН (с НДС / без НДС) ============ */
@@ -270,7 +283,7 @@ async function api(url, opt) { // запрос к Apps Script с понятны�
 }
 function syncStatus() { // строка статуса под названием в шапке
   const n = outbox.length + shopq.length + delq.length + visq.length, el = $('#sy'); if (!CFG.API_URL) return;
-  el.textContent = srvV && srvV < 23 ? 'Обновите Code.gs до версии 23 (нажмите)' : syncWarn ? 'Сервер не сохранил удаление — обновите Code.gs (нажмите)' : syncing ? 'Синхронизация…' : syncErr ? 'Нет связи с базой' + (n ? ' · ждут: ' + n : '') + ' (нажмите)' : n ? 'Ждут отправки: ' + n : 'Синхронизировано ' + syncAt + (me ? ' · ' + me : '');
+  el.textContent = srvV && srvV < NEED ? 'Обновите Code.gs до версии ' + NEED + ' (нажмите)' : syncWarn ? 'Сервер не сохранил удаление — обновите Code.gs (нажмите)' : syncing ? 'Синхронизация…' : syncErr ? 'Нет связи с базой' + (n ? ' · ждут: ' + n : '') + ' (нажмите)' : n ? 'Ждут отправки: ' + n : 'Синхронизировано ' + syncAt + (me ? ' · ' + me : '');
 }
 async function sync() { // отправляет накопленные заявки и правки магазинов, затем подтягивает торговых, магазины и историю
   if (!CFG.API_URL) return;
@@ -280,13 +293,13 @@ async function sync() { // отправляет накопленные заяв�
   try {
     const new23 = x => x.op == 'status' || x.op == 'info';   // эти операции понимает только Code.gs v23+
     for (const x of [...shopq]) { // правки магазинов — строго по порядку; при ошибке останавливаемся
-      if (new23(x) && srvV < 23) continue;
+      if (new23(x) && srvV < NEED) continue;
       const r = await api(CFG.API_URL, { method: 'POST', body: JSON.stringify({ key: CFG.API_KEY, shop: x }) });
       if (!r.ok) throw new Error('скрипт не принял правку магазина'); shopq = shopq.filter(y => y !== x); LS('shopq', shopq);
     }
     for (const v of [...visq]) { // визиты
-      if (srvV < 23) break;
-      const r = await api(CFG.API_URL, { method: 'POST', body: JSON.stringify({ key: CFG.API_KEY, visit: v }) });
+      if (srvV < NEED) break;
+      const r = await api(CFG.API_URL, { method: 'POST', body: JSON.stringify(v.cancel ? { key: CFG.API_KEY, visitCancel: v } : { key: CFG.API_KEY, visit: v }) });
       if (!r.ok) throw new Error('скрипт не принял визит'); visq = visq.filter(y => y !== v); LS('visq', visq);
     }
     for (const o of [...outbox]) {
@@ -305,8 +318,8 @@ async function sync() { // отправляет накопленные заяв�
     }
     const d = await api(`${CFG.API_URL}?action=init&key=${encodeURIComponent(CFG.API_KEY)}&trader=${encodeURIComponent(me)}&undo=${CFG.UNDO_HOURS}`);
     trs = d.traders; srvV = d.srv || 0; LS('srv', srvV); if (Array.isArray(d.rcp)) { rcp = d.rcp; LS('rcp', rcp) }
-    if (!shopq.length && !visq.length) base = d.shops;   // пока есть неотправленные правки, локальную базу не затираем
-    if (srvV >= 23 && (shopq.some(new23) || visq.length)) again = true;   // версия сервера стала известна — досылаем отметки
+    if (!shopq.length && !visq.length) { const m = new Map(base.map(b => [b.id, b])); base = d.shops.map(x => { const o = m.get(x.id); return o ? Object.assign(o, x) : x }) }   // объекты магазинов сохраняем (на них ссылаются открытая карточка и кнопки «Отменить»)   // пока есть неотправленные правки, локальную базу не затираем
+    if (srvV >= NEED && (shopq.some(new23) || visq.length)) again = true;   // версия сервера стала известна — досылаем отметки
     syncWarn = false; delok = delok.filter(o => { const sv = d.hist.find(x => x.id == o.id); if (!sv) return false;   // подтверждение удаления / возврата выгрузкой
       if (!!sv.del == !!o.del) return false; syncWarn = true; return Date.now() - o.t < 6e5 });                      // не совпало: сервер не применил — предупреждаем, пока не истёк срок
     LS('delok', delok); shist = d.hist; LS('trs', trs); LS('base', base); LS('shist', shist); shops();
@@ -343,10 +356,11 @@ const newSid = () => 's' + Date.now().toString(36).slice(-4) + Math.random().toS
 const ago = ms => { if (!ms) return 'не было'; const d = Math.floor((dayMs(Date.now()) - dayMs(ms)) / 864e5); return d <= 0 ? 'сегодня' : d == 1 ? 'вчера' : d + ' дн. назад' };
 const lastC = x => Math.max(x.lv || 0, x.lo || 0);   // последний контакт: визит или заказ
 const pill = c => c && ST[c] ? `<span class="pl" style="background:${ST[c][1]}">${ST[c][0]}</span>` : '';
+const pillOf = b => b.st ? pill(b.st) : lastC(b) ? '' : '<span class="pl" style="background:#9a9680">Не были</span>';   // нет статуса и ни визитов, ни заказов — «Не были»
 const byId = id => id && base.find(b => b.id == id);
 const sameCity = (b, c) => !c || !b.c || norm(b.c) == norm(c);
 const findBase = (n, c) => base.find(b => norm(b.n) == norm(n) && sameCity(b, c)) || null;
-let cKey = '', ddL = [], eSh = null, cSh = null, cLog = null, shMode = 'all', shSt = '', shCity = null, shQ = '', cSt = '';
+let cMine = 0, cErr = '', cKey = '', ddL = [], eSh = null, cSh = null, cLog = null, shMode = 'all', shSt = '', shCity = null, shQ = '', cSt = '';
 function shopEditView(x) { // правка названия, города, адреса / удаление магазина в общей базе
   eSh = x; $('#sl').hidden = true; openSheet('shop', 'Магазин');
   $('#sb').innerHTML = `<div class="sum"><b>Название</b><input id="en" value="${esc(x.n)}"><b>Город</b><select id="ec">${[...new Set([...S.cities, x.c].filter(Boolean))].map(c => `<option ${c == x.c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select><b>Адрес</b><input id="ea" value="${esc(x.a)}"></div><button class="send" style="background:var(--g);box-shadow:none" data-a="ssave">Сохранить</button><button class="ghost" data-a="scard" data-v="${esc(x.id || '')}">${ico('back', 18)} Назад</button><button class="ghost" style="color:var(--r);border-color:var(--r)" data-a="sdel">Удалить магазин</button>`;
@@ -372,40 +386,47 @@ function shopsView() {
   openSheet('shops', 'Магазины'); if (shCity === null) shCity = H.c || '';
   const cs = [...new Set([...S.cities, ...base.map(b => b.c)].filter(Boolean))];
   $('#sb').innerHTML = `<div class="seg" style="margin-bottom:10px">${[['all', 'Все магазины'], ['route', 'Кого навестить']].map(([k, t]) => `<button data-a="shm" data-v="${k}" class="${shMode == k ? 'on' : ''}">${t}</button>`).join('')}</div>
-  <div class="sfl"><select id="shc"><option value="">Все города</option>${cs.map(c => `<option ${c == shCity ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>${shMode == 'all' ? `<select id="shs"><option value="">Любой статус</option>${Object.keys(ST).map(k => `<option value="${k}" ${k == shSt ? 'selected' : ''}>${ST[k][0]}</option>`).join('')}</select>` : ''}</div>
+  <div class="sfl"><select id="shc"><option value="">Все города</option>${cs.map(c => `<option ${c == shCity ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>${shMode == 'all' ? `<select id="shs"><option value="">Любой статус</option><option value="none" ${shSt == 'none' ? 'selected' : ''}>Не были / без статуса</option>${Object.keys(ST).map(k => `<option value="${k}" ${k == shSt ? 'selected' : ''}>${ST[k][0]}</option>`).join('')}</select>` : ''}</div>
   <input id="shq" placeholder="Найти магазин" value="${esc(shQ)}" style="margin-bottom:10px"><div id="shl"></div><button class="ghost" data-a="shn">${ico('plus', 18)} Новый магазин</button>`;
   drawShops();
 }
 function drawShops() {
   const route = shMode == 'route', q = norm(shQ); let L = base.filter(b => (!shCity || norm(b.c) == norm(shCity)) && norm(b.n).includes(q));
   if (route) L = L.filter(b => b.st != 'no' && b.st != 'closed').sort((a, b) => lastC(a) - lastC(b) || a.n.localeCompare(b.n, 'ru'));
-  else { if (shSt) L = L.filter(b => (b.st || 'neu') == shSt); L = L.sort((a, b) => a.n.localeCompare(b.n, 'ru')) }
-  $('#shl').innerHTML = L.map(b => `<button class="shi" data-a="scard" data-v="${esc(b.id || 'n:' + b.n)}"><div style="flex:1;min-width:0"><b>${esc(b.n)}</b><div class="m">${esc([b.c, b.a].filter(Boolean).join(' · '))}</div><div class="m">Контакт: ${ago(lastC(b))}${b.lo ? ' · заказ ' + ago(b.lo) : ''}</div></div>${pill(b.st)}</button>`).join('')
+  else { if (shSt) L = L.filter(b => shSt == 'none' ? !b.st : b.st == shSt); L = L.sort((a, b) => a.n.localeCompare(b.n, 'ru')) }
+  $('#shl').innerHTML = L.map(b => `<button class="shi" data-a="scard" data-v="${esc(b.id || 'n:' + b.n)}"><div style="flex:1;min-width:0"><b>${esc(b.n)}</b><div class="m">${esc([b.c, b.a].filter(Boolean).join(' · '))}</div><div class="m">Контакт: ${ago(lastC(b))}${b.lo ? ' · заказ ' + ago(b.lo) : ''}</div></div>${pillOf(b)}</button>`).join('')
     || `<p class="empty">${route ? 'Некого навещать: добавьте магазины или смените город' : 'Магазинов не найдено'}</p>`;
 }
 const shopById = v => String(v).startsWith('n:') ? base.find(b => b.n == v.slice(2)) : byId(v);
 function shopCard(v) {
   const x = shopById(v) || cSh; if (!x) return shopsView();
-  if (cKey != (x.id || x.n)) { cKey = x.id || x.n; cLog = null; cSt = x.st || ''; loadLog(x) } cSh = x;
+  if (cKey != (x.id || x.n)) { cKey = x.id || x.n; cLog = null; cMine = 0; cErr = ''; cSt = x.st || '-'; loadLog(x) } cSh = x;
   openSheet('shopc', x.n); const log = cLog;
   const ch = (k, t, cls) => `<button data-a="${k}" ${cls ? 'class="' + cls + '"' : ''}`;
   $('#sb').innerHTML = `<div class="sum"><div class="m">${esc([x.c, x.a].filter(Boolean).join(' · ') || 'без адреса')}</div>
-    <div style="margin-top:6px">${x.st ? pill(x.st) : '<span class="m">Статус не задан</span>'}${x.sb ? `<span class="m"> · ${esc(x.sb)}, ${fd(isoDay(x.sa))}</span>` : ''}</div>${x.nt ? `<div style="margin-top:6px">${esc(x.nt)}</div>` : ''}
+    <div style="margin-top:6px">${pillOf(x) || '<span class="m">Без статуса</span>'}${x.sb ? `<span class="m"> · ${esc(x.sb)}, ${fd(isoDay(x.sa))}</span>` : ''}</div>${x.nt ? `<div style="margin-top:6px">${esc(x.nt)}</div>` : ''}
     <div class="m" style="margin-top:6px">Последний заказ: ${ago(x.lo)} · визит: ${ago(x.lv)}${x.lb ? ' (' + esc(x.lb) + (x.lw ? ', ' + esc(x.lw) : '') + ')' : ''}</div></div>
   <button class="send" data-a="sord" data-v="${esc(x.id || '')}">${ico('cart', 20)} Создать заявку</button>
-  <div class="sum" style="margin-top:12px"><b>Отметить визит</b><input id="vn" placeholder="Заметка к визиту (необязательно)" style="margin:8px 0"><div class="vg">${VO.map((t, i) => `<button data-a="vis" data-v="${i}">${t}</button>`).join('')}</div></div>
-  <div class="sum" style="margin-top:12px"><b>Статус</b><div class="sg">${Object.keys(ST).map(k => `<button data-a="sst" data-v="${k}" class="${cSt == k ? 'on' : ''}" style="--c:${ST[k][1]}">${ST[k][0]}</button>`).join('')}</div>
-    <input id="stn" placeholder="Заметка${cSt == 'no' ? ' (причина — обязательно)' : ''}" value="${esc(x.nt || '')}" style="margin:10px 0 0"><button class="send" style="background:var(--g);box-shadow:none;margin-top:10px" data-a="sstsave">Сохранить статус</button></div>
+  <div class="sum" style="margin-top:12px"><b>Отметить визит</b><input id="vn" placeholder="Заметка к визиту (необязательно)" style="margin:8px 0"><div class="vg">${VO.map((t, i) => `<button data-a="vis" data-v="${i}">${t}</button>`).join('')}</div>
+    <div class="m" style="margin-top:8px">${myLast(x) ? 'Ваш последний визит сюда: ' + ft(myLast(x)) : 'Вы здесь ещё не отмечались'}</div>${myLast(x) ? '<button class="ghost" style="margin-top:6px" data-a="vcan">Отменить мою последнюю отметку визита</button>' : ''}</div>
+  <div class="sum" style="margin-top:12px"><b>Статус</b><div class="sg"><button data-a="sst" data-v="-" class="${cSt == '-' ? 'on' : ''}" style="--c:#7C7A69;grid-column:1/3">Не были (без статуса)</button>${Object.keys(ST).map(k => `<button data-a="sst" data-v="${k}" class="${cSt == k ? 'on' : ''}" style="--c:${ST[k][1]}">${ST[k][0]}</button>`).join('')}</div>
+    <div id="stw" ${cSt == '-' ? 'hidden' : ''}><input id="stn" placeholder="Заметка${cSt == 'no' ? ' (причина — обязательно)' : ''}" value="${esc(x.nt || '')}" style="margin:10px 0 0"></div><button class="send" style="background:var(--g);box-shadow:none;margin-top:10px" data-a="sstsave">Сохранить статус</button></div>
   <div class="sum" style="margin-top:12px"><b>Контакт покупателя</b> <span class="m">(необязательно)</span><input id="ict" placeholder="Имя, должность" value="${esc(x.ct || '')}" style="margin:8px 0"><input id="itl" inputmode="tel" placeholder="Телефон" value="${esc(x.tl || '')}" style="margin:0 0 8px"><input id="irg" placeholder="Район / ориентир" value="${esc(x.rg || '')}" style="margin:0 0 8px">
     <button class="ghost" style="margin-top:0" data-a="sinfo">${ico('save', 18)} Сохранить контакт</button>${x.tl ? `<a class="ghost" style="text-decoration:none" href="tel:${esc(x.tl.replace(/[^\d+]/g, ''))}">${ico('phone', 18)} Позвонить</a>` : ''}</div>
-  <div class="sum" style="margin-top:12px"><b>Журнал отметок</b>${log === null ? '<div class="m" style="margin-top:6px">Загружаю…</div>' : log === false ? '<div class="m" style="margin-top:6px">Журнал не загрузился (нет связи или старый Code.gs)</div>' : log.length ? log.map(l => `<div class="r" style="display:block;padding:6px 0;border-top:1px solid var(--line)"><span class="m">${ft(l.ts)} · ${esc(l.who || '—')}</span><div>${l.kind == 'status' ? 'Статус: ' + esc((ST[l.val] || [l.val])[0]) : 'Визит: ' + esc(l.val)}${l.nt ? ' — ' + esc(l.nt) : ''}</div></div>`).join('') : '<div class="m" style="margin-top:6px">Отметок пока нет</div>'}</div>
+  <div class="sum" style="margin-top:12px"><b>Журнал отметок</b><div class="m">Кто и когда ставил статус и отмечал визиты в этом магазине</div>${log === null ? '<div class="m" style="margin-top:6px">Загружаю…</div>' : log === false ? `<div class="m" style="margin-top:6px">Журнал не загрузился: ${esc(cErr)}.${/action|key|не данные/.test(cErr) ? ' Скорее всего, Code.gs не обновлён до версии ' + NEED + ': в Apps Script нужно «Развернуть → Управление развёртываниями → ✏️ → Новая версия».' : ''}</div><button class="ghost" data-a="slog">Повторить</button>` : log.length ? log.map(l => `<div class="r" style="display:block;padding:6px 0;border-top:1px solid var(--line)"><span class="m">${ft(l.ts)} · ${esc(l.who || '—')}</span><div>${l.kind == 'status' ? (l.val ? 'Статус: ' + esc((ST[l.val] || [l.val])[0]) : 'Статус снят (не были)') : 'Визит: ' + esc(l.val)}${l.nt ? ' — ' + esc(l.nt) : ''}</div></div>`).join('') : '<div class="m" style="margin-top:6px">Отметок пока нет</div>'}</div>
   <button class="ghost" data-a="sedit2">${ico('edit', 18)} Изменить название / город / адрес</button><button class="ghost" data-a="shops">${ico('back', 18)} К списку</button>`;
 }
 async function loadLog(x) {
-  if (!CFG.API_URL || !navigator.onLine) { cLog = false; return }
-  try { const r = await api(`${CFG.API_URL}?action=visits&key=${encodeURIComponent(CFG.API_KEY)}&sid=${encodeURIComponent(x.id || '')}&name=${encodeURIComponent(x.n)}&limit=15`); if (cKey == (x.id || x.n)) { cLog = r.log || []; if (view == 'shopc') shopCard(x.id || 'n:' + x.n) } }
-  catch (e) { if (cKey == (x.id || x.n)) { cLog = false; if (view == 'shopc') shopCard(x.id || 'n:' + x.n) } }
+  const k = x.id || x.n, redraw = () => { if (cKey == k && view == 'shopc') shopCard(x.id || 'n:' + x.n) };
+  if (!CFG.API_URL) { cLog = false; cErr = 'общая база не подключена'; return }
+  if (!navigator.onLine) { cLog = false; cErr = 'нет интернета'; return }
+  try { const r = await api(`${CFG.API_URL}?action=visits&key=${encodeURIComponent(CFG.API_KEY)}&sid=${encodeURIComponent(x.id || '')}&name=${encodeURIComponent(x.n)}&me=${encodeURIComponent(me)}&limit=15`); if (cKey == k) { cLog = r.log || []; cMine = +r.mine || 0; redraw() } }
+  catch (e) { if (cKey == k) { cLog = false; cErr = e.message || 'ошибка'; redraw() } }
 }
+const myLast = x => Math.max(cMine || 0, x.lw == me ? x.lv || 0 : 0);   // когда этот профиль последний раз отмечал визит в магазине
+function setShopStatus(x, st, nt) { // статус магазина: локально сразу, на сервер через очередь; прежние отметки остаются в журнале
+  const at = Date.now(); x.st = st; x.nt = nt; x.sb = me; x.sa = at; LS('base', base); logLocal(x, 'status', st, nt); shopWarn();
+  if (CFG.API_URL) { shopq.push({ op: 'status', id: x.id || '', n: x.n, c: x.c, a: x.a, st, nt, by: me, at, rid: 'r' + at.toString(36) + Math.random().toString(36).slice(2, 6) }); LS('shopq', shopq); sync() } }
 const logLocal = (x, kind, val, nt) => { if (Array.isArray(cLog)) cLog.unshift({ ts: Date.now(), who: me, kind, val, nt }) };
 function shopNew() {
   openSheet('shopn', 'Новый магазин');
@@ -419,7 +440,8 @@ document.addEventListener('click', e => {
   if (a == 'cat') { cat = v; drawChips(); drawList() }
   else if (a == 'fav') { fav = isFav(p) ? fav.filter(k => k != id) : [...fav, id]; LS('fav', fav); drawChips(); if (cat == FAV) drawList(); else b.classList.toggle('on', isFav(p)) }
   else if (a == 'm') setQ(p, qty(p) - step(p)); else if (a == 'p') setQ(p, qty(p) + step(p));
-  else if (a == 'rm') { delete cart[id]; save(); bar(); cartView(); drawList() }
+  else if (a == 'rm') { const prev = cart[id]; delete cart[id]; save(); bar(); cartView(); drawList(); toast('Изменено: «' + (p ? p.n : 'товар') + '» убран', () => { cart[id] = prev; save(); bar(); drawList(); if (view == 'cart') cartView() }) }
+  else if (a == 'undo') { const f = toastFn; toastFn = null; $('#toast').className = ''; if (f) f() }
   else if (a == 'mode') setMode(v); else if (a == 'cart') cartView(); else if (a == 'hist') histView(); else if (a == 'set') setView();
   else if (a == 'x') { if (e.target == b || b.classList.contains('grab')) { closeSheet(); drawList() } }
   else if (a == 'zoom') { $('#lb img').src = b.dataset.src; $('#lb').classList.add('on') }
@@ -427,7 +449,7 @@ document.addEventListener('click', e => {
   else if (a == 'edit') { editId = id; cartView() }
   else if (a == 'reset') { delete cart[id].p; save(); bar(); cartView() }
   else if (a == 'disc') { disc = +v; save(); bar(); cartView() }
-  else if (a == 'new') { if (confirm('Очистить текущую заявку?')) { cart = {}; disc = 0; eo = ''; save(); closeSheet(); drawList() } }
+  else if (a == 'new') { const z = snap(); cart = {}; disc = 0; eo = ''; save(); closeSheet(); drawList(); toast('Изменено: заявка очищена', () => unsnap(z)) }
   else if (a == 'send') {
     if (!H.s || !lines().length) return alert('Укажите магазин и добавьте товары');
     if (!H.d || H.d < today()) { H.dm = 0; fixDate(); fill(); return alert('Дата поставки не может быть в прошлом. Поставлена ближайшая пятница — проверьте и отправьте снова.') }
@@ -440,13 +462,13 @@ document.addEventListener('click', e => {
     const tx = (eo ? '❗ ИЗМЕНЕНИЕ заявки от ' + ft(old.ts) + '\n' : '') + text();
     const o = { id: eo || Date.now().toString(36) + Math.random().toString(36).slice(2, 6), ts: eo ? old.ts : Date.now(), trader: me, h: { d: H.d, c: H.c, s: H.s, a: H.a, sid: H.sid || '' }, cart: JSON.parse(JSON.stringify(cart)), disc, sum: final(), m: S.mode, rc: { n: rc.n, p: num2 }, text: tx, items: lines().map(p => ({ n: p.n, g: p.g, u: p.u, q: qty(p), p: price(p), o: p.pr })) };
     if (eo) o.ed = Date.now();
-    LS('pending', o); location.href = `https://wa.me/${num2}?text=${encodeURIComponent(o.text)}`; }
-  else if (a == 'eoc') { if (confirm('Отменить правку? Корзина будет очищена, заявка останется как была.')) { eo = ''; cart = {}; disc = 0; clrShop(); save(); fill(); closeSheet(); drawList() } }
+    LS('pending', o); leaving = true; location.href = `https://wa.me/${num2}?text=${encodeURIComponent(o.text)}`; }
+  else if (a == 'eoc') { const z = snap(); eo = ''; cart = {}; disc = 0; clrShop(); save(); fill(); closeSheet(); drawList(); toast('Правка отменена, заявка осталась как была', () => unsnap(z)) }
   else if (a == 'hedit') { const x = histById(v); if (!x || !canEdit(x)) return alert('Изменить можно только свою заявку в течение ' + CFG.EDIT_HOURS + ' ч после создания');
     if (lines().length && !confirm('Текущая заявка в корзине будет заменена. Продолжить?')) return;
     if (x.m && x.m != S.mode) { S.mode = x.m; LS('set', S); applyMode(); drawSeg() }
     cart = JSON.parse(JSON.stringify(x.cart || {})); disc = x.disc || 0; H = { ...x.h, dm: 1, r: x.rc && x.rc.n || '' }; eo = x.id; save(); fill(); closeSheet(); drawList(); cartView() }
-  else if (a == 'clr') { if (confirm('Сбросить все выбранные товары?')) { cart = {}; disc = 0; eo = ''; save(); bar(); drawList() } }
+  else if (a == 'clr') { const z = snap(); cart = {}; disc = 0; eo = ''; save(); bar(); drawList(); toast('Изменено: корзина очищена', () => unsnap(z)) }
   else if (a == 'hd') histDetail(v);
   else if (a == 'htab') { histTab = v; LS('htab', v); histView() }
   else if (a == 'hdel') { const x = histById(v); if (x && isMine(x) && confirm('Удалить заявку «' + (x.h.s || '—') + '» на ' + x.sum + ' ₸?\nЕё можно будет вернуть в течение ' + CFG.UNDO_HOURS + ' ч.')) { delOrder(v, Date.now()); histView() } }
@@ -468,15 +490,30 @@ document.addEventListener('click', e => {
     if (findBase(n, c)) return alert('Такой магазин в этом городе уже есть');
     const o = upShop(n, c, ad); if (CFG.API_URL) { shopq.push({ n, c, a: ad, id: o.id }); LS('shopq', shopq); sync() } cKey = ''; shopCard(o.id) }
   else if (a == 'sord') { selShop(cSh); closeSheet(); drawList() }
-  else if (a == 'sst') { cSt = v; document.querySelectorAll('.sg button').forEach(e => e.classList.toggle('on', e.dataset.v == v)); $('#stn').placeholder = 'Заметка' + (v == 'no' ? ' (причина — обязательно)' : '') }
-  else if (a == 'sstsave') { const x = cSh, nt = $('#stn').value.trim(); if (!cSt) return alert('Выберите статус');
-    if (cSt == 'no' && !nt) return alert('Для статуса «Не заходить» укажите причину в заметке');
-    const at = Date.now(); x.st = cSt; x.nt = nt; x.sb = me; x.sa = at; LS('base', base); logLocal(x, 'status', cSt, nt); shopWarn();
-    if (CFG.API_URL) { shopq.push({ op: 'status', id: x.id || '', n: x.n, c: x.c, a: x.a, st: cSt, nt, by: me, at, rid: 'r' + at.toString(36) + Math.random().toString(36).slice(2, 6) }); LS('shopq', shopq); sync() } shopCard(x.id || 'n:' + x.n) }
+  else if (a == 'sst') { cSt = v; document.querySelectorAll('.sg button').forEach(e => e.classList.toggle('on', e.dataset.v == v)); $('#stw').hidden = v == '-'; $('#stn').placeholder = 'Заметка' + (v == 'no' ? ' (причина — обязательно)' : '') }
+  else if (a == 'sstsave') { const x = cSh, none = cSt == '-', st = none ? '' : cSt, nt = none ? '' : $('#stn').value.trim(); if (!cSt) return alert('Выберите статус');
+    if (st == 'no' && !nt) return alert('Для статуса «Не заходить» укажите причину в заметке');
+    const prev = { st: x.st || '', nt: x.nt || '' }; setShopStatus(x, st, nt);
+    toast('Изменено: ' + (st ? 'статус «' + ST[st][0] + '»' : 'статус снят'), () => { setShopStatus(x, prev.st, prev.nt); if (view == 'shopc' && cKey == (x.id || x.n)) { cSt = prev.st || '-'; shopCard(x.id || 'n:' + x.n) } });
+    shopCard(x.id || 'n:' + x.n) }
   else if (a == 'sinfo') { const x = cSh; x.ct = $('#ict').value.trim(); x.tl = $('#itl').value.trim(); x.rg = $('#irg').value.trim(); LS('base', base);
     if (CFG.API_URL) { shopq.push({ op: 'info', id: x.id || '', n: x.n, c: x.c, a: x.a, ct: x.ct, tl: x.tl, rg: x.rg }); LS('shopq', shopq); sync() } shopCard(x.id || 'n:' + x.n) }
-  else if (a == 'vis') { const x = cSh, nt = $('#vn').value.trim(), val = VO[+v], ts = Date.now(); x.lv = ts; x.lb = val; x.lw = me; LS('base', base); logLocal(x, 'visit', val, nt);
-    if (CFG.API_URL) { visq.push({ id: 'v' + ts.toString(36) + Math.random().toString(36).slice(2, 6), shop: x.n, sid: x.id || '', c: x.c, a: x.a, trader: me, ts, val, note: nt }); LS('visq', visq); sync() } shopCard(x.id || 'n:' + x.n) }
+  else if (a == 'vis') { const x = cSh, nt = $('#vn').value.trim(), val = VO[+v], ts = Date.now(), my = myLast(x);
+    if (my && dayMs(my) == dayMs(ts) && !confirm('Вы уже отмечали визит в этот магазин сегодня (' + new Date(my).toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' }) + ').\nОтметить ещё раз?')) return;
+    const prev = { lv: x.lv, lb: x.lb, lw: x.lw }, pm = cMine, vid = 'v' + ts.toString(36) + Math.random().toString(36).slice(2, 6);
+    x.lv = ts; x.lb = val; x.lw = me; cMine = ts; LS('base', base); logLocal(x, 'visit', val, nt);
+    if (CFG.API_URL) { visq.push({ id: vid, shop: x.n, sid: x.id || '', c: x.c, a: x.a, trader: me, ts, val, note: nt }); LS('visq', visq); sync() }
+    toast('Изменено: визит «' + val + '»', () => { const i = visq.findIndex(y => y.id == vid);
+      if (i >= 0) { visq.splice(i, 1); LS('visq', visq) } else if (CFG.API_URL) { visq.push({ cancel: 1, id: 'c' + Date.now().toString(36), shop: x.n, sid: x.id || '', trader: me }); LS('visq', visq); sync() }
+      x.lv = prev.lv; x.lb = prev.lb; x.lw = prev.lw; cMine = pm; LS('base', base); if (Array.isArray(cLog)) { const k = cLog.findIndex(l => l.kind == 'visit' && l.ts == ts); if (k >= 0) cLog.splice(k, 1) } if (view == 'shopc' && cKey == (x.id || x.n)) shopCard(x.id || 'n:' + x.n) });
+    shopCard(x.id || 'n:' + x.n) }
+  else if (a == 'vcan') { const x = cSh; if (!confirm('Отменить вашу последнюю отметку визита в «' + x.n + '»?')) return;
+    const mi = visq.map((y, i) => y.cancel || y.sid != (x.id || '') || y.shop != x.n || y.trader != me ? -1 : i).filter(i => i >= 0).pop();   // ещё не ушла на сервер — просто убираем из очереди
+    if (mi != null) { visq.splice(mi, 1); LS('visq', visq) } else if (CFG.API_URL) { visq.push({ cancel: 1, id: 'c' + Date.now().toString(36), shop: x.n, sid: x.id || '', trader: me }); LS('visq', visq); sync() }
+    if (Array.isArray(cLog)) { const k = cLog.findIndex(l => l.kind == 'visit' && l.who == me); if (k >= 0) cLog.splice(k, 1); const rest = cLog.find(l => l.kind == 'visit'), mine2 = cLog.find(l => l.kind == 'visit' && l.who == me);
+      x.lv = rest ? rest.ts : 0; x.lb = rest ? rest.val : ''; x.lw = rest ? rest.who : ''; cMine = mine2 ? mine2.ts : 0 } else { x.lv = 0; x.lb = ''; x.lw = ''; cMine = 0 }
+    LS('base', base); toast('Отметка визита отменена'); shopCard(x.id || 'n:' + x.n) }
+  else if (a == 'slog') { cLog = null; cErr = ''; shopCard(cSh.id || 'n:' + cSh.n); loadLog(cSh) }
   else if (a == 'ssave') { const n = $('#en').value.trim().replace(/\s+/g, ' '), c = $('#ec').value, ad = $('#ea').value.trim(); if (!n) return;
     if (base.some(b => b !== eSh && norm(b.n) == norm(n) && norm(b.c) == norm(c))) return alert('Магазин с таким названием в этом городе уже есть');
     const old = eSh.n; eSh.n = n; eSh.c = c; eSh.a = ad; LS('base', base);
@@ -509,6 +546,7 @@ document.addEventListener('change', e => { const t = e.target;
   else if (t.dataset.np !== undefined) { const n = num(t.value), id = t.dataset.np; if (n > 0) { n == find(id).pr ? delete cart[id].p : cart[id].p = n; save() } editId = ''; bar(); cartView() }
   else if (t.id == 'dc') { disc = Math.min(100, num(t.value)); save(); bar(); cartView() }
   else if (t.id == 'rc') { H.r = t.value; save() }
+  else if (t.id == 'cd') { if (!t.value || t.value < today()) { H.dm = 0; fixDate(); alert('Прошедшую дату выбрать нельзя. Поставлена ближайшая пятница.') } else { H.d = t.value; H.dm = 1 } save(); fill(); cartView() }
   else if (t.id == 'htr') { hTr = t.value; histView() }
   else if (t.id == 'shc') { shCity = t.value; shopsView() } else if (t.id == 'shs') { shSt = t.value; shopsView() }
   else if (t.id == 'impf') importBackup(t.files[0]); });
@@ -523,6 +561,19 @@ $('#q').oninput = e => { Q = e.target.value.toLowerCase(); drawList() };
 $('#c').onchange = e => { H.r = ''; if (e.target.value == '+') { const n = (prompt('Название города') || '').trim(); if (n) { S.cities.push(n); LS('set', S); H.c = n } cities() } else H.c = e.target.value; save() };
 
 /* ============ 9. СТАРТ ============ */
+// Защита от случайного выхода: кнопка «назад» сначала закрывает шторку/фото, а при непустой корзине просит нажать ещё раз; закрытие вкладки на ноутбуке — с вопросом
+history.replaceState({ ab: 0 }, '');
+const arm = () => { if (!history.state || history.state.ab !== 1) history.pushState({ ab: 1 }, '') };   // запись «страж» добавляем по касанию: браузер пропускает записи истории, созданные без действий пользователя
+document.addEventListener('pointerdown', arm, true);
+window.addEventListener('popstate', () => {
+  const keep = () => history.pushState({ ab: 1 }, '');
+  if ($('#lb').classList.contains('on')) { $('#lb').classList.remove('on'); return keep() }
+  if (document.body.classList.contains('sh')) { closeSheet(); drawList(); return keep() }
+  if (lines().length && Date.now() - lastBack > 2500) { lastBack = Date.now(); keep(); return toast('Нажмите «назад» ещё раз, чтобы выйти. Корзина сохранится.') }
+  leaving = true; history.back();
+});
+window.addEventListener('beforeunload', e => { if (!leaving && (lines().length || LS('pending'))) { e.preventDefault(); e.returnValue = '' } });
+window.addEventListener('pageshow', () => { leaving = false });
 $('#s').addEventListener('focus', drawDD); $('#s').addEventListener('input', e => { H.s = e.target.value; H.sid = ''; save(); drawDD(); shopWarn() });
 // Свайп вниз закрывает шторку: тянуть можно за полоску, заголовок или за содержимое, если оно прокручено до верха
 (() => { const sh = document.getElementById('sheet'); if (!sh) return; let y0 = 0, dy = 0, on = false, drag = false, t0 = 0;
@@ -566,11 +617,12 @@ function importBackup(f) {
     const x = d.data, mg = (k, key) => { const m = new Map(); [...(LS(k) || []), ...(x[k] || [])].forEach((e, i) => m.set(key ? e[key] : JSON.stringify(e), e)); LS(k, [...m.values()]) };
     mg('fav'); mg('drafts'); mg('shopq'); mg('visq'); mg('delq', 'id'); mg('hist', 'id'); mg('outbox', 'id');
     if (x.set) LS('set', x.set); if (x.me) LS('me', x.me); if (!lines().length && x.cart) { LS('cart', x.cart); LS('disc', x.disc || 0); LS('hdr', x.hdr || H); LS('eo', x.eo || '') }
-    alert('Данные загружены. Приложение перезапустится.'); location.reload() };
+    alert('Данные загружены. Приложение перезапустится.'); leaving = true; location.reload() };
   r.readAsText(f) }
 document.addEventListener('change', e => { if (e.target.id == 'dp' && e.target.value) { const [y, m, d] = e.target.value.split('-').map(Number); histDay = new Date(y, m - 1, d).getTime(); histView() } });   // выбор дня в календаре
 $('#sl').addEventListener('pointerdown', e => e.preventDefault());   // не терять фокус поля при тапе по списку
 document.addEventListener('click', e => { if (!e.target.closest('.cb')) $('#sl').hidden = true });
+document.addEventListener('click', e => { const t = e.target; if (t.matches && t.matches('input[type=date]') && t.showPicker) { try { t.showPicker() } catch (_) {} } });   // на ноутбуке календарь открывается по клику на поле, а не только по значку
 document.addEventListener('visibilitychange', () => { if (!document.hidden) { checkPending(); sync() } });
 window.addEventListener('online', sync); window.addEventListener('offline', () => { syncErr = true; syncStatus() });
 $('#sy').addEventListener('click', () => sync());

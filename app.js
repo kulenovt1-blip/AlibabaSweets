@@ -16,8 +16,8 @@ const DEMO = [['Финики','Финики FINDI caramel','150г','1704','1976'
 
 /* ============ 2. ХЕЛПЕРЫ И СОСТОЯНИЕ ============ */
 /* Версия сборки: должна совпадать с <meta name="ver"> в index.html. Если файлы на хостинге разных версий — покажем красную плашку. */
-const VER = '25';
-const NEED = 25;   // нужная версия Code.gs на сервере
+const VER = '26';
+const NEED = 26;   // нужная версия Code.gs на сервере
 { const m = document.querySelector('meta[name=ver]');
   if (!m || m.content != VER) document.body.insertAdjacentHTML('afterbegin', '<div style="background:#C82B27;color:#fff;padding:12px;font-weight:800">Файлы сайта разных версий. Загрузите ВСЕ файлы из архива заново (index.html, styles.css, app.js, sw.js) и обновите страницу дважды.</div>') }
 const IC = { folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>', clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
@@ -230,8 +230,8 @@ function histView() { // вкладки «Мои» / «Все заявки»; н
     ? `<div class="day"><div class="dn"><button class="dnb" data-a="dprev" aria-label="Предыдущий день">${ico('back', 18)}</button><label class="dl"><span>${lbl(histDay)}</span><input type="date" id="dp" value="${isoDay(histDay)}" max="${isoDay(t0)}" aria-label="Выбрать день"></label><button class="dnb" data-a="dnext" ${histDay >= t0 ? 'disabled' : ''} aria-label="Следующий день"><span class="fl">${ico('back', 18)}</span></button></div><div class="ds">${stats}</div><button class="dall" data-a="dall">Все дни</button></div>`
     : `<div class="day"><div class="dn"><span class="dl2">Все дни</span></div><div class="ds">${stats}</div><button class="dall" data-a="dtoday">Выбрать день</button></div>${CFG.API_URL ? `<p class="m" style="margin:-4px 2px 10px">Показаны заявки за последние ${mine ? 30 : 7} дн. Более ранние — через «Выбрать день».</p>` : ''}`;
   const emptyMsg = loading ? '<p class="empty">Загружаю заявки за этот день…</p>' : failed ? '<p class="empty">Нет связи: этот день не загружен.<br><button data-a="dretry" style="margin-top:12px;padding:12px 18px">Повторить</button></p>' : histDay ? '<p class="empty">За этот день заявок нет</p>' : '<p class="empty">Заявок пока нет</p>';
-  $('#sb').innerHTML = tabs + trSel + plate + (act.map(x => `<div class="hi"><div data-a="hd" data-v="${esc(x.id)}" style="flex:1"><b>${esc(x.h.s || '—')} ›</b>${!mine || !isMine(x) ? `<div class="m who">${ico('user', 13)} ${esc(x.trader || '—')}</div>` : ''}<div class="m">Создана: ${ft(x.ts)}${x.ed ? ' · изменена ' + ft(x.ed) : ''}</div><div class="m">Поставка на: ${fd(x.h.d)} · ${esc(x.h.c || '')}</div><b style="color:var(--r)">${x.sum} ₸</b><span class="m">${CFG.API_URL && outbox.some(y => y.id == x.id) ? ' · не передано в базу' : ''}</span></div><div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end"><button data-a="rep" data-v="${esc(x.id)}" style="padding:12px 14px">Повторить</button><div style="display:flex;gap:6px">${canEdit(x) ? `<button class="x" style="color:var(--gd);border-color:var(--line)" data-a="hedit" data-v="${esc(x.id)}" aria-label="Изменить заявку">${ico('edit', 18)}</button>` : ''}${isMine(x) ? `<button class="x" data-a="hdel" data-v="${esc(x.id)}" aria-label="Удалить заявку">${ico('trash', 18)}</button>` : ''}</div></div></div>`).join('') || emptyMsg)
-  + (trash.length ? `<h3 style="margin:18px 0 8px;color:var(--gd)">Недавно удалённые</h3>` + trash.map(x => `<div class="hi" style="opacity:.8"><div style="flex:1"><b>${esc(x.h.s || '—')}</b><div class="m">${ft(x.ts)} · ${x.sum} ₸</div><div class="m">Можно вернуть ещё ${left(x)}</div></div><button data-a="hres" data-v="${esc(x.id)}" style="padding:12px 14px">Вернуть</button></div>`).join('') : '');
+  $('#sb').innerHTML = tabs + trSel + plate + (act.map(x => `<div class="hi"><div data-a="hd" data-v="${esc(x.id)}" style="flex:1"><b>${esc(x.h.s || '—')} ›</b>${!mine || !isMine(x) ? `<div class="m who">${ico('user', 13)} ${esc(x.trader || '—')}</div>` : ''}<div class="m">Создана: ${ft(x.ts)}${x.ed ? ' · изменена ' + ft(x.ed) : ''}</div><div class="m">Поставка на: ${fd(x.h.d)} · ${esc(x.h.c || '')}</div><b style="color:var(--r)">${x.sum} ₸</b>${CFG.API_URL && outbox.some(y => y.id == x.id) ? ' ' + pendChip() + (syncErr ? '<button data-a="sretry" class="rtry">Повторить</button>' : '') : ''}</div><div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end"><button data-a="rep" data-v="${esc(x.id)}" style="padding:12px 14px">Повторить</button><div style="display:flex;gap:6px">${canEdit(x) ? `<button class="x" style="color:var(--gd);border-color:var(--line)" data-a="hedit" data-v="${esc(x.id)}" aria-label="Изменить заявку">${ico('edit', 18)}</button>` : ''}${isMine(x) ? `<button class="x" data-a="hdel" data-v="${esc(x.id)}" aria-label="Удалить заявку">${ico('trash', 18)}</button>` : ''}</div></div></div>`).join('') || emptyMsg)
+  + (trash.length ? `<h3 style="margin:18px 0 8px;color:var(--gd)">Недавно удалённые</h3>` + trash.map(x => `<div class="hi" style="opacity:.8"><div style="flex:1"><b>${esc(x.h.s || '—')}</b><div class="m">${ft(x.ts)} · ${x.sum} ₸</div><div class="m">Можно вернуть ещё ${left(x)}</div>${delq.some(o => o.id == x.id) ? '<div class="m">' + pendChip() + ' (удаление)</div>' : ''}</div><button data-a="hres" data-v="${esc(x.id)}" style="padding:12px 14px">Вернуть</button></div>`).join('') : '');
 }
 function histDetail(id) { // полная карточка заявки
   const x = histById(id); if (!x) return; openSheet('hd', 'Заявка'); const R = (k, v) => `<div class="r"><span class="m">${k}</span><b>${v}</b></div>`;
@@ -282,6 +282,7 @@ function shopWarn() { // плашка под полем магазина: ста
 }
 
 /* ============ 7б. СИНХРОНИЗАЦИЯ, ПОДТВЕРЖДЕНИЕ, ЧЕРНОВИКИ, ПРОФИЛЬ ============ */
+const vfail = [];
 let syncWarn = false, syncing = false, again = false, syncErr = false, syncAt = '', lastErr = '', srvV = LS('srv') || 0;   // srvV — версия Code.gs на сервере
 async function api(url, opt) { // запрос к Apps Script с понятным текстом ошибки
   let r, t; try { r = await fetch(url, opt); t = await r.text() } catch (e) { throw new Error('браузер не смог связаться со скриптом (интернет, VPN, блокировщик или неверный API_URL)') }
@@ -298,7 +299,7 @@ async function sync() { // отправляет накопленные заяв�
   if (!CFG.API_URL) return;
   if (syncing) { again = true; return }                 // уже идёт — повторим после
   if (!navigator.onLine) { syncErr = true; syncStatus(); return }
-  syncing = true; syncStatus();
+  syncing = true; syncStatus(); const n0 = outbox.length + shopq.length + delq.length + visq.length;
   try {
     const new23 = x => x.op == 'status' || x.op == 'info' || x.op == 'meta';   // эти операции понимает только Code.gs v23+
     for (const x of [...shopq]) { // правки магазинов — строго по порядку; при ошибке останавливаемся
@@ -306,15 +307,18 @@ async function sync() { // отправляет накопленные заяв�
       const r = await api(CFG.API_URL, { method: 'POST', body: JSON.stringify({ key: CFG.API_KEY, shop: x }) });
       if (!r.ok) throw new Error('скрипт не принял правку магазина'); shopq = shopq.filter(y => y !== x); LS('shopq', shopq);
     }
-    for (const v of [...visq]) { // визиты
+    for (const v of [...visq]) { // визиты и операции над ними (правка / отмена / восстановление — по ID события); порядок сохраняется
       if (srvV < NEED) break;
-      const r = await api(CFG.API_URL, { method: 'POST', body: JSON.stringify(v.cancel ? { key: CFG.API_KEY, visitCancel: v } : { key: CFG.API_KEY, visit: v }) });
+      v.tried = 1; LS('visq', visq);                          // с этого момента запрос мог дойти до сервера, даже если ответ потерялся
+      const r = await api(CFG.API_URL, { method: 'POST', body: JSON.stringify(v.cancel ? { key: CFG.API_KEY, visitCancel: v } : v.act ? { key: CFG.API_KEY, visitOp: v } : { key: CFG.API_KEY, visit: v }) });
       if (!r.ok) throw new Error('скрипт не принял визит'); visq = visq.filter(y => y !== v); LS('visq', visq);
-    }
+      if (r.applied === false && !(v.act && r.reason == 'not_found')) vfail.push(visitFail(v, r.reason)) }
+    if (vfail.length) { const m = vfail.splice(0).join('\n'); setTimeout(() => alert(m), 0) }
     for (const o of [...outbox]) {
       const r = await api(CFG.API_URL, { method: 'POST', body: JSON.stringify({ key: CFG.API_KEY, order: o }) });
       if (!r.ok) throw new Error('скрипт не принял заявку'); outbox = outbox.filter(x => x.id != o.id); LS('outbox', outbox);
-      if (r.applied === false) { const h = LS('hist') || []; h.forEach(x => { if (x.id == o.id && o.ed) x.ed = 0 }); LS('hist', h);   // сервер отклонил правку (срок вышел или чужая заявка)
+      if (r.applied === false && r.reason == 'invalid') setTimeout(() => alert('Заявка «' + (o.h.s || '') + '» не принята сервером: не указан магазин.'), 0);
+      else if (r.applied === false) { const h = LS('hist') || []; h.forEach(x => { if (x.id == o.id && o.ed) x.ed = 0 }); LS('hist', h);   // сервер отклонил правку (срок вышел или чужая заявка)
         alert(r.reason == 'too_late' ? 'Правка заявки «' + (o.h.s || '') + '» не принята: прошло больше ' + CFG.EDIT_HOURS + ' ч.' : 'Правка заявки «' + (o.h.s || '') + '» не принята сервером (' + (r.reason || '—') + ').') }
     }
     for (const o of [...delq]) { // удаления и возвраты заявок — после самих заявок
@@ -333,8 +337,9 @@ async function sync() { // отправляет накопленные заяв�
       if (!!sv.del == !!o.del) return false; syncWarn = true; return Date.now() - o.t < 6e5 });                      // не совпало: сервер не применил — предупреждаем, пока не истёк срок
     LS('delok', delok); shist = d.hist; LS('trs', trs); LS('base', base); LS('shist', shist); shops();
     syncErr = false; lastErr = ''; syncAt = new Date().toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' });
+    if (n0 && !outbox.length && !shopq.length && !delq.length && !visq.length && !toastFn) toast('Сохранено на сервере');   // не перебиваем кнопку «Отменить»   // «Сохранено» — только после ответа сервера
   } catch (e) { syncErr = true; lastErr = e && e.message || 'неизвестная ошибка' }
-  syncing = false; syncStatus(); if (view == 'who') whoView(); if (view == 'hist') histView();   // окно выбора профиля обновляется по готовности данных
+  syncing = false; syncStatus(); if (view == 'who') whoView(); if (view == 'hist') histView(); if (view == 'shopc' && cSh) { drawFeed(cSh); loadLog(cSh) }   // открытая карточка магазина подтягивает ленту с сервера   // окно выбора профиля обновляется по готовности данных
   if (again) { again = false; return sync() }
 }
 
@@ -360,7 +365,7 @@ function whoView() {
 /* ============ 7в. МАГАЗИНЫ: список, статусы, контакты, визиты, «кого навестить» ============ */
 const norm = t => String(t || '').toLowerCase().replace(/ё/g, 'е').replace(/\s+/g, ' ').trim();
 const ST = { reg: ['Постоянный клиент', '#1E8449'], good: ['Хороший контакт', '#2E7D5B'], prom: ['Перспективный', '#A9801F'], neu: ['Нейтральный', '#7C7A69'], hard: ['Сложный', '#C0662B'], no: ['Не заходить', '#9B2C26'], closed: ['Закрыт', '#4A4A4A'] };
-const VO = ['Взяли заказ', 'Заказа нет', 'Никого не было', 'Закрыто', 'Зайти позже'];   // итог визита
+const VO = ['Взяли заказ', 'Заказа нет', 'Никого не было', 'Закрыто', 'Зайти позже', 'Другое'];   // результат визита (статусы взаимоотношений — отдельно, ST). «Другое» — только с комментарием
 const newSid = () => 's' + Date.now().toString(36).slice(-4) + Math.random().toString(36).slice(2, 7);
 const ago = ms => { if (!ms) return 'не было'; const d = Math.floor((dayMs(Date.now()) - dayMs(ms)) / 864e5); return d <= 0 ? 'сегодня' : d == 1 ? 'вчера' : d + ' дн. назад' };
 const lastC = x => Math.max(x.lv || 0, x.lo || 0);   // последний контакт: визит или заказ
@@ -369,7 +374,7 @@ const pillOf = b => b.st ? pill(b.st) : lastC(b) ? '' : '<span class="pl" style=
 const byId = id => id && base.find(b => b.id == id);
 const sameCity = (b, c) => !c || !b.c || norm(b.c) == norm(c);
 const findBase = (n, c) => base.find(b => norm(b.n) == norm(n) && sameCity(b, c)) || null;
-let cMine = 0, cErr = '', cKey = '', ddL = [], eSh = null, cSh = null, cLog = null, shMode = 'all', shSt = '', shCity = null, shQ = '', cSt = '';
+let cMine = 0, cTot = 0, evF = 'all', evEd = '', cErr = '', cKey = '', ddL = [], eSh = null, cSh = null, cLog = null, shMode = 'all', shSt = '', shCity = null, shQ = '', cSt = '';
 function shopEditView(x) { // правка названия, города, адреса / удаление магазина в общей базе
   eSh = x; $('#sl').hidden = true; openSheet('shop', 'Магазин');
   $('#sb').innerHTML = `<div class="sum"><b>Название</b><input id="en" value="${esc(x.n)}"><b>Город</b><select id="ec">${[...new Set([...S.cities, x.c].filter(Boolean))].map(c => `<option ${c == x.c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select><b>Адрес</b><input id="ea" value="${esc(x.a)}"><b>Тип точки</b><select id="ety">${tyOpts(x.ty)}</select></div><button class="send" style="background:var(--g);box-shadow:none" data-a="ssave">Сохранить</button><button class="ghost" data-a="scard" data-v="${esc(x.id || '')}">${ico('back', 18)} Назад</button><button class="ghost" style="color:var(--r);border-color:var(--r)" data-a="sdel">Удалить магазин</button>`;
@@ -438,39 +443,94 @@ function drawShops() {
 const shopById = v => String(v).startsWith('n:') ? base.find(b => b.n == v.slice(2)) : byId(v);
 function shopCard(v) {
   const x = shopById(v) || cSh; if (!x) return shopsView();
-  if (cKey != (x.id || x.n)) { cKey = x.id || x.n; cLog = null; cMine = 0; cErr = ''; cSt = x.st || '-'; loadLog(x) } cSh = x;
+  if (cKey != (x.id || x.n)) { cKey = x.id || x.n; cLog = null; cMine = 0; cTot = 0; evF = 'all'; evEd = ''; cErr = ''; cSt = x.st || '-'; loadLog(x) } cSh = x;
   openSheet('shopc', x.n); const log = cLog;
   const ch = (k, t, cls) => `<button data-a="${k}" ${cls ? 'class="' + cls + '"' : ''}`;
   $('#sb').innerHTML = `<div class="sum"><div class="m">${esc([x.ty, x.c, x.a].filter(Boolean).join(' · ') || 'без адреса')}</div>${x.fq ? `<div class="sw bad" style="margin-top:8px">Открытый вопрос: ${esc(x.fq)}</div>` : ''}${x.pl ? `<div class="sw ok" style="margin-top:8px">Визит запланирован на ${fd(isoDay(x.pl))}</div>` : ''}
     <div style="margin-top:6px">${pillOf(x) || '<span class="m">Без статуса</span>'}${x.sb ? `<span class="m"> · ${esc(x.sb)}, ${fd(isoDay(x.sa))}</span>` : ''}</div>${x.nt ? `<div style="margin-top:6px">${esc(x.nt)}</div>` : ''}
-    <div class="m" style="margin-top:6px">Последний заказ: ${ago(x.lo)} · визит: ${ago(x.lv)}${x.lb ? ' (' + esc(x.lb) + (x.lw ? ', ' + esc(x.lw) : '') + ')' : ''}</div></div>
+    <div class="m" id="sml" style="margin-top:6px">${sumLine(x)}</div></div>
   <button class="send" data-a="sord" data-v="${esc(x.id || '')}">${ico('cart', 20)} Создать заявку</button>
   <div class="sum" style="margin-top:12px"><b>План и вопросы</b><div class="m" style="margin-top:4px">Попадают в список «Кого посетить»</div>
     <div class="pr2"><input type="date" id="pld" min="${today()}" value="${x.pl ? isoDay(x.pl) : today()}"><button data-a="plan">${x.pl ? 'Перенести' : 'Запланировать'}</button>${x.pl ? '<button class="ghost2" data-a="planx">Убрать</button>' : ''}</div>
     <input id="fqi" placeholder="Открытый вопрос / что не забыть" value="${esc(x.fq || '')}" style="margin:10px 0 0"><div class="pr2"><button data-a="fqs">Сохранить вопрос</button>${x.fq ? '<button class="ghost2" data-a="fqx">Решён</button>' : ''}</div>
     <b style="display:block;margin-top:12px">Тип точки</b><select id="tys" style="margin:6px 0 0">${tyOpts(x.ty)}</select></div>
-  <div class="sum" style="margin-top:12px"><b>Отметить визит</b><input id="vn" placeholder="Заметка к визиту (необязательно)" style="margin:8px 0"><div class="vg">${VO.map((t, i) => `<button data-a="vis" data-v="${i}">${t}</button>`).join('')}</div>
-    <div class="m" style="margin-top:8px">${myLast(x) ? 'Ваш последний визит сюда: ' + ft(myLast(x)) : 'Вы здесь ещё не отмечались'}</div>${myLast(x) ? '<button class="ghost" style="margin-top:6px" data-a="vcan">Отменить мою последнюю отметку визита</button>' : ''}</div>
+  <div class="sum" style="margin-top:12px"><b>Отметить визит</b><div class="vdt"><input type="date" id="vd" max="${today()}" value="${today()}" aria-label="Дата визита"><input type="time" id="vt" value="${hhmm(Date.now())}" data-t0="${hhmm(Date.now())}" aria-label="Время визита"></div>
+    <div class="m">Дата и время — сейчас; можно указать прошедшие. Нажмите результат — визит запишется.</div><input id="vn" placeholder="Комментарий (для «Другое» — обязательно)" style="margin:8px 0"><div class="vg">${VO.map((t, i) => `<button data-a="vis" data-v="${i}">${t}</button>`).join('')}</div>
+    <div class="m" id="myl" style="margin-top:8px">${myLast(x) ? 'Ваш последний визит сюда: ' + ft(myLast(x)) : 'Вы здесь ещё не отмечались'}</div></div>
   <div class="sum" style="margin-top:12px"><b>Статус</b><div class="sg"><button data-a="sst" data-v="-" class="${cSt == '-' ? 'on' : ''}" style="--c:#7C7A69;grid-column:1/3">Не были (без статуса)</button>${Object.keys(ST).map(k => `<button data-a="sst" data-v="${k}" class="${cSt == k ? 'on' : ''}" style="--c:${ST[k][1]}">${ST[k][0]}</button>`).join('')}</div>
-    <div id="stw" ${cSt == '-' ? 'hidden' : ''}><input id="stn" placeholder="Заметка${cSt == 'no' ? ' (причина — обязательно)' : ''}" value="${esc(x.nt || '')}" style="margin:10px 0 0"></div><button class="send" style="background:var(--g);box-shadow:none;margin-top:10px" data-a="sstsave">Сохранить статус</button></div>
+    <div id="stw" ${cSt == '-' ? 'hidden' : ''}><input id="stn" placeholder="Заметка${cSt == 'no' ? ' (причина — обязательно)' : ''}" value="${esc(x.nt || '')}" style="margin:10px 0 0"></div><div class="m" style="margin-top:10px">Действует с (необязательно — если статус был установлен раньше)</div><input type="date" id="sef" max="${today()}" style="margin-top:4px"><button class="send" style="background:var(--g);box-shadow:none;margin-top:10px" data-a="sstsave">Сохранить статус</button></div>
   <div class="sum" style="margin-top:12px"><b>Контакт покупателя</b> <span class="m">(необязательно)</span><input id="ict" placeholder="Имя, должность" value="${esc(x.ct || '')}" style="margin:8px 0"><input id="itl" inputmode="tel" placeholder="Телефон" value="${esc(x.tl || '')}" style="margin:0 0 8px"><input id="irg" placeholder="Район / ориентир" value="${esc(x.rg || '')}" style="margin:0 0 8px">
     <button class="ghost" style="margin-top:0" data-a="sinfo">${ico('save', 18)} Сохранить контакт</button>${x.tl ? `<a class="ghost" style="text-decoration:none" href="tel:${esc(x.tl.replace(/[^\d+]/g, ''))}">${ico('phone', 18)} Позвонить</a>` : ''}</div>
-  <div class="sum" style="margin-top:12px"><b>Журнал отметок</b><div class="m">Кто и когда ставил статус и отмечал визиты в этом магазине</div>${log === null ? '<div class="m" style="margin-top:6px">Загружаю…</div>' : log === false ? `<div class="m" style="margin-top:6px">Журнал не загрузился: ${esc(cErr)}.${/не смог связаться/.test(cErr) ? ' Если заявки и магазины при этом работают, значит, скрипт упал именно на этом запросе. Обновите Code.gs до версии ' + NEED + ' (после этого ошибка скрипта будет показана текстом); точную причину видно в Apps Script → «Выполнения».' : /action|key|не данные/.test(cErr) ? ' Скорее всего, Code.gs не обновлён до версии ' + NEED + ': в Apps Script нужно «Развернуть → Управление развёртываниями → ✏️ → Новая версия».' : ''}</div><button class="ghost" data-a="slog">Повторить</button>` : log.length ? log.map(l => `<div class="r" style="display:block;padding:6px 0;border-top:1px solid var(--line)"><span class="m">${ft(l.ts)} · ${esc(l.who || '—')}</span><div>${l.kind == 'status' ? (l.val ? 'Статус: ' + esc((ST[l.val] || [l.val])[0]) : 'Статус снят (не были)') : 'Визит: ' + esc(l.val)}${l.nt ? ' — ' + esc(l.nt) : ''}</div></div>`).join('') : '<div class="m" style="margin-top:6px">Отметок пока нет</div>'}</div>
+  <div class="sum" style="margin-top:12px"><b>Лента магазина</b><div class="m">Заказы, визиты и статусы в одном списке. Время события и время внесения показаны отдельно, если различаются.</div><div id="feed">${feedHtml(x)}</div></div>
   <button class="ghost" data-a="sedit2">${ico('edit', 18)} Изменить название / город / адрес</button><button class="ghost" data-a="shops">${ico('back', 18)} К списку</button>`;
 }
 async function loadLog(x) {
-  const k = x.id || x.n, redraw = () => { if (cKey == k && view == 'shopc') shopCard(x.id || 'n:' + x.n) };
+  const k = x.id || x.n, redraw = () => { if (cKey == k && view == 'shopc') drawFeed(x) };
   if (!CFG.API_URL) { cLog = false; cErr = 'общая база не подключена'; return }
-  if (!navigator.onLine) { cLog = false; cErr = 'нет интернета'; return }
-  try { const r = await api(`${CFG.API_URL}?action=visits&key=${encodeURIComponent(CFG.API_KEY)}&sid=${encodeURIComponent(x.id || '')}&name=${encodeURIComponent(x.n)}&me=${encodeURIComponent(me)}&limit=15`); if (cKey == k) { cLog = r.log || []; cMine = +r.mine || 0; redraw() } }
-  catch (e) { if (cKey == k) { cLog = false; cErr = e.message || 'ошибка'; redraw() } }
+  if (!navigator.onLine) { if (!Array.isArray(cLog)) { cLog = false; cErr = 'нет интернета'; redraw() } return }
+  try { const r = await api(`${CFG.API_URL}?action=timeline&key=${encodeURIComponent(CFG.API_KEY)}&sid=${encodeURIComponent(x.id || '')}&name=${encodeURIComponent(x.n)}&me=${encodeURIComponent(me)}&limit=60`);
+    if (cKey == k) { cLog = r.events || []; cTot = +r.total || cLog.length; cMine = +r.mine || 0; redraw() } }
+  catch (e) { if (cKey == k && !Array.isArray(cLog)) { cLog = false; cErr = e.message || 'ошибка'; redraw() } }
 }
 const myLast = x => Math.max(cMine || 0, x.lw == me ? x.lv || 0 : 0);   // когда этот профиль последний раз отмечал визит в магазине
 function saveMeta(x) { LS('base', base); if (CFG.API_URL) { shopq.push({ op: 'meta', id: x.id || '', n: x.n, c: x.c, a: x.a, ty: x.ty || '', pl: x.pl || 0, fq: x.fq || '' }); LS('shopq', shopq); sync() } }
-function setShopStatus(x, st, nt) { // статус магазина: локально сразу, на сервер через очередь; прежние отметки остаются в журнале
-  const at = Date.now(); x.st = st; x.nt = nt; x.sb = me; x.sa = at; LS('base', base); logLocal(x, 'status', st, nt); shopWarn();
-  if (CFG.API_URL) { shopq.push({ op: 'status', id: x.id || '', n: x.n, c: x.c, a: x.a, st, nt, by: me, at, rid: 'r' + at.toString(36) + Math.random().toString(36).slice(2, 6) }); LS('shopq', shopq); sync() } }
-const logLocal = (x, kind, val, nt) => { if (Array.isArray(cLog)) cLog.unshift({ ts: Date.now(), who: me, kind, val, nt }) };
+function setShopStatus(x, st, nt, at0) { // статус магазина: локально сразу, на сервер через очередь; прежние отметки остаются в журнале. at0 — «действует с» (необязательно)
+  const reg = Date.now(), at = at0 || reg, rid = 'r' + reg.toString(36) + Math.random().toString(36).slice(2, 6);
+  if (at >= (x.sa || 0)) { x.st = st; x.nt = nt; x.sb = me; x.sa = at } LS('base', base); shopWarn();   // отметка «задним числом» не затирает более новый статус (так же решает сервер)
+  if (CFG.API_URL) { shopq.push({ op: 'status', id: x.id || '', n: x.n, c: x.c, a: x.a, st, nt, by: me, at, rid }); LS('shopq', shopq); sync() } }
+// --- лента магазина: события с сервера + то, что ещё ждёт отправки (поверх, с пометкой) ---
+const tsOf = (d, t) => { if (!d) return 0; const [y, m, dd] = d.split('-').map(Number), [h, mi] = (t || '00:00').split(':').map(Number); return new Date(y, m - 1, dd, h || 0, mi || 0).getTime() };
+const hhmm = ms => { const d = new Date(ms), z = k => String(k).padStart(2, '0'); return z(d.getHours()) + ':' + z(d.getMinutes()) };
+const tsErr = ts => !ts ? 'Укажите дату и время' : ts > Date.now() + 10 * 6e4 ? 'Время визита не может быть в будущем' : ts < Date.now() - 400 * 864e5 ? 'Дата визита слишком старая (больше года назад)' : '';
+const FAILR = { future: 'время в будущем', too_old: 'слишком старая дата', invalid: 'магазин не найден', not_owner: 'это чужая запись', cancelled: 'визит уже отменён — сначала восстановите его', act: 'неизвестная операция', ambiguous: 'не удалось однозначно определить магазин' };
+const visitFail = (v, r) => (v.act ? 'Изменение визита' : v.cancel ? 'Отмена визита' : 'Визит «' + (v.val || '') + '»') + ' в «' + (v.shop || '') + '» не принято сервером: ' + (FAILR[r] || r || '—') + '.';
+function feed(x) { // null — лента ещё не загружена
+  if (!Array.isArray(cLog)) return null;
+  const sid = x.id || '', mineQ = q => (q.sid || '') == sid || (!q.sid && !sid && q.shop == x.n) || (!q.sid && q.shop == x.n), ev = cLog.map(e => ({ ...e }));
+  visq.forEach(q => { if (q.cancel) return;
+    if (!q.act) { if (mineQ(q) && !ev.some(e => e.id == q.id)) ev.push({ k: 'visit', id: q.id, ts: q.ts, reg: q.ts, who: q.trader, val: q.val, nt: q.note || '', state: '', pend: 1, hist: [] }); return }
+    const e = ev.find(y => y.id == q.id); if (!e) return; e.pend = 1;
+    if (q.act == 'cancel') e.state = 'cancelled'; else if (q.act == 'restore') e.state = ''; else { if (q.ts != null) e.ts = q.ts; if (q.val != null) e.val = q.val; if (q.nt != null) e.nt = q.nt } });
+  shopq.forEach(q => { if (q.op == 'status' && mineQ(q) && !ev.some(e => e.id == q.rid)) ev.push({ k: 'status', id: q.rid, ts: q.at, reg: q.at, who: q.by, val: q.st, nt: q.nt || '', state: '', pend: 1 }) });
+  outbox.forEach(o => { const h = o.h || {}; if (!o.ed && ((h.sid && h.sid == sid) || (!h.sid && norm(h.s) == norm(x.n))) && !ev.some(e => e.oid == o.id)) ev.push({ k: 'order_create', id: 'oc:' + o.id, oid: o.id, ts: o.ts, reg: o.ts, who: o.trader, val: o.sum, nt: 'на ' + h.d, state: '', pend: 1, cur: null }) });
+  return ev.sort((a, b) => b.ts - a.ts || (b.reg || 0) - (a.reg || 0));
+}
+function recalcLocal(x) { // локальная сводка визитов из ленты (сервер потом пересчитает и подтвердит сам)
+  const ev = feed(x); if (!ev) return; const v = ev.filter(e => e.k == 'visit' && !e.state), a = v.slice().sort((p, q) => q.ts - p.ts)[0], full = cTot <= cLog.length;
+  if (a) { x.lv = a.ts; x.lb = a.val; x.lw = a.who } else if (full) { x.lv = 0; x.lb = ''; x.lw = '' }
+  const mine = v.filter(e => e.who == me).map(e => e.ts); if (mine.length || full) cMine = Math.max(0, ...mine); LS('base', base) }
+const sumLine = x => 'Последний заказ: ' + ago(x.lo) + ' · визит: ' + ago(x.lv) + (x.lb ? ' (' + esc(x.lb) + (x.lw ? ', ' + esc(x.lw) : '') + ')' : '');
+const pendChip = () => `<span class="pnd${syncErr ? ' er' : ''}">${syncErr ? 'Не отправлено' : 'Ожидает отправки'}</span>`;
+const EF = [['all', 'Все'], ['order', 'Заказы'], ['visit', 'Визиты'], ['status', 'Статусы']], efOf = k => /^order_/.test(k) ? 'order' : k;
+function evHtml(e, x) {
+  const my = e.who == me, tm = `${ft(e.ts)} · ${esc(e.who || '—')}${e.reg && Math.abs(e.reg - e.ts) > 10 * 6e4 ? ' · внесено ' + ft(e.reg) : ''}`, ch = e.pend ? ' ' + pendChip() : '', cx = e.state == 'cancelled';
+  const dd = t => String(t || '').replace(/(\d{4})-(\d{2})-(\d{2})/, (m, y, mo, d) => +d + '.' + +mo);
+  if (e.k == 'visit') {
+    if (evEd == e.id) return `<div class="ev"><div class="vdt"><input type="date" id="evd" max="${today()}" value="${isoDay(e.ts)}"><input type="time" id="evt" value="${hhmm(e.ts)}"></div><select id="evr" style="margin-top:8px">${[...new Set([...VO, e.val])].map(t => `<option ${t == e.val ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select><input id="evn" placeholder="Комментарий" value="${esc(e.nt || '')}" style="margin-top:8px"><div class="pr2"><button data-a="evsave" data-v="${esc(e.id)}">Сохранить</button><button class="ghost2" data-a="evx">Отмена</button></div></div>`
+    const ed = (e.hist || []).filter(h => h.k == 'edit').length;
+    return `<div class="ev${cx ? ' cx' : ''}"><div class="m">${tm}${ch}</div><div class="t">Визит: ${esc(e.val)}${e.nt ? ' — ' + esc(e.nt) : ''}</div>${cx ? '<div class="m">Отменён' + (e.by ? ' · ' + esc(e.by) + (e.at ? ', ' + ft(e.at) : '') : '') + '</div>' : ed ? '<div class="m">Исправлялся: ' + ed + ' р.</div>' : ''}${my ? `<div class="evb">${cx ? `<button data-a="evres" data-v="${esc(e.id)}">Восстановить</button>` : `<button data-a="eved" data-v="${esc(e.id)}">Изменить</button><button data-a="evcan" data-v="${esc(e.id)}">Отменить</button>`}</div>` : ''}</div>` }
+  if (e.k == 'status') return `<div class="ev"><div class="m">${tm}${ch}</div><div class="t">${e.val ? 'Статус: ' + esc((ST[e.val] || [e.val])[0]) : 'Статус снят (не были)'}${e.nt ? ' — ' + esc(e.nt) : ''}</div></div>`;
+  const cur = e.cur, nowS = cur ? (cur.del ? 'сейчас удалена' : '') : '', lab = { order_create: 'Заказ создан', order_edit: 'Заказ изменён', order_cancel: 'Заказ удалён', order_restore: 'Заказ восстановлен' }[e.k] || e.k, can = !!histById(e.oid);
+  const pv = e.prev ? ` · было ${e.prev.sum} ₸, поставка ${dd(e.prev.d)}` : '', mv = e.mv == 'out' ? '<div class="m">Перенесён в другой магазин</div>' : e.mv == 'in' ? '<div class="m">Перенесён из другого магазина</div>' : '';
+  return `<div class="ev"><div class="m">${tm}${ch}${e.legacy ? ' · по данным заявки' : ''}</div><div class="t">${lab}${e.val ? ' · ' + e.val + ' ₸' : ''}${e.nt ? ' · ' + esc(dd(e.nt)) : ''}${pv}</div>${mv}${nowS ? '<div class="m">' + nowS + '</div>' : ''}${can ? `<div class="evb"><button data-a="hd" data-v="${esc(e.oid)}">Открыть заявку</button></div>` : ''}</div>`;
+}
+function feedHtml(x) {
+  const ev = feed(x);
+  if (ev === null) return cLog === false ? `<div class="m" style="margin-top:6px">Лента не загрузилась: ${esc(cErr)}.${/не смог связаться/.test(cErr) ? ' Если заявки и магазины при этом работают, значит, скрипт упал именно на этом запросе. Обновите Code.gs до версии ' + NEED + '; точную причину видно в Apps Script → «Выполнения».' : /action|key|не данные/.test(cErr) ? ' Скорее всего, Code.gs не обновлён до версии ' + NEED + ': в Apps Script нужно «Развернуть → Управление развёртываниями → ✏️ → Новая версия».' : ''}</div><button class="ghost" data-a="slog">Повторить</button>` : '<div class="m" style="margin-top:6px">Загружаю…</div>';
+  const L = ev.filter(e => evF == 'all' || efOf(e.k) == evF), pend = ev.some(e => e.pend);
+  return `<div class="seg ef">${EF.map(([k, t]) => `<button data-a="evf" data-v="${k}" class="${evF == k ? 'on' : ''}">${t}</button>`).join('')}</div>${pend && syncErr ? '<button class="ghost" style="margin:8px 0 0" data-a="sretry">Повторить отправку</button>' : ''}`
+    + (L.map(e => evHtml(e, x)).join('') || '<div class="m" style="margin-top:8px">Событий пока нет</div>') + (cTot > cLog.length && evF == 'all' ? `<div class="m" style="margin-top:8px">Показаны последние ${cLog.length} из ${cTot}</div>` : '');
+}
+function drawFeed(x) { const f = document.getElementById('feed'); if (!f || cSh !== x) return; recalcLocal(x); f.innerHTML = feedHtml(x); const m = document.getElementById('sml'); if (m) m.innerHTML = sumLine(x); const y = document.getElementById('myl'); if (y) y.textContent = myLast(x) ? 'Ваш последний визит сюда: ' + ft(myLast(x)) : 'Вы здесь ещё не отмечались' }
+function visOp(x, act, e, extra) { // правка / отмена / восстановление визита по ID события. Возвращает функцию «обратно» для кнопки «Отменить»
+  const q = visq.find(y => !y.act && !y.cancel && y.id == e.id && !y.tried); let back;
+  if (q && act == 'cancel') { visq = visq.filter(y => y !== q); back = () => { visq.push(q) } }                      // на сервер ещё не уходил — просто убираем
+  else if (q && act == 'edit') { const o = { ts: q.ts, val: q.val, note: q.note }; q.ts = extra.ts; q.val = extra.val; q.note = extra.nt; back = () => { Object.assign(q, o) } }
+  else { const op = { act, id: e.id, opId: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), by: me, at: Date.now(), shop: x.n, sid: x.id || '', ...extra }; visq.push(op);
+    back = () => { const o2 = { restore: 'cancel', cancel: 'restore', edit: 'edit' }[act]; visOp(x, o2, e, act == 'edit' ? { ts: e.ts, val: e.val, nt: e.nt || '' } : {}) } }
+  LS('visq', visq); if (CFG.API_URL) sync(); return back;
+}
+const afterVis = x => { recalcLocal(x); drawFeed(x); const m = document.getElementById('sml'); if (m) m.innerHTML = sumLine(x) };
 function shopNew() {
   openSheet('shopn', 'Новый магазин');
   $('#sb').innerHTML = `<div class="sum"><b>Название</b><input id="nn" placeholder="Например: Магнум №3"><b>Город</b><select id="nc">${S.cities.map(c => `<option ${c == (shCity || H.c) ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select><b>Адрес</b><input id="na"><b>Тип точки</b><select id="nty">${tyOpts('')}</select></div><button class="send" style="background:var(--g);box-shadow:none" data-a="shns">Создать</button><button class="ghost" data-a="shops">${ico('back', 18)} К списку</button>`;
@@ -536,26 +596,30 @@ document.addEventListener('click', e => {
   else if (a == 'sst') { cSt = v; document.querySelectorAll('.sg button').forEach(e => e.classList.toggle('on', e.dataset.v == v)); $('#stw').hidden = v == '-'; $('#stn').placeholder = 'Заметка' + (v == 'no' ? ' (причина — обязательно)' : '') }
   else if (a == 'sstsave') { const x = cSh, none = cSt == '-', st = none ? '' : cSt, nt = none ? '' : $('#stn').value.trim(); if (!cSt) return alert('Выберите статус');
     if (st == 'no' && !nt) return alert('Для статуса «Не заходить» укажите причину в заметке');
-    const prev = { st: x.st || '', nt: x.nt || '' }; setShopStatus(x, st, nt);
-    toast('Изменено: ' + (st ? 'статус «' + ST[st][0] + '»' : 'статус снят'), () => { setShopStatus(x, prev.st, prev.nt); if (view == 'shopc' && cKey == (x.id || x.n)) { cSt = prev.st || '-'; shopCard(x.id || 'n:' + x.n) } });
+    const sef = $('#sef').value, at = !sef || sef == today() ? 0 : tsOf(sef, '12:00'); if (at > Date.now()) return alert('Дата «действует с» не может быть в будущем');
+    const prev = { st: x.st || '', nt: x.nt || '' }, old = at && at < (x.sa || 0); setShopStatus(x, st, nt, at);
+    toast(old ? 'Записано в историю с датой ' + fd(isoDay(at)) + '; текущий статус новее и не изменён' : 'Статус ' + (st ? '«' + ST[st][0] + '»' : 'снят') + (CFG.API_URL ? ' · ожидает отправки' : ''), old ? undefined : () => { setShopStatus(x, prev.st, prev.nt); if (view == 'shopc' && cKey == (x.id || x.n)) { cSt = prev.st || '-'; shopCard(x.id || 'n:' + x.n) } });
     shopCard(x.id || 'n:' + x.n) }
   else if (a == 'sinfo') { const x = cSh; x.ct = $('#ict').value.trim(); x.tl = $('#itl').value.trim(); x.rg = $('#irg').value.trim(); LS('base', base);
     if (CFG.API_URL) { shopq.push({ op: 'info', id: x.id || '', n: x.n, c: x.c, a: x.a, ct: x.ct, tl: x.tl, rg: x.rg }); LS('shopq', shopq); sync() } shopCard(x.id || 'n:' + x.n) }
-  else if (a == 'vis') { const x = cSh, nt = $('#vn').value.trim(), val = VO[+v], ts = Date.now(), my = myLast(x);
-    if (my && dayMs(my) == dayMs(ts) && !confirm('Вы уже отмечали визит в этот магазин сегодня (' + new Date(my).toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' }) + ').\nОтметить ещё раз?')) return;
-    const prev = { lv: x.lv, lb: x.lb, lw: x.lw }, pm = cMine, vid = 'v' + ts.toString(36) + Math.random().toString(36).slice(2, 6);
-    if (x.pl && x.pl <= ts) x.pl = 0; x.lv = ts; x.lb = val; x.lw = me; cMine = ts; LS('base', base); logLocal(x, 'visit', val, nt);
-    if (CFG.API_URL) { visq.push({ id: vid, shop: x.n, sid: x.id || '', c: x.c, a: x.a, trader: me, ts, val, note: nt }); LS('visq', visq); sync() }
-    toast('Изменено: визит «' + val + '»', () => { const i = visq.findIndex(y => y.id == vid);
-      if (i >= 0) { visq.splice(i, 1); LS('visq', visq) } else if (CFG.API_URL) { visq.push({ cancel: 1, id: 'c' + Date.now().toString(36), shop: x.n, sid: x.id || '', trader: me }); LS('visq', visq); sync() }
-      x.lv = prev.lv; x.lb = prev.lb; x.lw = prev.lw; cMine = pm; LS('base', base); if (Array.isArray(cLog)) { const k = cLog.findIndex(l => l.kind == 'visit' && l.ts == ts); if (k >= 0) cLog.splice(k, 1) } if (view == 'shopc' && cKey == (x.id || x.n)) shopCard(x.id || 'n:' + x.n) });
+  else if (a == 'vis') { const x = cSh, nt = $('#vn').value.trim(), val = VO[+v], vt = $('#vt'), fresh = $('#vd').value == today() && vt.value == vt.dataset.t0, ts = fresh ? Date.now() : tsOf($('#vd').value, vt.value), my = myLast(x);   // время не трогали — берём момент нажатия
+    const er = tsErr(ts); if (er) return alert(er); if (val == 'Другое' && !nt) return alert('Для результата «Другое» напишите комментарий');
+    if (my && dayMs(my) == dayMs(ts) && !confirm('Вы уже отмечали визит в этот магазин в этот день (' + new Date(my).toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' }) + ').\nОтметить ещё раз?')) return;
+    const vid = 'v' + ts.toString(36) + Math.random().toString(36).slice(2, 6), pl0 = x.pl, pv0 = { lv: x.lv, lb: x.lb, lw: x.lw, m: cMine }; if (x.pl && x.pl <= ts) x.pl = 0;
+    if (CFG.API_URL) { visq.push({ id: vid, shop: x.n, sid: x.id || '', c: x.c, a: x.a, trader: me, ts, val, note: nt }); LS('visq', visq); if (Array.isArray(cLog)) recalcLocal(x); else if (ts >= (x.lv || 0)) { x.lv = ts; x.lb = val; x.lw = me; cMine = Math.max(cMine, ts) } sync() }
+    else { x.lv = ts; x.lb = val; x.lw = me; cMine = ts }
+    LS('base', base);
+    toast('Визит «' + val + '» ' + (CFG.API_URL ? 'записан · ожидает отправки' : 'записан на этом устройстве'), () => { const e = { id: vid, ts, val, nt }; visOp(x, 'cancel', e, {}); x.pl = pl0; if (!Array.isArray(cLog)) { Object.assign(x, { lv: pv0.lv, lb: pv0.lb, lw: pv0.lw }); cMine = pv0.m } LS('base', base); if (view == 'shopc' && cKey == (x.id || x.n)) { afterVis(x); shopCard(x.id || 'n:' + x.n) } });   // «Отменить» — настоящая операция по ID визита
     shopCard(x.id || 'n:' + x.n) }
-  else if (a == 'vcan') { const x = cSh; if (!confirm('Отменить вашу последнюю отметку визита в «' + x.n + '»?')) return;
-    const mi = visq.map((y, i) => y.cancel || y.sid != (x.id || '') || y.shop != x.n || y.trader != me ? -1 : i).filter(i => i >= 0).pop();   // ещё не ушла на сервер — просто убираем из очереди
-    if (mi != null) { visq.splice(mi, 1); LS('visq', visq) } else if (CFG.API_URL) { visq.push({ cancel: 1, id: 'c' + Date.now().toString(36), shop: x.n, sid: x.id || '', trader: me }); LS('visq', visq); sync() }
-    if (Array.isArray(cLog)) { const k = cLog.findIndex(l => l.kind == 'visit' && l.who == me); if (k >= 0) cLog.splice(k, 1); const rest = cLog.find(l => l.kind == 'visit'), mine2 = cLog.find(l => l.kind == 'visit' && l.who == me);
-      x.lv = rest ? rest.ts : 0; x.lb = rest ? rest.val : ''; x.lw = rest ? rest.who : ''; cMine = mine2 ? mine2.ts : 0 } else { x.lv = 0; x.lb = ''; x.lw = ''; cMine = 0 }
-    LS('base', base); toast('Отметка визита отменена'); shopCard(x.id || 'n:' + x.n) }
+  else if (a == 'evf') { evF = v; drawFeed(cSh) }
+  else if (a == 'sretry') sync()
+  else if (a == 'eved') { evEd = v; drawFeed(cSh) } else if (a == 'evx') { evEd = ''; drawFeed(cSh) }
+  else if (a == 'evsave') { const x = cSh, e = feed(x).find(y => y.id == v); if (!e) return; const ts = tsOf($('#evd').value, $('#evt').value), val = $('#evr').value, nt = $('#evn').value.trim(), er = tsErr(ts);
+    if (er) return alert(er); if (val == 'Другое' && !nt) return alert('Для результата «Другое» напишите комментарий');
+    if (ts == e.ts && val == e.val && nt == (e.nt || '')) { evEd = ''; return drawFeed(x) }
+    const back = visOp(x, 'edit', e, { ts, val, nt }); evEd = ''; afterVis(x); toast('Визит изменён · ожидает отправки', () => { back(); afterVis(x) }) }
+  else if (a == 'evcan' || a == 'evres') { const x = cSh, e = feed(x).find(y => y.id == v); if (!e) return; const act = a == 'evcan' ? 'cancel' : 'restore', back = visOp(x, act, e, {}); afterVis(x);
+    toast(act == 'cancel' ? 'Визит отменён (запись сохраняется, можно восстановить) · ожидает отправки' : 'Визит восстановлен · ожидает отправки', () => { back(); afterVis(x) }) }
   else if (a == 'plan' || a == 'planx' || a == 'fqs' || a == 'fqx') { const x = cSh;
     if (a == 'plan') { const v2 = $('#pld').value; if (!v2 || v2 < today()) return alert('Выберите сегодняшнюю или будущую дату'); const [y, m, d] = v2.split('-').map(Number); x.pl = new Date(y, m - 1, d).getTime() }
     else if (a == 'planx') x.pl = 0; else if (a == 'fqs') x.fq = $('#fqi').value.trim(); else x.fq = '';
@@ -674,7 +738,7 @@ $('#sl').addEventListener('pointerdown', e => e.preventDefault());   // не т�
 document.addEventListener('click', e => { if (!e.target.closest('.cb')) $('#sl').hidden = true });
 document.addEventListener('click', e => { const t = e.target; if (t.matches && t.matches('input[type=date]') && t.showPicker) { try { t.showPicker() } catch (_) {} } });   // на ноутбуке календарь открывается по клику на поле, а не только по значку
 document.addEventListener('visibilitychange', () => { if (!document.hidden) { checkPending(); sync() } });
-window.addEventListener('online', sync); window.addEventListener('offline', () => { syncErr = true; syncStatus() });
+window.addEventListener('online', sync); window.addEventListener('offline', () => { syncErr = true; syncStatus(); if (view == 'shopc' && cSh) drawFeed(cSh) });
 $('#sy').addEventListener('click', () => sync());
 drawSeg(); fill(); shops(); draftBadge(); syncStatus(); load(); checkPending();
 sync().then(() => { if (CFG.API_URL && !me && !LS('pending')) whoView() });

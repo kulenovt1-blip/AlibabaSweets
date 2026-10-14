@@ -167,7 +167,7 @@ details.ck{background:var(--surface);border:1px solid var(--line);border-radius:
 .pl{display:inline-flex;align-items:center;gap:6px;color:var(--ink-2);background:var(--surface-sunken);font-size:calc(14px*var(--fz));font-weight:700;padding:4px 11px;border-radius:999px;white-space:nowrap}
 .pl.ok{background:var(--success-tint);color:var(--on-success-tint)}.pl.wait{background:var(--accent-tint);color:var(--on-accent-tint)}
 .pl.ok::before,.pl.wait::before{content:'';width:8px;height:8px;border-radius:50%;background:currentColor}
-.pl.add{background:var(--primary);color:var(--on-primary)}
+.pl.add{background:var(--primary);color:var(--on-primary);width:auto;height:auto;flex:none;font-size:calc(14px*var(--fz));font-weight:700}   /* «+ добавить»: не путать с кнопкой каталога .add (во всю ширину, 56 px) — иначе пилюля съедала строку */
 .shi{display:flex;align-items:center;gap:8px;width:100%;min-height:64px;text-align:left;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:16px;padding:11px 14px;margin-bottom:8px;font-weight:500}
 .shi b{font-weight:700}.sfl{display:flex;gap:8px;margin-bottom:10px}.sfl select{min-width:0}
 .sg{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}

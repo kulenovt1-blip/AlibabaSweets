@@ -251,7 +251,7 @@ function unsnap(z) { cart = JSON.parse(z.cart); disc = z.disc; eo = z.eo; msw = 
 /* Разделы (нижняя панель): Маршрут / Заявка / История / Профиль (v33: бывшее «Ещё»). Страница раздела открывается поверх каталога; кнопка «Назад» ведёт на уровень выше */
 const TAB = { shops: 'route', rplan: 'route', shopc: 'route', shop: 'route', shopn: 'route', hist: 'hist', hd: 'hist', more: 'more', set: 'more', who: 'more', adm: 'more', dr: 'more', cart: 'main', promo: 'more' };
 const BACK = { shopc: () => shopsView(), shop: () => shopCard(skey(eSh)), shopn: () => shopsView(), rplan: () => { rtAdd = false; shopsView() }, hd: () => histView(),
-  set: () => moreView(), who: () => moreView(), promo: () => moreView(), dr: () => moreView(), adm: () => whoView(), cart: () => { closeSheet(); drawList() } };
+  set: () => moreView(), who: () => moreView(), promo: () => moreView(), dr: () => moreView(), adm: () => moreView(), cart: () => { closeSheet(); drawList() } };
 function navSync() { const t = view ? TAB[view] || '' : 'main';
   document.querySelectorAll('.bn button').forEach(b => b.classList.toggle('on', b.dataset.t == t));
   document.body.classList.toggle('lock', (view == 'auth' && needLogin()) || view == 'pend') }   // вход и вопрос «Отправлено?» — без панели разделов
@@ -574,7 +574,6 @@ function draftView() {
 function whoView() { // профиль: кто вошёл, выход; администратору — управление доступом
   openSheet('who', 'Профиль'); const n = qN();
   $('#sb').innerHTML = tok ? `<div class="pfc"><span class="pfh"><span class="pfa">${esc(me.slice(0, 1).toUpperCase())}</span><span class="pft"><b>${esc(me)}</b><span>${role == 'admin' ? 'Администратор' : 'Торговый'}</span></span></span></div>
-    ${role == 'admin' ? `<button class="send" data-a="adm">${ico('user', 20)} Доступ и профили</button>` : ''}
     ${n ? `<div class="sw q whq">Ждут отправки: ${n}. Пока они не ушли на сервер, выйти или сменить профиль нельзя: эти операции записаны от имени «${esc(me)}», и под другим профилем сервер их не примет.</div>` : ''}
     <button class="ghost pfo2" data-a="out">Выйти из профиля</button>`
     : `<div class="empt">${ico('user', 40)}<b>Вход не выполнен</b>${n ? '<p class="m">Ждут отправки: ' + n + '.</p>' : ''}</div><button class="send" data-a="auth">Войти</button>`;

@@ -360,7 +360,6 @@ body.sh #toast{bottom:calc(var(--bnh) + 12px + env(safe-area-inset-bottom,0px))}
 .radd{border:2px solid var(--ink)}
 .shaw{margin-top:10px}.shaw[hidden]{display:none}.shaw input{margin-bottom:10px}
 .rt summary{display:flex;flex-direction:column;gap:2px}.rt summary small{font-weight:500}
-#sht{margin-top:10px}
 .rnav{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.rnav .ghost{margin:0;min-height:52px;font-size:calc(16px*var(--fz))}
 @media(max-width:380px){.rgo{font-size:0;gap:0}.rgo svg{width:24px;height:24px}}
 :root[data-fs="2"] .rgo{font-size:0;gap:0}:root[data-fs="2"] .rgo svg{width:24px;height:24px}   /* узкий экран: «Еду сюда» — стрелкой, вся строка — кнопка */

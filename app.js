@@ -19,8 +19,8 @@ const DEMO = [['Финики','Финики FINDI caramel','150г','1704','1976'
 
 /* ============ 2. ХЕЛПЕРЫ И СОСТОЯНИЕ ============ */
 /* Версия сборки: должна совпадать с <meta name="ver"> в index.html. Если файлы на хостинге разных версий — покажем красную плашку. */
-const VER = '33';
-const NEED = 33;   // нужная версия Code.gs на сервере
+const VER = '35';
+const NEED = 35;   // нужная версия Code.gs на сервере
 { const m = document.querySelector('meta[name=ver]');
   if (!m || m.content != VER) document.body.insertAdjacentHTML('afterbegin', '<div style="background:#C82B27;color:#fff;padding:12px;font-weight:800">Файлы сайта разных версий. Загрузите ВСЕ файлы из архива заново (index.html, styles.css, app.js, sw.js) и обновите страницу дважды.</div>') }
 const IC = { folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>', clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
@@ -45,7 +45,7 @@ const cleanCart = c => { const o = {}; if (c && typeof c == 'object' && !Array.i
 function safeO(x) { // заявка из хранилища, файла или с сервера: числа — числами, строки — строками. Данным не доверяем, откуда бы они ни пришли
   if (!x || typeof x != 'object' || Array.isArray(x)) return null;
   const t = v => v == null ? '' : String(v), h = x.h && typeof x.h == 'object' ? x.h : {}, rc = x.rc && typeof x.rc == 'object' ? x.rc : null;
-  const o = { ...x, id: t(x.id), ts: nz(x.ts), ed: nz(x.ed), del: nz(x.del), trader: t(x.trader), sum: nz(x.sum), disc: nz(x.disc), m: x.m == 'vat' || x.m == 'net' ? x.m : '', text: t(x.text),
+  const o = { ...x, id: t(x.id), ts: nz(x.ts), ed: nz(x.ed), del: nz(x.del), dby: t(x.dby), trader: t(x.trader), sum: nz(x.sum), disc: nz(x.disc), m: x.m == 'vat' || x.m == 'net' ? x.m : '', text: t(x.text),
     h: { d: t(h.d), c: t(h.c), s: t(h.s), a: t(h.a), sid: t(h.sid) }, cart: cleanCart(x.cart), rc: rc ? { n: t(rc.n), p: t(rc.p) } : null };
   if (Array.isArray(x.items)) o.items = x.items.filter(i => i && typeof i == 'object').map(i => ({ n: t(i.n), g: t(i.g), u: t(i.u), q: nz(i.q), p: nz(i.p), o: nz(i.o == null ? i.p : i.o) })); else delete o.items;
   return o;
@@ -60,16 +60,24 @@ const tg = n => fm(n) + '\u00A0₸';
 const fd = d => d ? +d.slice(8) + '.' + +d.slice(5, 7) : '';
 const wdOf = (d, f) => d ? new Date(d + 'T12:00:00').toLocaleDateString('ru', { weekday: f || 'short' }) : '';   // день недели даты «2026-10-16»
 const fdw = d => d ? d.split('-').reverse().join('.') + ', ' + wdOf(d, 'long') : '';   // 2026-10-15 → 15.10.2026, четверг           // 2026-10-09 → 9.10
-// Дата поставки: по умолчанию ближайшая пятница (фирма возит по пятницам); если сегодня пятница — следующая. Прошлые даты запрещены.
-const nextFri = () => { const k = (5 - new Date().getDay() + 7) % 7 || 7; return new Date(Date.now() + k * 864e5 - new Date().getTimezoneOffset() * 6e4).toISOString().slice(0, 10) };
-const fixDate = () => { if (!H.d || H.d < today() || !H.dm) { H.d = nextFri(); H.dm = 0 } };   // dm=1 — дату выбрали вручную
+// Дата поставки: по умолчанию ближайшая пятница ПОСЛЕ времени заявки (фирма возит по пятницам; заявка в пятницу — на следующую). v34: от времени заявки, а не от сегодня
+const locIso = t => { const d = new Date(t), z = k => String(k).padStart(2, '0'); return d.getFullYear() + '-' + z(d.getMonth() + 1) + '-' + z(d.getDate()) };   // местная дата «2026-10-16»
+const nextFri = (t = Date.now()) => { const d = new Date(t); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() + ((5 - d.getDay() + 7) % 7 || 7)); return locIso(d.getTime()) };   // вт 06.10 → пт 09.10; пт 09.10 → пт 16.10
+const ordT = () => H.t > 0 && H.t <= Date.now() ? H.t : Date.now();   // время заявки: указанное вручную («Время заявки») или «сейчас»
+const minD = () => locIso(Date.now() - 60 * 864e5);                     // вручную дату поставки можно выбрать не раньше 60 дней назад
+const fixDate = () => { if (!H.d || !H.dm) { H.d = nextFri(ordT()); H.dm = 0 } };   // dm=1 — дату выбрали вручную (её не трогаем, даже если прошла: спросим при отправке)
+function pickD(v) { // v34: ручной выбор даты поставки. Пусто — снова автоматически; раньше 60 дней или раньше дня заявки — не принимаем, прежняя дата остаётся
+  if (!v) { H.dm = 0; fixDate(); return }
+  if (v < minD() && !eo) return say('Дату поставки можно выбрать не раньше чем за 60 дней до сегодня.');
+  if (v < locIso(ordT())) return say('Поставка не может быть раньше дня заявки (' + fd(locIso(ordT())) + '). Если заявку приняли раньше — сначала укажите «Время заявки».');
+  H.d = v; H.dm = 1 }
 let P = [], cart = LS('cart') || {}, disc = LS('disc') || 0, H = LS('hdr') || { d: today() },
     S = LS('set') || { op: CFG.OPERATOR, cities: CFG.CITIES }, cat = 'Все', Q = '', view = '', editId = '';
 S.mode = S.mode || CFG.PRICE_MODE;
 if (!Array.isArray(S.cities) || !S.cities.length) S.cities = CFG.CITIES; S.op = S.op || CFG.OPERATOR;   // защита от данных старых версий
 if (typeof H != 'object' || Array.isArray(H)) H = { d: today() }; fixDate(); if (typeof cart != 'object' || Array.isArray(cart)) cart = {};
 let hfC = !!H.s;   // v33: магазин выбран — шапка заявки свёрнута в карточку «Магазин · адрес · поставка» с кнопкой «Сменить»
-let me = String(LS('me') || ''), trs = LS('trs') || [], rcp = LS('rcp') || [], fav = LS('fav') || [], eo = LS('eo') || '', visq = LS('visq') || [], base = LS('base') || [], shist = LS('shist') || [], outbox = LS('outbox') || [], drafts = LS('drafts') || [], msw = LS('msw'), shopq = LS('shopq') || [], delq = LS('delq') || [], delok = LS('delok') || [];   // delok — удаления, принятые сервером, но ещё не подтверждённые выгрузкой
+let me = String(LS('me') || ''), trs = LS('trs') || [], rcp = LS('rcp') || [], fav = LS('fav') || [], eo = LS('eo') || '', eob = typeof LS('eob') == 'number' ? LS('eob') : null, visq = LS('visq') || [], base = LS('base') || [], shist = LS('shist') || [], outbox = LS('outbox') || [], drafts = LS('drafts') || [], msw = LS('msw'), shopq = LS('shopq') || [], delq = LS('delq') || [], delok = LS('delok') || [];   // delok — удаления, принятые сервером, но ещё не подтверждённые выгрузкой
 if (msw != 'vat' && msw != 'net') msw = '';   // msw — режим цен, который был, когда его переключили при товарах в корзине ('' — не переключали или вернули как было)
 cart = cleanCart(cart); disc = Math.min(100, Math.max(0, nz(disc))); shist = safeL(shist); drafts = (Array.isArray(drafts) ? drafts : []).filter(x => x && typeof x == 'object' && x.H && typeof x.H == 'object');
 [outbox, shopq, visq, delq, delok] = [outbox, shopq, visq, delq, delok].map(q => Array.isArray(q) ? q.filter(x => x && typeof x == 'object') : []);
@@ -80,27 +88,33 @@ const qN = () => outbox.length + shopq.length + delq.length + visq.length;   // 
 // Миграция: заявки из старых версий без номера (id) получают его, иначе их нельзя удалить или повторить
 (() => { const h = LS('hist'); if (!Array.isArray(h)) return; let ch = false;
   h.forEach((x, i) => { if (x && !x.id) { x.id = 'old' + (x.ts || 0).toString(36) + i + Math.random().toString(36).slice(2, 5); ch = true } }); if (ch) LS('hist', h) })();
-// Выбор дня в истории: histDay — начало выбранного дня (0 — все дни); dayC — старые дни, подгруженные по запросу (только в памяти)
+// История: histDay — начало выбранного периода (0 — текущий); dayC — заявки за периоды старше загруженного окна, подгруженные по запросу (только в памяти)
 const dayMs = d => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x.getTime() };
 const isoDay = ms => { const d = new Date(ms), z = k => String(k).padStart(2, '0'); return d.getFullYear() + '-' + z(d.getMonth() + 1) + '-' + z(d.getDate()) };
 let histDay = dayMs(Date.now()), dayC = {}, dayBusy = 0, dayErr = 0;
 const winFrom = mine => dayMs(Date.now() - (mine ? 29 : 6) * 864e5);   // с какого дня заявки уже загружены: свои — 30 дней, чужие — 7 дней
-const needDay = (d, mine) => !!(CFG.API_URL && d && d < winFrom(mine) && !(dayC[d] && Date.now() - dayC[d].t < 12e4));
-async function loadDay(d) { const r = await call({ q: 'range', from: d, to: d + 864e5, undo: CFG.UNDO_HOURS }); dayC[d] = { t: Date.now(), hist: safeL(r.hist) } }
+// v35: needDay / loadDay заменены на needP / loadRange (период целиком) — в блоке «История»
 const pl3 = (n, a, b, c) => n % 10 == 1 && n % 100 != 11 ? a : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? b : c;   // 1 точка / 2 точки / 5 точек
 const plZ = n => n % 10 == 1 && n % 100 != 11 ? 'заявка' : [2, 3, 4].includes(n % 10) && ![12, 13, 14].includes(n % 100) ? 'заявки' : 'заявок';
 const setDel = (id, ts) => Object.values(dayC).forEach(c => c.hist.forEach(x => { if (x.id == id) x.del = ts }));   // пометка удаления и в подгруженных днях
-// История = серверная + локальная (ещё не синхронизированная), без дублей
-const allHist = () => { // история = серверная + локальная; у каждой заявки есть del (время удаления, 0 — не удалена)
-  const sm = new Map(shist.map(x => [x.id, x])), m = new Map();
-  [...shist, ...Object.values(dayC).flatMap(c => c.hist), ...safeL(LS('hist'))].forEach(x => m.set(x.id || x.sum + x.h.s + x.h.d, x));
-  return [...m.values()].map(x => { const q = [...delq].reverse().find(o => o.id == x.id) || delok.find(o => o.id == x.id), sv = sm.get(x.id);
-    return { ...x, del: q ? q.del : sv ? (sv.del || 0) : (x.del || 0) } }).sort((a, b) => (b.ts || 0) - (a.ts || 0));
+// История: серверная версия главнее копии на устройстве (v34). Копия показывается, пока заявка не отправлена (outbox) или если её нет в загруженном с сервера
+const allHist = () => { // у каждой заявки есть del (время удаления, 0 — не удалена)
+  const sm = new Map(shist.map(x => [x.id, x])), key = x => x.id || x.sum + x.h.s + x.h.d, pend = new Set(outbox.map(o => o.id)), sv = new Map(), m = new Map();
+  [...Object.values(dayC).flatMap(c => c.hist), ...shist].forEach(x => sv.set(key(x), x));   // серверные: подгруженные дни и окно init (оно свежее — побеждает)
+  safeL(LS('hist')).forEach(x => { const k = key(x);
+    if (pend.has(x.id)) return m.set(k, x);                                          // ещё не отправлена — показываем то, что ввели
+    if (CFG.API_URL && x.trader && x.trader != me) return;                            // копия другого профиля на этом устройстве (после смены профиля) — не показываем
+    if (!sv.has(k)) m.set(k, x) });                                                  // на сервере в загруженном окне её нет — показываем копию
+  sv.forEach((x, k) => { if (!m.has(k)) m.set(k, x) });
+  return [...m.values()].map(x => { const q = [...delq].reverse().find(o => o.id == x.id) || delok.find(o => o.id == x.id), v = sm.get(x.id);
+    return { ...x, del: q ? q.del : v ? (v.del || 0) : (x.del || 0) } }).sort((a, b) => (b.ts || 0) - (a.ts || 0));
 };
 let hTr = '';   // фильтр «Все заявки» по торговому ('' — все)
 const canEdit = x => !x.del && (CFG.API_URL && role == 'admin' ? !!x.trader : isMine(x) && Date.now() - (x.rg || x.ts || 0) < CFG.EDIT_HOURS * 36e5);   // свою заявку — в течение суток после записи (rg; дату оформления ts можно менять); администратор — любую заявку с торговым, без срока
 let histTab = LS('htab') || 'mine';   // вкладка истории: 'mine' — мои, 'all' — все торговые
 const isMine = x => CFG.API_URL ? !!me && x.trader == me : !x.trader || x.trader == me;   // заявка без торгового (из старых версий) — ничья: её можно посмотреть и повторить, но не изменить
+const canDel = x => isMine(x) || !!(CFG.API_URL && role == 'admin' && x.trader);   // v34: администратор удаляет и возвращает любую заявку с торговым (владелец не меняется)
+const delByMe = x => x.dby == me || delq.some(o => o.id == x.id && o.del) || delok.some(o => o.id == x.id && o.del);   // удаление сделано этим профилем (сервер отдаёт dby) или ещё в пути с этого устройства
 const histById = id => allHist().find(x => x.id == id);
 function delOrder(id, ts) { // ts — время удаления; 0 — вернуть заявку
   const h = LS('hist') || []; h.forEach(x => { if (x.id == id) x.del = ts }); LS('hist', h); setDel(id, ts);
@@ -115,7 +129,7 @@ const find = id => P.find(p => pid(p) == id);
 const lines = () => P.filter(p => qty(p) > 0);
 const total = () => Math.round(lines().reduce((s, p) => s + price(p) * qty(p), 0));
 const final = () => Math.round(total() * (1 - disc / 100));
-const save = () => { if (!Object.keys(cart).length) msw = ''; LS('cart', cart); LS('disc', disc); LS('hdr', H); LS('eo', eo); LS('msw', msw) };   // корзина пуста — отметка «режим переключали» больше не нужна
+const save = () => { if (!Object.keys(cart).length) msw = ''; if (!eo) eob = null; LS('cart', cart); LS('disc', disc); LS('hdr', H); LS('eo', eo); LS('eob', eob); LS('msw', msw) };   // корзина пуста — отметка «режим переключали» больше не нужна
 
 /* ============ 3. ПРАЙС ИЗ GOOGLE ТАБЛИЦЫ ============ */
 function parseCSV(t) { // разбор CSV с кавычками
@@ -244,14 +258,14 @@ function say(m) { return dlgShow(String(m), [{ t: 'Понятно', c: 'ok' }]) 
 function ask(m, yes, no, danger) { return dlgShow(String(m), [{ t: no || 'Отмена', c: 'no' }, { t: yes || 'Да', c: danger ? 'ok bad' : 'ok' }]).then(i => i == 1) }
 function askVat(m, send, sw) { return dlgShow(String(m), [{ t: sw, c: 'no' }, { t: send, c: 'ok acc', i: 'send' }, { t: 'Вернуться к заявке', c: 'q' }], '', -1).then(i => i == 1 ? 'send' : i == 0 ? 'switch' : 'back') }   // вопрос о режиме цен: «Отправить …» / «Переключить на …» / «Вернуться к заявке» (v33, DECISIONS п. 50; то же, что «назад» телефона) — ничего не меняя
 function askText(m, ph) { return dlgShow(String(m), [{ t: 'Отмена', c: 'no' }, { t: 'Добавить', c: 'ok' }], ph || ' ') }
-const snap = () => ({ cart: JSON.stringify(cart), disc, eo, msw, H: JSON.stringify(H) });   // снимок заявки для отмены
-function unsnap(z) { cart = JSON.parse(z.cart); disc = z.disc; eo = z.eo; msw = z.msw || ''; H = JSON.parse(z.H); save(); fill(); bar(); drawList(); if (view == 'cart') cartView() }
+const snap = () => ({ cart: JSON.stringify(cart), disc, eo, eob, msw, H: JSON.stringify(H) });   // снимок заявки для отмены
+function unsnap(z) { cart = JSON.parse(z.cart); disc = z.disc; eo = z.eo; eob = z.eob == null ? null : z.eob; msw = z.msw || ''; H = JSON.parse(z.H); save(); fill(); bar(); drawList(); if (view == 'cart') cartView() }
 
 /* ============ 6. ШТОРКА: корзина, история, настройки ============ */
 /* Разделы (нижняя панель): Маршрут / Заявка / История / Профиль (v33: бывшее «Ещё»). Страница раздела открывается поверх каталога; кнопка «Назад» ведёт на уровень выше */
-const TAB = { shops: 'route', rplan: 'route', shopc: 'route', shop: 'route', shopn: 'route', hist: 'hist', hd: 'hist', more: 'more', set: 'more', who: 'more', adm: 'more', dr: 'more', cart: 'main', promo: 'more' };
-const BACK = { shopc: () => shopsView(), shop: () => shopCard(skey(eSh)), shopn: () => shopsView(), rplan: () => { rtAdd = false; shopsView() }, hd: () => histView(),
-  set: () => moreView(), who: () => moreView(), promo: () => moreView(), dr: () => moreView(), adm: () => whoView(), cart: () => { closeSheet(); drawList() } };
+const TAB = { shops: 'route', rplan: 'route', rall: 'route', shopc: 'route', shop: 'route', shopn: 'route', hist: 'hist', hd: 'hist', more: 'more', set: 'more', who: 'more', adm: 'more', dr: 'more', cart: 'main', promo: 'more' };
+const BACK = { shopc: () => shopsView(), shop: () => shopCard(skey(eSh)), shopn: () => shopsView(), rplan: () => { rtAdd = false; shopsView() }, rall: () => shopsView(), hd: () => histView(),
+  set: () => moreView(), who: () => moreView(), promo: () => moreView(), dr: () => moreView(), adm: () => moreView(), cart: () => { closeSheet(); drawList() } };
 function navSync() { const t = view ? TAB[view] || '' : 'main';
   document.querySelectorAll('.bn button').forEach(b => b.classList.toggle('on', b.dataset.t == t));
   document.body.classList.toggle('lock', (view == 'auth' && needLogin()) || view == 'pend') }   // вход и вопрос «Отправлено?» — без панели разделов
@@ -286,6 +300,10 @@ function rcPick() { // получатель: выбранный вручную, 
   return L[0][1];
 }
 const rcBlock = () => rcp.length < 2 ? '' : `<p class="m rcb">Получатель: <b>${esc(rcPick().n || 'запасной номер')}</b> · меняется на главном экране, под адресом</p>`;
+let npAt = 0;   // v34: когда цену сохранили по касанию «Готово» / Enter
+document.addEventListener('pointerdown', e => { const b = e.target && e.target.closest ? e.target.closest('[data-a="pdone"]') : null, t = b && document.querySelector('[data-np]'); if (!t || !editId) return;
+  e.preventDefault(); npAt = Date.now(); commitNp(t) });   // касание «Готово»: сохраняем сразу, поле не теряет фокус — нет «change» с перерисовкой, из-за которой нажатие попадало в новую разметку («Цена») и поле открывалось снова
+document.addEventListener('keydown', e => { const t = e.target; if (e.key == 'Enter' && t && t.dataset && t.dataset.np !== undefined) { e.preventDefault(); npAt = Date.now(); commitNp(t) } });
 function commitNp(t) { // новая цена позиции: из поля ввода (по «Готово» или при уходе из поля)
   const n = num(t.value), id = t.dataset.np; if (editId != id) return; if (n > 0 && cart[id] && find(id)) { n == find(id).pr ? delete cart[id].p : cart[id].p = n; save() } editId = ''; bar(); cartView() }
 function vatBar() { // v33: режим цен — переключатель на всю ширину; под ним — откуда взята норма точки или предупреждение, что режим не совпадает
@@ -293,6 +311,7 @@ function vatBar() { // v33: режим цен — переключатель н�
   const hint = nm && nm.m != m ? `<div class="sw q">${nm.set ? 'В карточке магазина выбрано: ' + ML[nm.m] : 'Последняя заявка в этот магазин была ' + ML[nm.m]}</div>` : nm ? `<p class="m vth">${nm.set ? 'Как выбрано в карточке магазина' : 'Как в прошлой заявке в эту точку'}</p>` : '';
   return `<div class="vatb"><div class="seg">${['vat', 'net'].map(k => `<button data-a="mode" data-v="${k}" class="${m == k ? 'on' : ''}">${k == 'vat' ? 'Цены с НДС' : 'без НДС'}</button>`).join('')}</div>${hint}</div>`;
 }
+let tOpen = false;   // v34: раскрыть «Время заявки» один раз (после вопроса о прошедшей поставке)
 function cartView() { // v30: оформление по порядку — режим цен, магазин и дата, позиции, скидка и итог, время заявки, отправка. v33: вид — макет «Оформление заявки»
   if (view != 'cart') openSheet('cart', 'Ваша заявка'); const sh = document.getElementById('sheet'); if (sh) sh.classList.add('tl0');   // v33: заголовок крупно в странице, сверху только «К каталогу»
   const L = lines();
@@ -300,7 +319,7 @@ function cartView() { // v30: оформление по порядку — ре�
   const eoo = eo && histById(eo), banner = eo ? `<div class="sw q ckeo"><b>Правка заявки «${esc(eoo ? eoo.h.s : '')}»${eoo ? ' от ' + ft(eoo.ts) : ''}</b><span>Старая версия будет заменена.</span><button class="ghost" data-a="eoc">Отменить правку</button></div>` : '';
   const who = H.s ? `<div class="ckh"><div class="ckt"><small>МАГАЗИН</small><b>${esc(H.s)}</b>${H.a || H.c ? `<span class="m">${esc(H.a || H.c)}</span>` : ''}</div><button class="ocb" data-a="ochg">Сменить</button></div>`
     : `<div class="ckt"><small>МАГАЗИН</small><div class="sw bad">Магазин не указан</div><button class="ghost" data-a="ochg">Указать магазин</button></div>`;
-  const dBlock = `<div class="sum ck">${who}<label class="ckd"><b class="ckl">Дата поставки</b><span class="ckdv"><span>${esc(fdw(H.d))}</span>${ico('cal', 20)}<input type="date" id="cd" min="${today()}" value="${esc(H.d || '')}" aria-label="Дата поставки"></span></label></div>`;
+  const dBlock = `<div class="sum ck">${who}<label class="ckd"><b class="ckl">Дата поставки</b><span class="ckdv"><span>${esc(fdw(H.d))}</span>${ico('cal', 20)}<input type="date" id="cd" min="${eo ? '' : minD()}" value="${esc(H.d || '')}" aria-label="Дата поставки"></span></label>${!H.dm && H.t > 0 ? '<p class="m ckdh">Поставка пересчитана от даты заявки</p>' : ''}</div>`;
   const items = L.map(p => { const id = esc(pid(p)), n = price(p), ch = n != p.pr, ed = editId == pid(p);
     const pr = ed ? `<div class="npr"><input class="np" data-np="${id}" inputmode="decimal" value="${n}" aria-label="Новая цена"><button class="ib2 ok" data-a="pdone" data-id="${id}">Готово</button></div>`
       : ch ? `<span class="ipc"><s>${fm(p.pr)}</s><b>${tg(n)} / ${esc(p.u)}</b></span><small class="m">цена изменена</small>`
@@ -309,53 +328,74 @@ function cartView() { // v30: оформление по порядку — ре�
     <div class="cka"><div class="st"><button data-a="m" data-id="${id}" aria-label="Меньше">−</button><input data-q="${id}" inputmode="decimal" value="${qf(qty(p))}" aria-label="Количество"><button data-a="p" data-id="${id}" aria-label="Больше">+</button></div><span class="sp"></span>${ed ? '' : `<button class="lnk" data-a="edit" data-id="${id}" aria-label="Изменить цену">Цена</button>`}${ch && !ed ? `<button class="lnk" data-a="reset" data-id="${id}">Вернуть цену</button>` : ''}<button class="lnk bad" data-a="rm" data-id="${id}">Убрать</button></div></div>`; }).join('');
   const sum = `<div class="sum cks"><b>Скидка на весь чек</b><div class="dc">${[0, 3, 5, 10].map(x => `<button data-a="disc" data-v="${x}" class="${disc == x ? 'on' : ''}">${x ? x + '%' : 'Нет'}</button>`).join('')}<input id="dc" inputmode="decimal" placeholder="свой" value="${[0, 3, 5, 10].includes(disc) ? '' : disc}" aria-label="Своя скидка, %"></div>
   <div class="ckt2"><div class="r"><span class="m">Сумма</span><b>${tg(total())}</b></div>${disc > 0 ? `<div class="r"><span class="m">Скидка ${disc}%</span><b>−${tg(total() - final())}</b></div>` : ''}</div><div class="r t"><span>Итого</span><span>${tg(final())}</span></div><div class="m ckm">цены ${ML[S.mode]}</div></div>`;
-  const tBlock = `<details class="sc ck"${H.t > 0 ? ' open' : ''}><summary>${ico('clock', 22)}<span class="cst">Время заявки<small class="m">${H.t > 0 ? 'указано вручную: ' + ft(H.t) : 'сейчас · менять, если приняли раньше'}</small></span></summary><input type="datetime-local" id="ots" max="${dtl(Date.now())}" value="${dtl(H.t > 0 ? H.t : Date.now())}"><p class="m" style="margin:6px 0 10px">Меняйте, только если заявку приняли раньше, а вносите сейчас.</p></details>`;
-  $('#sb').innerHTML = `<h3 class="ckhd">Ваша заявка</h3><p class="m ckc">${L.length} ${pl3(L.length, 'позиция', 'позиции', 'позиций')}</p>` + vatBar() + banner + dBlock + `<div class="cki">${items}</div>` + sum + tBlock +
-    `${rcBlock()}${eo ? `<button class="send" data-a="esave">${ico('check', 20)} Сохранить изменение</button>` : `<button class="send" data-a="send">${ico('send', 22)} Отправить в WhatsApp</button>`}<button class="ghost" data-a="dsave">Сохранить как черновик</button><button class="lnk bad clr2" data-a="new">${ico('trash', 18)} Очистить заявку</button>`;
-  const np = document.querySelector('[data-np]'); if (np) np.select();
+  const tBlock = `<details class="sc ck"${H.t > 0 || tOpen ? ' open' : ''}><summary>${ico('clock', 22)}<span class="cst">Время заявки<small class="m">${H.t > 0 ? 'указано вручную: ' + ft(H.t) : 'сейчас · менять, если приняли раньше'}</small></span></summary><input type="datetime-local" id="ots" max="${dtl(Date.now())}" value="${dtl(H.t > 0 ? H.t : Date.now())}"><p class="m" style="margin:6px 0 10px">Меняйте, только если заявку приняли раньше, а вносите сейчас.</p></details>`;
+  $('#sb').innerHTML = `<h3 class="ckhd">Ваша заявка</h3><p class="m ckc">${L.length} ${pl3(L.length, 'позиция', 'позиции', 'позиций')}</p>` + vatBar() + banner + dBlock + tBlock + `<div class="cki">${items}</div>` + sum +
+    `${rcBlock()}${eo ? `<button class="send" data-a="esave">${ico('check', 20)} Сохранить изменение</button>` : `<button class="send" data-a="send">${ico('send', 22)} Отправить в WhatsApp</button>`}<button class="ghost" data-a="dsave">Сохранить как черновик</button>${eo ? '<button class="lnk clr2" data-a="eoc">Отменить правку</button>' : `<button class="lnk bad clr2" data-a="new">${ico('trash', 18)} Очистить заявку</button>`}`;   // v34: в правке «Очистить» только выходила из правки — путали с удалением
+  tOpen = false; const np = document.querySelector('[data-np]'); if (np) np.select();
 }
 const dtl = t => { const d = new Date(t); return new Date(t - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 16) };   // местное время в формате поля datetime-local
 const ft = ts => ts ? new Date(ts).toLocaleString('ru', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
-/* v31. Итоги в «Истории»: неделя (с понедельника) / месяц / год, календарные, и прошлый такой же период целиком. Одной суммой (оборот).
-   Границы периодов считает приложение в местном времени и отправляет на сервер; торговый видит свои, администратор — всех с разбивкой */
-let stP = ['w', 'm', 'y'].includes(LS('stp')) ? LS('stp') : 'w', stC = null, stBusy = false, stErr = '';
-function periods() { const d = new Date(Date.now()); d.setHours(0, 0, 0, 0); const y = d.getFullYear(), m = d.getMonth(), t = x => x.getTime();
-  const w0 = new Date(d); w0.setDate(d.getDate() - (d.getDay() + 6) % 7); const w1 = new Date(w0); w1.setDate(w0.getDate() + 7); const pw = new Date(w0); pw.setDate(w0.getDate() - 7);
-  return { w: [t(w0), t(w1)], pw: [t(pw), t(w0)], m: [t(new Date(y, m, 1)), t(new Date(y, m + 1, 1))], pm: [t(new Date(y, m - 1, 1)), t(new Date(y, m, 1))], y: [t(new Date(y, 0, 1)), t(new Date(y + 1, 0, 1))], py: [t(new Date(y - 1, 0, 1)), t(new Date(y, 0, 1))] } }
-async function loadStats(force) {
-  if (stBusy || !CFG.API_URL || !tok || srvV < 31 || (!force && stC && Date.now() - stC.at < 6e4)) return;
-  if (!navigator.onLine) { stErr = 'нет связи'; return }
-  stBusy = true; try { const r = await call({ q: 'stats', b: periods() }); if (r && r.ok && r.w) { stC = { at: Date.now(), d: r }; stErr = '' } else stErr = 'сервер не отдал итоги' } catch (e) { stErr = e && e.message || 'ошибка' } finally { stBusy = false }
+/* v35. «История» — история и итоги одним блоком (по образцу «Финансов»): период — день / неделя (с понедельника) / месяц / год, листается ‹ ›.
+   Итоги за этот же период считает сервер (q: 'per'; торговый — свои, администратор — все или выбранного торгового) — те же заявки, что в списке, поэтому числа сходятся.
+   Список — из загруженного окна (свои 30 дн., чужие 7 дн.) или с сервера за период (q: 'range'); год — по месяцам, нажатие открывает месяц */
+const HP = [['d', 'День'], ['w', 'Неделя'], ['m', 'Месяц'], ['y', 'Год']], MN = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
+let hP = HP.some(x => x[0] == LS('hp')) ? LS('hp') : 'd', stC = null, stBusy = '', stErr = '';   // stC — итоги по ключу «кто|период|начало» (сбрасывается, когда сервер принял заявку или удаление)
+function pRange(p, t) { const d = new Date(t || Date.now()); d.setHours(0, 0, 0, 0);   // [начало, конец) периода, в который попадает момент t, в местном времени
+  if (p == 'w') d.setDate(d.getDate() - (d.getDay() + 6) % 7); else if (p == 'm') d.setDate(1); else if (p == 'y') d.setMonth(0, 1);
+  const e = new Date(d); if (p == 'd') e.setDate(e.getDate() + 1); else if (p == 'w') e.setDate(e.getDate() + 7); else if (p == 'm') e.setMonth(e.getMonth() + 1); else e.setFullYear(e.getFullYear() + 1);
+  return [d.getTime(), e.getTime()] }
+const pShift = (p, a, k) => { const d = new Date(a); if (p == 'd') d.setDate(d.getDate() + k); else if (p == 'w') d.setDate(d.getDate() + 7 * k); else if (p == 'm') d.setMonth(d.getMonth() + k); else d.setFullYear(d.getFullYear() + k); return pRange(p, d.getTime() + 6 * 36e5)[0] };
+const dMon = t => new Date(t).toLocaleDateString('ru', { day: 'numeric', month: 'short' }).replace('.', '');   // «16 окт»
+function lblDay(d) { const t0 = dayMs(Date.now()); return d == t0 ? 'Сегодня · ' + dMon(d) : d == dayMs(Date.now() - 864e5) ? 'Вчера · ' + dMon(d) : new Date(d).toLocaleDateString('ru', { weekday: 'short' }) + ', ' + dMon(d) }
+function pLabel(p, a) { const d = new Date(a), cur = pRange(p, Date.now())[0];
+  if (p == 'd') return lblDay(a);
+  if (p == 'w') { const e = new Date(a); e.setDate(e.getDate() + 6); const r = d.getMonth() == e.getMonth() ? d.getDate() + '–' + dMon(e.getTime()) : dMon(a) + ' – ' + dMon(e.getTime());
+    return (a == cur ? 'Эта неделя · ' : a == pShift('w', cur, -1) ? 'Прошлая неделя · ' : '') + r }
+  if (p == 'm') return MN[d.getMonth()] + ' ' + d.getFullYear();
+  return String(d.getFullYear()) }
+const TOD = { d: 'К сегодняшнему дню', w: 'К этой неделе', m: 'К этому месяцу', y: 'К этому году' };
+async function loadPer(key, body) { // итоги периода с сервера; повтор — не чаще раза в минуту, ошибка не повторяется по кругу из перерисовки
+  if (stBusy || !CFG.API_URL || !tok || srvV < 35) return; stC = stC || {}; const c = stC[key]; if (c && Date.now() - c.at < 6e4) return;
+  if (!navigator.onLine) { stErr = 'нет связи'; return } if (c && c.err && Date.now() - c.at < 15e3) return;
+  stBusy = key; try { const r = await call(Object.assign({ q: 'per' }, body)); (stC = stC || {})[key] = r && r.ok && r.cur ? { at: Date.now(), d: r } : { at: Date.now(), err: 'сервер не отдал итоги' }; stErr = '' }
+  catch (e) { (stC = stC || {})[key] = { at: Date.now(), err: e && e.message || 'ошибка' } } finally { stBusy = '' }
   if (view == 'hist') histView() }
-function statsBlock() { // v33: «Итоги» — тёмной плашкой (макет «История и итоги»)
-  if (!CFG.API_URL || !tok || srvV < 31) return ''; loadStats();
-  const L = { w: ['Неделя', 'Прошлая неделя'], m: ['Месяц', 'Прошлый месяц'], y: ['Год', 'Прошлый год'] }, SN = { w: 'с понедельника', m: 'с 1-го числа', y: 'с 1 января' }, d = stC && stC.d, cur = d && d[stP], prv = d && d['p' + stP], nn = z => nz(z.n) + ' ' + plZ(nz(z.n));
-  const body = !cur || !prv ? `<div class="m">${stErr ? 'Итоги не загрузились: ' + esc(stErr) : 'Загружаю итоги…'}</div>`
-    : `<div><div class="stn">${tg(cur.sum)}</div><div class="m">${nn(cur)}<span> · ${SN[stP]}</span></div></div><div class="stpv"><span><span>${L[stP][1]} целиком</span><small>${nn(prv)}</small></span><b>${tg(prv.sum)}</b></div>`
-      + (d.all && cur.by ? `<div class="stb">${Object.keys(cur.by).sort((a, b) => nz(cur.by[b].sum) - nz(cur.by[a].sum)).map(n => `<div class="r"><span>${esc(n)}</span><b>${tg(cur.by[n].sum)} <small class="m">· ${nn(cur.by[n])}</small></b></div>`).join('') || '<div class="m">Заявок нет</div>'}</div>` : '');
-  return `<div class="sts"><div class="sth"><b class="stt">Итоги</b><span>${d && d.all ? 'все торговые' : 'мои заявки'}</span></div><div class="seg sg3">${Object.keys(L).map(k => `<button data-a="stp" data-v="${k}" class="${stP == k ? 'on' : ''}">${L[k][0]}</button>`).join('')}</div>${body}</div>` }
-function histView() { // вкладки «Мои» / «Все заявки»; ниже — «Недавно удалённые» (только свои)
-  openSheet('hist', 'История'); const now = Date.now(), win = CFG.UNDO_HOURS * 36e5, mine = histTab == 'mine';
-  if (needDay(histDay, mine) && !dayBusy && dayErr != histDay) { const d = histDay; dayBusy = d;   // выбранный день старше загруженного окна — запрашиваем его у сервера
-    loadDay(d).then(() => { if (dayErr == d) dayErr = 0 }).catch(() => { dayErr = d }).finally(() => { dayBusy = 0; if (view == 'hist') histView() }) }
-  const all = allHist(), inDay = x => !histDay || dayMs(x.ts || 0) == histDay, loading = needDay(histDay, mine) && dayErr != histDay, failed = needDay(histDay, mine) && dayErr == histDay;
-  const inT = x => mine || !hTr || x.trader == hTr, act = all.filter(x => !x.del && (!mine || isMine(x)) && inDay(x) && inT(x)), trash = mine ? all.filter(x => x.del && now - x.del < win && isMine(x)) : [];
+const needP = (k, a, mine) => !!(CFG.API_URL && a < winFrom(mine) && !(dayC[k] && Date.now() - dayC[k].t < 12e4));   // период начинается раньше загруженного окна — нужен запрос
+async function loadRange(k, a, e) { const r = await call({ q: 'range', from: a, to: e, undo: CFG.UNDO_HOURS }); dayC[k] = { t: Date.now(), hist: safeL(r.hist) } }
+function histView() { // вкладки «Мои» / «Все заявки»; период и листание; итоги периода; заявки периода; ниже — «Недавно удалённые» (свои; у администратора — и чужие, удалённые им)
+  openSheet('hist', 'История'); const now = Date.now(), win = CFG.UNDO_HOURS * 36e5, mine = histTab == 'mine', p = hP;
+  histDay = pRange(p, histDay || now)[0]; const a = histDay, e = pRange(p, a)[1], cur0 = pRange(p, now)[0], k = 'p:' + a + ':' + e, yr = p == 'y';
+  if (!yr && needP(k, a, mine) && !dayBusy && dayErr != k) { dayBusy = k;   // период старше загруженного окна — заявки за него с сервера
+    loadRange(k, a, e).then(() => { if (dayErr == k) dayErr = 0 }).catch(() => { dayErr = k }).finally(() => { dayBusy = 0; if (view == 'hist') histView() }) }
+  const all = allHist(), inP = x => (x.ts || 0) >= a && (x.ts || 0) < e, loading = !yr && needP(k, a, mine) && dayErr != k, failed = !yr && needP(k, a, mine) && dayErr == k;
+  const inT = x => mine || !hTr || x.trader == hTr, act = yr ? [] : all.filter(x => !x.del && (!mine || isMine(x)) && inP(x) && inT(x)), trash = mine ? all.filter(x => x.del && now - x.del < win && (isMine(x) || (canDel(x) && delByMe(x)))) : [];   // v34: у администратора — и чужие, удалённые им
   const left = x => { const m = Math.max(1, Math.round((win - (now - x.del)) / 6e4)); return m >= 60 ? Math.floor(m / 60) + ' ч ' + (m % 60) + ' мин' : m + ' мин' };
-  const nMine = all.filter(x => !x.del && isMine(x) && inDay(x)).length, nAll = all.filter(x => !x.del && inDay(x) && (!hTr || x.trader == hTr)).length;
+  const nMine = all.filter(x => !x.del && isMine(x) && inP(x)).length, nAll = all.filter(x => !x.del && inP(x) && (!hTr || x.trader == hTr)).length;
   const names = [...new Set([...trs, ...all.map(x => x.trader)].filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ru')), trSel = CFG.API_URL && !mine ? `<select id="htr" class="htrs"><option value="">Все торговые</option>${names.map(n => `<option ${n == hTr ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select>` : '';
-  const tabs = CFG.API_URL ? `<div class="seg htab">${[['mine', 'Мои (' + nMine + ')'], ['all', 'Все заявки (' + nAll + ')']].map(([k, t]) => `<button data-a="htab" data-v="${k}" class="${histTab == k ? 'on' : ''}">${t}</button>`).join('')}</div>` : '';
-  const sumAll = act.reduce((a, x) => a + (+x.sum || 0), 0), stats = loading ? 'Загружаю…' : failed ? '—' : act.length + ' ' + plZ(act.length) + ' · ' + tg(sumAll), t0 = dayMs(Date.now());
-  const lbl = d => { const ds = new Date(d).toLocaleDateString('ru', { day: 'numeric', month: 'short' }).replace('.', ''); return d == t0 ? 'Сегодня · ' + ds : d == dayMs(Date.now() - 864e5) ? 'Вчера · ' + ds : new Date(d).toLocaleDateString('ru', { weekday: 'short' }) + ', ' + ds };
-  const tm = ts => histDay ? new Date(ts || 0).toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' }) : ft(ts);   // выбран день — только время
-  const plate = histDay   // v33: выбор дня — белой карточкой, итоги дня под датой
-    ? `<div class="day"><button class="dnb" data-a="dprev" aria-label="Предыдущий день">${ico('back', 22)}</button><label class="dl"><span>${lbl(histDay)}</span><small>${stats}</small><input type="date" id="dp" value="${isoDay(histDay)}" max="${isoDay(t0)}" aria-label="Выбрать день"></label><button class="dnb" data-a="dnext" ${histDay >= t0 ? 'disabled' : ''} aria-label="Следующий день">${ico('chev', 22)}</button></div><div class="dsw">${histDay != t0 ? '<button class="lnk dall dtd" data-a="dtoday">К сегодняшнему дню</button>' : '<button class="lnk dall" data-a="dall">Показать все дни</button>'}</div>`
-    : `<div class="day"><div class="dl"><span>Все дни</span><small>${stats}</small></div><button class="ocb dall" data-a="dtoday">Выбрать день</button></div>${CFG.API_URL ? `<p class="m dsw">Показаны заявки за последние ${mine ? 30 : 7} дн. Более ранние — через «Выбрать день».</p>` : ''}`;
-  const emptyMsg = loading ? '<p class="empty">Загружаю заявки за этот день…</p>' : failed ? '<p class="empty">Нет связи: этот день не загружен.<br><button class="ocb" data-a="dretry" style="margin-top:12px">Повторить</button></p>' : histDay ? '<p class="empty">За этот день заявок нет</p>' : '<p class="empty">Заявок пока нет</p>';
-  const card = x => `<div class="hc"><button class="hch" data-a="hd" data-v="${esc(x.id)}"><span class="hct"><b>${esc(x.h.s || '—')} ›</b>${!mine || !isMine(x) ? `<span class="m who">${ico('user', 14)} ${esc(x.trader || 'без торгового')}</span>` : ''}<span class="m">Создана ${tm(x.ts)}${x.ed ? ' · изменена ' + ft(x.ed) : ''} · поставка ${fd(x.h.d)}${!mine && x.h.c ? ' · ' + esc(x.h.c) : ''}</span></span><b class="amt">${tg(x.sum)}</b></button>${CFG.API_URL && outbox.some(y => y.id == x.id) ? `<div class="hcp">${pendChip()}${syncErr ? '<button data-a="sretry" class="rtry">Отправить ещё раз</button>' : ''}</div>` : ''}
-    <div class="hcb"><button class="hrep" data-a="rep" data-v="${esc(x.id)}">Повторить</button>${canEdit(x) ? `<button class="hed" data-a="hedit" data-v="${esc(x.id)}" aria-label="Изменить заявку">${ico('edit', 16)} Изменить</button>` : ''}${isMine(x) ? `<button class="x" data-a="hdel" data-v="${esc(x.id)}" aria-label="Удалить заявку">${ico('trash', 18)}</button>` : ''}</div></div>`;
+  const tabs = CFG.API_URL ? `<div class="seg htab">${[['mine', 'Мои' + (yr ? '' : ' (' + nMine + ')')], ['all', 'Все заявки' + (yr ? '' : ' (' + nAll + ')')]].map(([k, t]) => `<button data-a="htab" data-v="${k}" class="${histTab == k ? 'on' : ''}">${t}</button>`).join('')}</div>` : '';
+  const sumAll = act.reduce((s, x) => s + (+x.sum || 0), 0), stats = yr ? '' : loading ? 'Загружаю…' : failed ? '—' : act.length + ' ' + plZ(act.length) + ' · ' + tg(sumAll);
+  const tm = ts => p == 'd' ? new Date(ts || 0).toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' }) : ft(ts);   // день — только время
+  const seg = `<div class="seg sg4 hps">${HP.map(([q, t]) => `<button data-a="hp" data-v="${q}" class="${p == q ? 'on' : ''}">${t}</button>`).join('')}</div>`;
+  const plate = `<div class="day"><button class="dnb" data-a="dprev" aria-label="Назад">${ico('back', 22)}</button><label class="dl"><span>${esc(pLabel(p, a))}</span><small>${stats}</small><input type="date" id="dp" value="${isoDay(a)}" max="${isoDay(dayMs(now))}" aria-label="Выбрать дату"></label><button class="dnb" data-a="dnext" ${a >= cur0 ? 'disabled' : ''} aria-label="Вперёд">${ico('chev', 22)}</button></div><div class="dsw">${a != cur0 ? `<button class="lnk dall dtd" data-a="dtoday">${TOD[p]}</button>` : ''}</div>`;
+  // итоги периода — с сервера; без сервера (или старый Code.gs) — по списку на устройстве
+  const who = mine ? 'me' : hTr || '*', pv = pShift(p, a, -1), bks = yr ? MN.map((x, i) => [new Date(new Date(a).getFullYear(), i, 1).getTime(), new Date(new Date(a).getFullYear(), i + 1, 1).getTime()]) : [], sk = who + '|' + p + '|' + a;
+  if (CFG.API_URL && tok && srvV >= 35) loadPer(sk, { cur: [a, e], prev: [pv, a], bk: bks, who });
+  const sc = stC && stC[sk], d = sc && sc.d, nn = z => nz(z.n) + ' ' + plZ(nz(z.n)), whoL = d ? (d.all ? 'все торговые' : mine || role != 'admin' ? 'мои заявки' : esc(hTr)) : mine ? 'мои заявки' : role == 'admin' ? (hTr ? esc(hTr) : 'все торговые') : 'мои заявки';
+  const tot = !CFG.API_URL || !tok || srvV < 35 ? (yr ? '' : `<div><div class="stn">${tg(sumAll)}</div><div class="m">${nn({ n: act.length })} · по заявкам на устройстве</div></div>`)
+    : !d ? `<div class="m">${sc && sc.err ? 'Итоги не загрузились: ' + esc(sc.err) : stErr ? 'Итоги не загрузились: ' + esc(stErr) : 'Загружаю итоги…'}</div>`
+    : `<div><div class="stn">${tg(d.cur.sum)}</div><div class="m">${nn(d.cur)}</div></div><div class="stpv"><span><span>${esc(pLabel(p, pv))}</span><small>${nn(d.prev)}</small></span><b>${tg(d.prev.sum)}</b></div>`   // прошлый такой же период — его же подписью («Прошлая неделя · 5–11 окт», «Сентябрь 2026»)
+      + (d.all && d.cur.by ? `<div class="stb">${Object.keys(d.cur.by).sort((x, y) => nz(d.cur.by[y].sum) - nz(d.cur.by[x].sum)).map(n => `<div class="r"><span>${esc(n)}</span><b>${tg(d.cur.by[n].sum)} <small class="m">· ${nn(d.cur.by[n])}</small></b></div>`).join('') || '<div class="m">Заявок нет</div>'}</div>` : '');
+  const sts = tot ? `<div class="sts"><div class="sth"><b class="stt">Итоги</b><span>${whoL}</span></div>${tot}</div>` : '';
+  const emptyMsg = loading ? '<p class="empty">Загружаю заявки за этот период…</p>' : failed ? '<p class="empty">Нет связи: заявки за этот период не загружены.<br><button class="ocb" data-a="dretry" style="margin-top:12px">Повторить</button></p>' : '<p class="empty">' + (p == 'd' ? 'За этот день заявок нет' : 'За этот период заявок нет') + '</p>';
+  const card = x => `<div class="hc"><button class="hch" data-a="hd" data-v="${esc(x.id)}"><span class="hct"><b>${esc(x.h.s || '—')}${x.h.a && sameName(x.h.s, x.h.c).length > 1 ? ' · ' + esc(x.h.a) : ''} ›</b>${!mine || !isMine(x) ? `<span class="m who">${ico('user', 14)} ${esc(x.trader || 'без торгового')}</span>` : ''}<span class="m">Создана ${tm(x.ts)}${x.ed ? ' · изменена ' + ft(x.ed) : ''} · поставка ${fd(x.h.d)}${!mine && x.h.c ? ' · ' + esc(x.h.c) : ''}</span></span><b class="amt">${tg(x.sum)}</b></button>${CFG.API_URL && outbox.some(y => y.id == x.id) ? `<div class="hcp">${pendChip()}${syncErr ? '<button data-a="sretry" class="rtry">Отправить ещё раз</button>' : ''}</div>` : ''}
+    <div class="hcb"><button class="hrep" data-a="rep" data-v="${esc(x.id)}">Заказать снова</button>${canEdit(x) ? `<button class="hed" data-a="hedit" data-v="${esc(x.id)}" aria-label="Изменить заявку">${ico('edit', 16)} Изменить</button>` : ''}${canDel(x) ? `<button class="x" data-a="hdel" data-v="${esc(x.id)}" aria-label="Удалить заявку">${ico('trash', 18)}</button>` : ''}</div></div>`;
   const tLeft = trash.length ? trash.reduce((a, x) => x.del > a.del ? x : a) : null;   // «вернуть можно ещё …» — по последней удалённой
-  $('#sb').innerHTML = statsBlock() + tabs + trSel + plate + `<div class="hcl">${act.map(card).join('') || emptyMsg}</div>`
-  + (trash.length ? `<details class="htr"><summary>${ico('trash', 20)}<span><b>Недавно удалённые: ${trash.length}</b> · вернуть можно ещё ${left(tLeft)}</span></summary>` + trash.map(x => `<div class="hc hcd"><div class="hch"><span class="hct"><b>${esc(x.h.s || '—')}</b><span class="m">${ft(x.ts)} · ${tg(x.sum)}</span><span class="m">Можно вернуть ещё ${left(x)}</span>${delq.some(o => o.id == x.id) ? '<span class="m">' + pendChip() + ' (удаление)</span>' : ''}</span><button class="ocb" data-a="hres" data-v="${esc(x.id)}">Вернуть</button></div></div>`).join('') + '</details>' : '');
+  let list = '';
+  if (yr) { const y = new Date(a).getFullYear(), bk = d && Array.isArray(d.bk) ? d.bk : null;   // год — по месяцам: сумма и число заявок, нажатие открывает месяц
+    list = `<div class="hmy">${MN.map((m, i) => { const t = new Date(y, i, 1).getTime(); if (t > now) return ''; const z = bk && bk[i]; return `<button class="hmr" data-a="hpm" data-v="${t}"><span>${m}</span><small class="m">${z ? nn(z) : ''}</small><b>${z ? tg(z.sum) : '…'}</b></button>` }).reverse().join('')}</div>` }
+  else { let last = -1; list = act.map(x => { const dd = dayMs(x.ts || 0), h = p != 'd' && dd != last ? (last = dd, (() => { const z = act.filter(y => dayMs(y.ts || 0) == dd); return `<h3 class="sub hdd">${esc(lblDay(dd))} · ${z.length} · ${tg(z.reduce((s, y) => s + (+y.sum || 0), 0))}</h3>` })()) : ''; return h + card(x) }).join('') || emptyMsg }   // неделя и месяц — по дням
+  $('#sb').innerHTML = tabs + trSel + seg + plate + sts + `<div class="hcl">${list}</div>`
+  + (trash.length ? `<details class="htr"><summary>${ico('trash', 20)}<span><b>Недавно удалённые: ${trash.length}</b> · вернуть можно ещё ${left(tLeft)}</span></summary>` + trash.map(x => `<div class="hc hcd"><div class="hch"><span class="hct"><b>${esc(x.h.s || '—')}</b><span class="m">${ft(x.ts)} · ${tg(x.sum)}${isMine(x) ? '' : ' · ' + esc(x.trader)}</span><span class="m">Можно вернуть ещё ${left(x)}</span>${delq.some(o => o.id == x.id) ? '<span class="m">' + pendChip() + ' (удаление)</span>' : ''}</span><button class="ocb" data-a="hres" data-v="${esc(x.id)}">Вернуть</button></div></div>`).join('') + '</details>' : '');
 }
 /* v31. «Продвигать товары» (только администратор): отметка хранится на листе «Продвигать» и сразу видна торговым после синхронизации */
 let prQ = '', prBusy = false;
@@ -373,7 +413,7 @@ function histDetail(id) { // полная карточка заявки. v33: ш
   $('#sb').innerHTML = `<div class="shh"><span class="shk">ЗАЯВКА · ${esc(ft(x.ts))}</span><h3 class="shn">${esc(x.h.s || '—')}</h3>${x.h.a || x.h.c ? `<span class="m shnt">${esc([x.h.a, x.h.c].filter(Boolean).join(' · '))}</span>` : ''}<div class="shp"><span class="pl">${x.m == 'vat' ? 'с НДС' : 'без НДС'}</span>${x.disc ? `<span class="pl">скидка ${nz(x.disc)}%</span>` : ''}${pend ? pendChip() : ''}</div></div>
   <div class="sum hdm">${R('Поставка на', fd(x.h.d) || '—')}${R('Торговый', esc(x.trader || 'без торгового'))}${x.rc && x.rc.n ? R('Получатель', esc(x.rc.n)) : ''}${R('Создана', ft(x.ts))}${x.ed ? R('Изменена', ft(x.ed)) : ''}</div>
   <div class="sum hdl"><b class="hdh">Товары${x.items ? ' · ' + x.items.length : ''}</b>${rows}<div class="r t"><span>Итого</span><span>${tg(x.sum)}</span></div></div>
-  ${canEdit(x) ? `<button class="send" data-a="hedit" data-v="${esc(x.id)}">${ico('edit', 20)} Изменить заявку <small class="hdlft">ещё ${Math.max(1, Math.round((CFG.EDIT_HOURS * 36e5 - (Date.now() - x.ts)) / 36e5))} ч</small></button>` : ''}<button class="${canEdit(x) ? 'ghost' : 'send'}" data-a="rep" data-v="${esc(x.id)}">${ico('undo', 18)} Повторить заявку</button><button class="ghost" data-a="hcopy" data-v="${esc(x.id)}">Скопировать текст</button>${isMine(x) ? `<button class="lnk bad clr2" data-a="hdel" data-v="${esc(x.id)}">${ico('trash', 18)} Удалить заявку</button>` : ''}`;
+  ${canEdit(x) ? `<button class="send" data-a="hedit" data-v="${esc(x.id)}">${ico('edit', 20)} Изменить заявку${CFG.API_URL && role == 'admin' ? '' : ` <small class="hdlft">ещё ${Math.max(1, Math.round((CFG.EDIT_HOURS * 36e5 - (Date.now() - (x.rg || x.ts || 0))) / 36e5))} ч</small>`}</button>` : ''}<button class="${canEdit(x) ? 'ghost' : 'send'}" data-a="rep" data-v="${esc(x.id)}">${ico('undo', 18)} Заказать снова</button><button class="ghost" data-a="hcopy" data-v="${esc(x.id)}">Скопировать текст</button>${canDel(x) ? `<button class="lnk bad clr2" data-a="hdel" data-v="${esc(x.id)}">${ico('trash', 18)} Удалить заявку</button>` : ''}`;
 }
 /* ============ 6а. ВИД: тема и размер текста (только на этом устройстве, ключ ui; применяется сразу, без «Сохранить») ============ */
 const TH = [['light', 'Светлая'], ['dark', 'Тёмная'], ['sys', 'Как в телефоне']], FS = [[0, 'Обычный'], [1, 'Крупный'], [2, 'Очень крупный']], CV = [['grid', 'Плиткой'], ['list', 'Списком']];
@@ -397,12 +437,13 @@ function setView() {
   const rl = rcp.length ? rcp.map(r => esc(r.n) + (r.c.length ? ' (' + esc(r.c.join(', ')) + ')' : '') + (r.d ? ' ★' : '') + ' · ' + esc(r.p)).join('<br>') + '<br><span class="m">Список ведётся на листе «Получатели» таблицы и общий для всех. Выбирается получатель на главном экране.</span>' : CFG.API_URL ? 'Список пуст: заполните лист «Получатели» (имя, телефон, города, по умолчанию). Пока заявки уходят на запасной номер.' : 'Общая база не подключена — заявки уходят на запасной номер.';
   $('#sb').innerHTML = `
   <details class="sc" open><summary>Вид</summary>${uiBlock()}</details>
+  ${role == 'admin' && rdSrv() ? `<details class="sc" open><summary>Общий маршрут</summary><p class="m" style="margin:0 0 8px">Маршруты всех торговых на любой день: «Маршрут» → «Общий маршрут». Вам он виден всегда.</p><div class="seg">${[[1, 'Виден торговым'], [0, 'Только администраторам']].map(([k, t]) => `<button data-a="shrt" data-v="${k}" class="${+cfgShare == k ? 'on' : ''}">${t}</button>`).join('')}</div></details>` : ''}
   <details class="sc"><summary>Города и прайс</summary><b>Города (через запятую)</b><input id="ct" value="${esc(S.cities.join(', '))}"><button class="ghost" data-a="rl">Обновить прайс</button>${standalone ? '' : `<button class="ghost" data-a="inst">${ico('plus', 18)} Установить на главный экран</button>`}</details>
   <details class="sc"><summary>Заявки</summary><p class="m" style="margin:0 0 4px">Свою заявку можно изменить в течение ${CFG.EDIT_HOURS} ч (администратор — любую и без срока) и удалить с возможностью вернуть в течение ${CFG.UNDO_HOURS} ч — в «Истории».</p><button class="ghost" data-a="csv">${ico('save', 18)} Экспорт истории (CSV)</button></details>
   <details class="sc"><summary>Получатели</summary><p class="m" style="margin:0 0 8px;line-height:1.5">${rl}</p>
     <details class="mini"><summary>Запасной номер WhatsApp</summary><input id="op" inputmode="tel" value="${esc(S.op)}" placeholder="77001234567"><p class="m" style="margin:0">Используется, только если лист «Получатели» пуст. Код страны и номер, без + и пробелов.</p></details></details>
   <details class="sc"><summary>Данные</summary><p class="m" style="margin:0 0 4px">Черновики, избранное и неотправленное хранятся на этом устройстве. Файл поможет перенести их на новый телефон или на другой адрес сайта.</p><button class="ghost" data-a="bak">${ico('down', 18)} Сохранить данные устройства (файл)</button><button class="ghost" data-a="imp">${ico('up', 18)} Загрузить данные из файла</button><input type="file" id="impf" accept=".json,application/json" hidden></details>
-  <details class="sc"><summary>Служебная информация</summary><div class="m" style="font-size:13px;line-height:1.5">Версия: ${VER}${CFG.API_URL ? ' · Code.gs: ' + (srvV || 'не определена') + (srvV && srvV < NEED ? ' (устарел!)' : '') : ''} · адрес: ${esc(location.origin)}<br>Товаров: ${P.length} (с ценой с НДС: ${P.filter(p => p.pv).length}, без НДС: ${P.filter(p => p.pn).length})<br>Режим цен: ${S.mode == 'vat' ? 'с НДС' : 'без НДС'}<br>${CFG.API_URL ? `База: ${syncErr ? 'ошибка: ' + esc(lastErr) : 'подключена'} · торговых в списке: ${trs.length} · профиль: ${esc(me || 'не выбран')}<br>Ждут отправки: заявок ${outbox.length}, правок магазинов ${shopq.length}, визитов ${visq.length}` : 'База заявок не подключена (API_URL пуст)'}</div></details>
+  <details class="sc"><summary>Служебная информация</summary><div class="m" style="font-size:13px;line-height:1.5">Версия: ${VER}${CFG.API_URL ? ' · Code.gs: ' + (srvV || 'не определена') + (srvV && srvV < NEED ? ' (устарел!)' : '') : ''} · адрес: ${esc(location.origin)}<br>Товаров: ${P.length} (с ценой с НДС: ${P.filter(p => p.pv).length}, без НДС: ${P.filter(p => p.pn).length})<br>Режим цен: ${S.mode == 'vat' ? 'с НДС' : 'без НДС'}<br>${CFG.API_URL ? `База: ${syncErr ? 'ошибка: ' + esc(lastErr) : 'подключена'} · торговых в списке: ${trs.length} · профиль: ${esc(me || 'не выбран')}<br>Ждут отправки: заявок ${outbox.length}, правок магазинов ${shopq.length}, визитов ${visq.length}<br>Последняя ошибка синхронизации: ${errL ? ft(errL.t) + ' — ' + esc(errL.m) + (errL.q ? ' (в очереди было ' + errL.q + ')' : '') : 'не было'}` : 'База заявок не подключена (API_URL пуст)'}</div></details>
   <button class="send" data-a="ss">Сохранить</button>`;
 }
 
@@ -425,11 +466,12 @@ function cities() {
   $('#c').value = H.c || S.cities[0]; H.c = $('#c').value; drawRc();
 }
 const shops = () => { if (!$('#sl').hidden) drawDD() };   // обновить открытый список магазинов
-function fill() { fixDate(); $('#d').min = today(); $('#d').value = H.d; $('#s').value = H.s || ''; $('#a').value = H.a || ''; cities(); shopWarn(); if (H.s) hfC = true; drawHf(); if (P.length) { drawChips(); drawList() } }
+function drawD() { const e = document.getElementById('dv'); if (e) e.innerHTML = `<span>${esc(H.d ? wdOf(H.d) + ', ' + fd(H.d) : 'Дата поставки')}</span>${ico('cal', 18)}` }   // v34: дата в шапке — подписью со значком (как в оформлении), поле даты прозрачное поверх: раньше дата наезжала на значок календаря
+function fill() { fixDate(); $('#d').min = eo ? '' : minD(); $('#d').value = H.d; drawD(); $('#s').value = H.s || ''; $('#a').value = H.a || ''; cities(); shopWarn(); if (H.s) hfC = true; drawHf(); if (P.length) { drawChips(); drawList() } }
 function drawHf() { const c = !!(H.s && hfC), f = $('#hf'); f.classList.toggle('cmp', c); $('#ocs').hidden = !c; $('#hfok').hidden = c || !H.s;   // v33: свёрнутая шапка — карточка магазина; развёрнутая — поля и «Готово»
-  $('#ocs').innerHTML = c ? `<div class="ocst"><b>${esc(H.s)}</b><span class="m">${esc([H.a || H.c, H.d ? 'поставка ' + fd(H.d) : ''].filter(Boolean).join(' · '))}</span></div><button class="ocb" data-a="hfch">Сменить</button>` : '' }   // v31: сменился магазин — вкладка «Брал раньше» и подписи «в прошлый раз»
-const clrShop = () => { H.s = ''; H.a = ''; H.sid = ''; H.r = ''; H.t = 0; hfC = false };   // после заявки/черновика: магазин и получатель выбираются заново
-const curShop = () => (H.sid && base.find(b => b.id == H.sid)) || (H.s && (base.find(b => norm(b.n) == norm(H.s) && (!H.c || !b.c || norm(b.c) == norm(H.c))) || null)) || null;
+  $('#ocs').innerHTML = c ? `<div class="ocst"><b>${esc(H.s)}</b><span class="m">${esc([H.a || H.c, H.d ? 'поставка ' + fd(H.d) : ''].filter(Boolean).join(' · '))}</span></div>${shUndo ? '<button class="ocb" data-a="hfund">Отменить</button>' : ''}<button class="ocb" data-a="hfch">Сменить</button>` : '' }   // v31: сменился магазин — вкладка «Брал раньше» и подписи «в прошлый раз»
+const clrShop = () => { H.s = ''; H.a = ''; H.sid = ''; H.r = ''; H.t = 0; hfC = false; shUndo = null };   // после заявки/черновика: магазин и получатель выбираются заново
+const curShop = () => (H.sid && base.find(b => b.id == H.sid)) || (H.s && findBase(H.s, H.c, H.a)) || null;   // v35: без ID — только однозначное совпадение
 function shopWarn() { // плашка под полем магазина: статус, причина, кто и когда отметил (предупреждение, а не запрет)
   const x = curShop(), el = $('#sw'); if (!x || !x.st || !ST[x.st] || (x.st != 'no' && x.st != 'closed')) { el.hidden = true; return }   // v33: на экране заявки — только предупреждение «Не заходить» / «Закрыт»; остальные статусы — в маршруте и карточке
   const bad = x.st == 'no' || x.st == 'closed'; el.hidden = false; el.className = 'sw full ' + (bad ? 'bad' : 'ok');
@@ -438,7 +480,7 @@ function shopWarn() { // плашка под полем магазина: ста
 
 /* ============ 7б. СИНХРОНИЗАЦИЯ, ПОДТВЕРЖДЕНИЕ, ЧЕРНОВИКИ, ПРОФИЛЬ ============ */
 const vfail = [];
-let syncWarn = false, syncing = false, again = false, syncErr = false, syncAt = '', lastErr = '', srvV = nz(LS('srv'));   // srvV — версия Code.gs на сервере
+let syncWarn = false, syncing = false, again = false, syncErr = false, syncAt = '', lastErr = '', srvV = nz(LS('srv')), errL = (o => o && typeof o == 'object' && typeof o.m == 'string' ? o : null)(LS('lerr'));   // v34: errL — последняя ошибка синхронизации {m, t}; хранится до следующей ошибки, а не до успеха   // srvV — версия Code.gs на сервере
 async function api(url, opt) { // запрос к Apps Script с понятным текстом ошибки. Ответ сервера с полем error возвращается как есть — его разбирает вызывающий
   let r, t; const ac = typeof AbortController == 'function' ? new AbortController() : null, tm = ac ? setTimeout(() => ac.abort(), 70000) : 0;   // без предела ожидания зависший запрос блокировал бы кнопку входа и синхронизацию
   try { r = await fetch(url, ac ? { ...opt, signal: ac.signal } : opt); t = await r.text() } catch (e) { throw new Error(ac && ac.signal.aborted ? 'сервер не ответил за 70 секунд' : 'браузер не смог связаться со скриптом (интернет, VPN, блокировщик или неверный API_URL)') } finally { clearTimeout(tm) }
@@ -464,7 +506,7 @@ function lostAuth() { // сервер не принял токен (истёк �
   if (view != 'auth' && !LS('pending')) authView('login');
 }
 function logout() { // выход возможен только при пустых очередях (проверяется там, где вызывается)
-  tok = ''; me = ''; role = 'trader'; LS('tok', ''); LS('me', ''); LS('role', ''); trs = []; LS('trs', trs); shist = []; LS('shist', shist); dayC = {}; adm = null; admCode = null; admOw = null;
+  tok = ''; me = ''; role = 'trader'; LS('tok', ''); LS('me', ''); LS('role', ''); trs = []; LS('trs', trs); shist = []; LS('shist', shist); RDS = []; LS('rds', RDS); rgC = {}; dayC = {}; adm = null; admCode = null; admOw = null;
   authNeed = true; syncStatus(); authView('login');
 }
 function syncStatus() { // строка статуса под названием в шапке
@@ -473,12 +515,13 @@ function syncStatus() { // строка статуса под названием
   const st = !tok || syncErr || syncWarn || (srvV && srvV < NEED) ? 'bad' : syncing || n ? 'wait' : 'ok'; el.hidden = st == 'ok';   // v33: на экране заявки строка видна, только когда есть что сказать (как в макете «Каталог»)
   const e2 = document.getElementById('sy2'); if (e2) { e2.textContent = el.textContent; const p = e2.parentNode; if (p && p.setAttribute) p.setAttribute('data-st', st) }   // v33: та же строка в шапке маршрута
 }
-const ORDFAIL = { invalid: 'данные не прошли проверку на сервере', trader_mismatch: 'она записана под другим профилем', not_owner: 'это заявка другого торгового', no_owner: 'у заявки нет торгового — изменить её может только администратор', too_late: 'прошло больше ' + CFG.EDIT_HOURS + ' ч', stale: 'на сервере уже есть более новая правка' };
+const ORDFAIL = { invalid: 'данные не прошли проверку на сервере', trader_mismatch: 'она записана под другим профилем', not_owner: 'это заявка другого торгового', no_owner: 'у заявки нет торгового — изменить её может только администратор', too_late: 'прошло больше ' + CFG.EDIT_HOURS + ' ч', stale: 'на сервере уже есть более новая правка', changed: 'заявку уже изменили' };
 const DELFAIL = { not_owner: 'это заявка другого торгового', no_owner: 'у заявки нет торгового — изменить её может только администратор', trader_mismatch: 'операция записана под другим профилем', expired: 'срок возврата (' + CFG.UNDO_HOURS + ' ч) истёк, заявка осталась удалённой', future: 'часы на устройстве спешат', invalid: 'данные не прошли проверку на сервере' };
 function orderRefused(o, r) { // сервер не принял заявку или правку. История приводится к состоянию сервера, а введённое не теряется — уходит в черновики
   LS('hist', (LS('hist') || []).filter(x => x && x.id != o.id));
   const h = o.h || {}; drafts.unshift({ H: { d: h.d, c: h.c, s: h.s, a: h.a, sid: h.sid || '', dm: 1, r: o.rc && o.rc.n || '' }, cart: cleanCart(o.cart), disc: nz(o.disc), m: o.m, n: Object.keys(cleanCart(o.cart)).length, sum: nz(o.sum), t: Date.now() }); LS('drafts', drafts); draftBadge();
-  vfail.push((o.ed ? 'Правка заявки' : 'Заявка') + ' «' + (h.s || '') + '» не принята сервером: ' + (ORDFAIL[r.reason] || r.reason || 'причина не указана') + (r.f ? ' (' + r.f + ')' : '') + '. Она сохранена в черновиках' + (o.ed ? '; в истории осталась прежняя версия.' : '.'));
+  const ch = r.reason == 'changed', who_ = ch ? [r.by, r.at ? ft(+r.at) : ''].filter(Boolean).join(', ') : '';   // v34: пока правили, заявку изменил кто-то другой
+  vfail.push((o.ed ? 'Правка заявки' : 'Заявка') + ' «' + (h.s || '') + '» не принята сервером: ' + (ORDFAIL[r.reason] || r.reason || 'причина не указана') + (ch ? (who_ ? ' (' + who_ + ')' : '') + '. Откройте её заново' : r.f == 'dts' ? ': дата поставки раньше дня заявки' : r.f ? ' (' + r.f + ')' : '') + '. ' + (o.ed ? 'Ваша правка' : 'Она') + ' сохранена в черновиках' + (o.ed ? (ch ? '; в истории — версия с сервера.' : '; в истории осталась прежняя версия.') : '.'));
 }
 function delRefused(o, r) { // отказ подтверждён ответом сервера: только теперь локальная пометка удаления приводится к серверной
   if (r.del != null) { const sv = nz(r.del), h = LS('hist') || []; h.forEach(x => { if (x && x.id == o.id) x.del = sv }); LS('hist', h); setDel(o.id, sv); shist.forEach(x => { if (x.id == o.id) x.del = sv }) }
@@ -492,11 +535,12 @@ async function sync() { // отправляет накопленные заяв�
   syncing = true; syncStatus(); const n0 = qN();
   // Правило для всех очередей: операция убирается из очереди только после ответа сервера. Сетевая ошибка или отказ в авторизации прерывают цикл, очередь остаётся как была
   try {
-    const new23 = x => ['status', 'info', 'meta', 'days', 'owner', 'vat', 'geo', 'geodel'].includes(x.op);   // эти операции понимает только новый Code.gs (days / owner / vat / geo — с v31, geodel — с v32)
+    const new23 = x => ['status', 'info', 'meta', 'days', 'owner', 'vat', 'geo', 'geodel', 'note', 'rday'].includes(x.op);   // v35: note (заметки), rday (маршрут на день) — только для нового Code.gs   // эти операции понимает только новый Code.gs (days / owner / vat / geo — с v31, geodel — с v32)
     for (const x of [...shopq]) { // правки магазинов — строго по порядку; при ошибке останавливаемся
       if (new23(x) && srvV < NEED) continue;
       const r = await call({ shop: x });
       if (!r.ok) throw new Error('скрипт не принял правку магазина'); shopq = shopq.filter(y => y !== x); LS('shopq', shopq);
+      if (SEC_OP[x.op] && r.applied !== false) svAt[(x.id || 'n:' + x.n) + '|' + SEC_OP[x.op]] = Date.now();   // v34: «сохранено ЧЧ:ММ» у раздела карточки
       if (r.applied === false) vfail.push('Правка магазина «' + (x.n || x.old || '') + '» не принята сервером: ' + (FAILR[r.reason] || r.reason || '—') + '.');
     }
     for (const v of [...visq]) { // визиты и операции над ними (правка / отмена / восстановление — по ID события); порядок сохраняется
@@ -509,6 +553,7 @@ async function sync() { // отправляет накопленные заяв�
       const r = await call({ order: o });
       if (!r.ok) throw new Error('скрипт не принял заявку'); outbox = outbox.filter(x => x.id != o.id); LS('outbox', outbox); stC = null;   // v32: итоги пересчитать при следующем показе
       if (r.applied === false) orderRefused(o, r);
+      else { const up = l => l.forEach((x, i) => { if (x.id == o.id) { const n = { ...x, ...o, h: { ...o.h, sid: o.h.sid || (x.h && x.h.sid) || '' }, trader: x.trader, rg: x.rg, del: x.del, dby: x.dby }; delete n.bed; l[i] = n } }); up(shist); Object.values(dayC).forEach(c => up(c.hist)); LS('shist', shist) }   // v34: сервер принял — его копия уже такая; иначе до следующей выгрузки история показала бы прежнюю версию
     }
     for (const o of [...delq]) { // удаления и возвраты заявок — после самих заявок
       const r = await call({ orderOp: o });
@@ -523,16 +568,19 @@ async function sync() { // отправляет накопленные заяв�
     if (Array.isArray(d.reasons)) { RSN = d.reasons.map(String).slice(0, 12); LS('rsn', RSN) } if (Array.isArray(d.hot) || Array.isArray(d.promo)) { applyFlags(); drawChips(); if (!view) drawList() }
     if (!shopq.length && !visq.length && Array.isArray(d.shops)) { const m = new Map(base.map(b => [b.id, b])); base = d.shops.map(x => { const o = m.get(x.id); return o ? Object.assign(o, x) : x }); bf = true }   // объекты магазинов сохраняем (на них ссылаются открытая карточка и кнопки «Отменить»)   // пока есть неотправленные правки, локальную базу не затираем
     if (srvV >= NEED && (shopq.some(new23) || visq.length)) again = true;   // версия сервера стала известна — досылаем отметки
-    if (srvV >= 31 && bf && migrate31()) again = true;                                // v31: дни маршрута и режимы цен, заданные на телефоне, — один раз на сервер
+    if (srvV >= 31 && bf && migrate31()) again = true;
+    if (Array.isArray(d.rd)) { RDS = d.rd.filter(r => r && typeof r.d == 'string' && typeof r.sid == 'string' && typeof r.tr == 'string').map(r => ({ d: r.d, tr: r.tr, sid: r.sid, on: !!r.on, at: nz(r.at), by: String(r.by || '') })); LS('rds', RDS) }   // v35: маршрут на день
+    if (srvV >= 35 && migRd()) again = true;
+    if (d.cfg && typeof d.cfg.share == 'boolean') { cfgShare = d.cfg.share; LS('cfgsh', cfgShare) } rgC = {};   // v35: «Общий маршрут» открыт торговым; данные дней — заново                                // v31: дни маршрута и режимы цен, заданные на телефоне, — один раз на сервер
     syncWarn = false; delok = delok.filter(o => { const sv = sh.find(x => x.id == o.id); if (!sv) return false;   // подтверждение удаления / возврата выгрузкой
       if (!!sv.del == !!o.del) return false; syncWarn = true; return Date.now() - o.t < 6e5 });                      // не совпало: сервер не применил — предупреждаем, пока не истёк срок
     LS('delok', delok); shist = sh; LS('trs', trs); LS('base', base); LS('shist', shist); shops();
     syncErr = false; lastErr = ''; authNeed = false; syncAt = new Date().toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' });
     if (n0 && !qN() && !vfail.length && !toastFn) toast('Сохранено на сервере');   // не перебиваем кнопку «Отменить»   // «Сохранено» — только после ответа сервера
-  } catch (e) { if (e && e.auth) lastErr = 'нужен вход'; else { syncErr = true; lastErr = e && e.message || 'неизвестная ошибка' } }
+  } catch (e) { if (e && e.auth) lastErr = 'нужен вход'; else { syncErr = true; lastErr = e && e.message || 'неизвестная ошибка'; errL = { m: String(lastErr).slice(0, 300), t: Date.now(), q: qN() }; LS('lerr', errL) } }
   if (vfail.length) { const m = vfail.splice(0).join('\n'); setTimeout(() => say(m), 0) }
   syncing = false; syncStatus(); if (view == 'who') whoView(); if (view == 'hist') histView(); if ((view == 'shops' || view == 'rplan') && !rvK) drawShops();   // маршрут перерисовывается, когда пришли магазины (кроме момента, когда открыта отметка визита)
-  if (view == 'shopc' && cSh) { drawFeed(cSh); loadLog(cSh) }   // открытая карточка магазина подтягивает ленту с сервера (v30: раньше эта строка была внутри комментария и не выполнялась)
+  if (view == 'shopc' && cSh) { drawFeed(cSh); loadLog(cSh); drawMarks(cSh) }   // открытая карточка магазина подтягивает ленту с сервера (v30: раньше эта строка была внутри комментария и не выполнялась)
   if (again) { again = false; if (tok) return sync() }
 }
 
@@ -574,7 +622,6 @@ function draftView() {
 function whoView() { // профиль: кто вошёл, выход; администратору — управление доступом
   openSheet('who', 'Профиль'); const n = qN();
   $('#sb').innerHTML = tok ? `<div class="pfc"><span class="pfh"><span class="pfa">${esc(me.slice(0, 1).toUpperCase())}</span><span class="pft"><b>${esc(me)}</b><span>${role == 'admin' ? 'Администратор' : 'Торговый'}</span></span></span></div>
-    ${role == 'admin' ? `<button class="send" data-a="adm">${ico('user', 20)} Доступ и профили</button>` : ''}
     ${n ? `<div class="sw q whq">Ждут отправки: ${n}. Пока они не ушли на сервер, выйти или сменить профиль нельзя: эти операции записаны от имени «${esc(me)}», и под другим профилем сервер их не примет.</div>` : ''}
     <button class="ghost pfo2" data-a="out">Выйти из профиля</button>`
     : `<div class="empt">${ico('user', 40)}<b>Вход не выполнен</b>${n ? '<p class="m">Ждут отправки: ' + n + '.</p>' : ''}</div><button class="send" data-a="auth">Войти</button>`;
@@ -617,7 +664,7 @@ async function doAuth() {
   $('#sb').innerHTML = ''; closeSheet(); drawList(); toast('Вы вошли: ' + me); sync(); if (!Object.keys(cart).length && !eo) goHome();   // поля с паролем убираем со страницы сразу
 }
 /* --- администратор: профили, приглашения, роли, заявки без торгового. Кнопки — только удобство: каждое действие сервер проверяет сам --- */
-const STN = { active: 'пароль задан', invited: 'приглашение выдано', invite_expired: 'приглашение истекло', none: 'доступа ещё нет', revoked: 'доступ отозван' };
+const STN = { active: ['Вошёл', 'ok'], invited: ['Ждёт входа', 'wait'], invite_expired: ['Приглашение истекло', 'bad'], none: ['Нет доступа', ''], revoked: ['Отозван', ''] };   // v34: состояние профиля — цветной меткой
 const ADMR = { self: 'свой профиль удалить нельзя', revoked: 'доступ отозван — сначала выдайте приглашение', not_found: 'профиль не найден', last_admin: 'это единственный действующий администратор', exists: 'такой профиль уже есть', invalid: 'недопустимое значение', changed: 'данные изменились после пробного прогона — запустите его ещё раз', confirm: 'нет подтверждения', backup: 'не удалось сделать копию листа — ничего не изменено' };
 const RECN = { link_fix: 'старые заявки и визиты привязываются к карточкам магазинов', ts_fix: 'заявки получают дату оформления (сейчас она не записана)', sum_diff: 'магазины получают верные «последний заказ» и «последний визит»', no_id: 'магазины получают постоянный номер',
   ambiguous: 'записи подходят сразу к нескольким магазинам с одним названием — остаются как есть', unmatched: 'записи о магазинах, которых нет в списке, — остаются как есть', orphan: 'записи об удалённых магазинах — остаются как есть', conflict: 'записи с противоречивыми данными о магазине — остаются как есть' };
@@ -632,7 +679,7 @@ async function admView(reload) {
   if (!adm) { $('#sb').innerHTML = '<p class="empty">Список не загрузился.</p><button class="ghost" data-a="adm">Повторить</button>'; return }
   const w = admOw, rows = w && Array.isArray(w.sample) ? w.sample : [];
   $('#sb').innerHTML = (admCode ? `<div class="sw q acode"><b>Приглашение для «${esc(admCode.profile)}»</b><div style="font:700 20px/1.7 monospace;letter-spacing:1px;user-select:all">${esc(admCode.code)}</div>Действует до ${ft(nz(admCode.until))}. Передайте лично. Код показан один раз: после закрытия окна узнать его нельзя — только выдать новый.</div>` : '')
-  + adm.map(p => `<div class="acd"><div class="act"><b>${esc(p.n)}</b><span class="m">${p.role == 'admin' ? 'Администратор' : 'Торговый'} · ${STN[p.state] || esc(p.state)}${nz(p.until) ? ' до ' + ft(nz(p.until)) : ''}</span>${nz(p.last) ? `<span class="m">Последний вход: ${ft(nz(p.last))}</span>` : ''}</div>
+  + adm.map(p => `<div class="acd"><div class="act"><b>${esc(p.n)}</b><span class="m">${p.role == 'admin' ? 'Администратор' : 'Торговый'}</span><span class="acs"><span class="pl ${(STN[p.state] || [])[1] || ''}">${STN[p.state] ? STN[p.state][0] : esc(p.state)}</span>${nz(p.until) ? `<span class="m">${p.state == 'invited' ? 'приглашение до' : 'было до'} ${ft(nz(p.until))}</span>` : ''}</span>${nz(p.last) ? `<span class="m">Последний вход: ${ft(nz(p.last))}</span>` : ''}</div>
     <div class="acb"><button data-a="ainv" data-v="${esc(p.n)}" data-s="${esc(p.state)}">${p.state == 'active' ? 'Сбросить пароль' : 'Приглашение'}</button>${p.state == 'active' || p.state == 'invited' ? `<button data-a="arev" data-v="${esc(p.n)}">Отозвать доступ</button>` : ''}<button data-a="arole" data-v="${esc(p.n)}" data-r="${p.role == 'admin' ? 'trader' : 'admin'}">${p.role == 'admin' ? 'Сделать торговым' : 'Сделать администратором'}</button>${norm(p.n) != norm(me) ? `<button class="bad" data-a="adel" data-v="${esc(p.n)}">Удалить профиль</button>` : ''}</div></div>`).join('')
   + `<div class="sum" style="margin-top:12px"><b>Новый профиль</b><input id="adn" maxlength="40" placeholder="Имя торгового" style="margin:8px 0"><div class="pr2"><button data-a="aadd">Добавить</button></div><p class="m" style="margin:8px 0 0">После добавления выдайте приглашение. Удалённый профиль исчезает из списка, а его заявки остаются в таблице под прежним именем. Если человек не работает временно — лучше отозвать доступ.</p></div>
   <div class="sum" style="margin-top:12px"><b>Проверка и исправление данных</b><p class="m" style="margin:6px 0">Для записей, оставшихся от старых версий: привязывает заявки и визиты к карточкам магазинов, пересчитывает «последний заказ» и «последний визит», находит заявки без торгового. Проверка только считает и ничего не меняет.</p><div class="pr2"><button data-a="afix">Проверить данные</button></div>
@@ -652,12 +699,26 @@ const VO = ['Взяли заказ', 'Заказа нет', 'Никого не �
 const newSid = () => 's' + Date.now().toString(36).slice(-4) + Math.random().toString(36).slice(2, 7);
 const ago = ms => { if (!ms) return 'не было'; const d = Math.floor((dayMs(Date.now()) - dayMs(ms)) / 864e5); return d <= 0 ? 'сегодня' : d == 1 ? 'вчера' : d + ' ' + pl3(d, 'день', 'дня', 'дней') + ' назад' };   // v33: «3 дня назад», как в макете
 const lastC = x => Math.max(x.lv || 0, x.lo || 0);   // последний контакт: визит или заказ
+const shMatch = (b, q) => !q || norm(b.n).includes(q) || (!!b.rg && norm(b.rg).includes(q));   // v34: поиск магазина — по названию и по району / ориентиру
+const streetOf = a => { const T0 = /^(?:ул|улица|пр|пр-т|проспект|мкр|мкрн|микрорайон|пер|переулок|б-р|бульвар|ш|шоссе|пл|площадь|кв-л|квартал|жк|тупик|проезд)\.?$/i;   // v34: улица без дома и квартиры: «ул. Кенесары хана, 40» → «ул. Кенесары хана», «ул. 8 Марта 15» → «ул. 8 Марта»
+  let s = String(a || '').trim().replace(/[\s,]+(?:кв|оф|офис|бутик|павильон|пав)\.?\s*\d+[а-яa-z]?$/i, '').replace(/[\s,]+(?:(?:д|дом)\.?\s*)?\d+[а-яa-z]?(?:\s*[\/-]\s*\d+[а-яa-z]?)?$/i, '').replace(/[\s,]+$/, '').trim();
+  return /[а-яa-z]{2}/i.test(s) && s.length >= 3 && !T0.test(s) ? s : '' };
+function fillSt(c) { const m = new Map(); base.forEach(b => { const t = streetOf(b.a), k = norm(t).replace(/\.\s*/g, '. '); if (k && (!c || norm(b.c) == norm(c)) && !m.has(k)) m.set(k, t) }); const e = document.getElementById('stl'); if (e) e.innerHTML = [...m.values()].sort((a, b) => a.localeCompare(b, 'ru')).map(t => `<option value="${esc(t)}"></option>`).join('') }   // v34: подсказки улиц из адресов магазинов этого города
+document.addEventListener('focusin', e => { const t = e.target, id = t && t.id; if (id == 'a') fillSt(H.c); else if (id == 'na') fillSt(($('#nc') || {}).value || H.c); else if (id == 'ea') fillSt(($('#ec') || {}).value || '') });
+const rgList = c => { const m = new Map(); base.forEach(b => { const k = norm(b.rg); if (k && (!c || norm(b.c) == norm(c)) && !m.has(k)) m.set(k, String(b.rg).trim()) }); return [...m.values()].sort((a, b) => a.localeCompare(b, 'ru')) };   // v34: районы, уже введённые в базе (для подсказок и фильтра)
 const STT = { reg: 'ok', good: 'ok', prom: 'wait' };   // v33: тон метки — зелёная (работаем), жёлтая (перспективный), серая (остальные)
 const pill = c => c && ST[c] ? `<span class="pl ${STT[c] || 'nt'}">${ST[c][0]}</span>` : '';
 const pillOf = b => b.st ? pill(b.st) : lastC(b) ? '' : '<span class="pl nt">Не были</span>';   // нет статуса и ни визитов, ни заказов — «Не были»
 const byId = id => id && base.find(b => b.id == id);
 const sameCity = (b, c) => !c || !b.c || norm(b.c) == norm(c);
-const findBase = (n, c) => base.find(b => norm(b.n) == norm(n) && sameCity(b, c)) || null;
+const sameName = (n, c, except) => base.filter(b => b !== except && norm(b.n) == norm(n) && sameCity(b, c));   // v35: одноимённые магазины города («Продукты»)
+const findBase = (n, c, a) => { const m = sameName(n, c); return m.length == 1 ? m[0] : m.length > 1 && a ? m.find(b => norm(b.a) == norm(a)) || null : null };   // v35: по названию — только однозначно (одно такое или совпал адрес)
+async function dupAsk(n, c, a, except) { // v35: такое название в городе уже есть. Возвращает 'new' (добавить новый), найденный магазин («это он») или null (отмена)
+  const m = sameName(n, c, except); if (!m.length) return 'new'; const ad = b => b.a || 'без адреса';
+  if (a && m.some(b => norm(b.a) == norm(a))) { const b = m.find(x => norm(x.a) == norm(a)); return await ask('«' + b.n + '» по адресу ' + ad(b) + ' уже есть.\nОткрыть его?', 'Открыть', 'Отмена') ? b : null }
+  if (!a) { say('В этом городе уже есть «' + n + '»: ' + m.map(ad).join('; ') + '.\nЕсли это другой магазин — укажите адрес: по нему их будут различать.'); return null }
+  if (m.length == 1) return await ask('Уже есть «' + m[0].n + '» · ' + ad(m[0]) + '.\nЭто тот же магазин?', 'Да, это он', 'Нет, другой — добавить') ? m[0] : 'new';
+  return await ask('В этом городе уже ' + m.length + ' ' + pl3(m.length, 'магазин', 'магазина', 'магазинов') + ' «' + n + '»: ' + m.map(ad).join('; ') + '.\nДобавить ещё один — по адресу ' + a + '?', 'Добавить', 'Отмена') ? 'new' : null }
 /* v30. Режим цен для точки («норма»): выбор в карточке магазина (только на этом устройстве, ключ vatp) или, если не выбран, режим последней заявки в эту точку
    среди заявок, которые есть на устройстве. Заявка относится к точке по ID; по названию — только если такое название (в этом городе) в базе одно */
 const ML = { vat: 'с НДС', net: 'без НДС' }, otherM = m => m == 'vat' ? 'net' : 'vat';
@@ -673,27 +734,36 @@ function vatNorm(x, skip) { // skip — ID заявки, которую сейч
 const vatMsg = (x, nm, vd, vs) => [vd ? (nm.set ? `Для «${x.n}» в карточке магазина выбрано: цены ${ML[nm.m]}.` : `Последняя заявка в «${x.n}»${nm.ts ? ' (' + fd(isoDay(nm.ts)) + ')' : ''} была ${ML[nm.m]}.`) : '',
   vs ? `Режим цен переключали, пока заявка была в корзине (было ${ML[msw]}).` : '', `Эта заявка — ${ML[S.mode]}.`,
   Object.values(cart).some(c => c.p != null) ? 'При переключении ручные цены в заявке сбросятся.' : ''].filter(Boolean).join('\n');
-let cMine = 0, cTot = 0, evF = 'all', evEd = '', cErr = '', cKey = '', ddL = [], eSh = null, cSh = null, cLog = null, shMode = 'route', shSt = '', shCity = null, shQ = '', cSt = '';
+let cMine = 0, cTot = 0, evF = 'all', evEd = '', cErr = '', cKey = '', ddL = [], eSh = null, cSh = null, cLog = null, shMode = 'route', shSt = '', shCity = null, shQ = '', cSt = '', shRg = '';   // shRg — v34: фильтр «Все магазины» по району
 function shopEditView(x) { // правка названия, города, адреса / удаление магазина в общей базе
   eSh = x; $('#sl').hidden = true; openSheet('shop', 'Магазин');
-  $('#sb').innerHTML = `<div class="sum"><b>Название</b><input id="en" maxlength="120" value="${esc(x.n)}"><b>Город</b><select id="ec">${[...new Set([...S.cities, x.c].filter(Boolean))].map(c => `<option ${c == x.c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select><b>Адрес</b><input id="ea" maxlength="300" value="${esc(x.a)}"><b>Тип точки</b><select id="ety">${tyOpts(x.ty)}</select></div><button class="send" data-a="ssave">Сохранить</button><button class="ghost" style="color:var(--danger);border-color:var(--danger)" data-a="sdel">Удалить магазин</button>`;
+  $('#sb').innerHTML = `<div class="sum"><b>Название</b><input id="en" maxlength="120" value="${esc(x.n)}"><b>Город</b><select id="ec">${[...new Set([...S.cities, x.c].filter(Boolean))].map(c => `<option ${c == x.c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select><b>Адрес</b><input id="ea" maxlength="300" list="stl" autocomplete="off" value="${esc(x.a)}"><b>Тип точки</b><select id="ety">${tyOpts(x.ty)}</select></div><button class="send" data-a="ssave">Сохранить</button><button class="ghost" style="color:var(--danger);border-color:var(--danger)" data-a="sdel">Удалить магазин</button>`;
 }
 function shopList() { // база без дублей (по ID, иначе название + город); магазины текущего города — выше
   const m = new Map(); base.forEach(b => { const k = b.id || norm(b.n) + '|' + norm(b.c); if (!m.has(k)) m.set(k, b) });
   return [...m.values()].sort((x, y) => (norm(y.c) == norm(H.c)) - (norm(x.c) == norm(H.c)) || x.n.localeCompare(y.n, 'ru'));
 }
-function upShop(n, c, a, id) { if (!n) return null; let o = (id && byId(id)) || findBase(n, c);
+function upShop(n, c, a, id) { if (!n) return null; let o = id ? byId(id) : findBase(n, c, a);   // v35: с ID — только по ID (новый ID — новый магазин, даже если название уже есть)
   if (o) { o.c = o.c || c || ''; o.a = o.a || a || ''; if (!o.id && id) o.id = id } else { o = { id: id || newSid(), n, c: c || '', a: a || '' }; base.push(o) }
   LS('base', base); return o }
-function addShop(n) { const o = upShop(n, H.c, H.a); H.sid = o.id; if (CFG.API_URL) { shopq.push({ n, c: H.c || '', a: H.a || '', id: o.id }); LS('shopq', shopq); sync() } }
+function addShop(n) { const o = upShop(n, H.c, H.a, newSid()); H.sid = o.id; if (CFG.API_URL) { shopq.push({ n, c: H.c || '', a: H.a || '', id: o.id }); LS('shopq', shopq); sync() } }
 function drawDD() {
-  const raw = $('#s').value.trim(), v = norm(raw); ddL = shopList().filter(x => norm(x.n).includes(v));
-  $('#sl').innerHTML = ddL.map((x, i) => `<div class="dr"><button class="di" data-a="pick" data-v="${i}"><b>${esc(x.n)}</b><span class="m">${esc([x.ty, x.c, x.a].filter(Boolean).join(' · '))}</span>${x.st && x.st != 'neu' ? pill(x.st) : ''}</button><button class="ed" data-a="sedit" data-v="${i}" aria-label="Карточка магазина">${ico('edit', 18)}</button></div>`).join('')
-    + (v && !ddL.some(x => norm(x.n) == v && sameCity(x, H.c)) ? `<button class="di add2" data-a="padd">＋ Добавить «${esc(raw)}»</button>` : '')
+  const raw = $('#s').value.trim(), v = norm(raw); ddL = shopList().filter(x => shMatch(x, v));
+  $('#sl').innerHTML = ddL.map((x, i) => `<div class="dr"><button class="di" data-a="pick" data-v="${i}"><b>${esc(x.n)}</b><span class="m">${esc([x.ty, x.c, x.a, x.rg].filter(Boolean).join(' · '))}</span>${x.st && x.st != 'neu' ? pill(x.st) : ''}</button><button class="ed" data-a="sedit" data-v="${i}" aria-label="Карточка магазина">${ico('edit', 18)}</button></div>`).join('')
+    + (v ? `<button class="di add2" data-a="padd">＋ ${ddL.some(x => norm(x.n) == v && sameCity(x, H.c)) ? 'Добавить ещё один' : 'Добавить'} «${esc(raw)}»</button>` : '')   // v35: одноимённый магазин можно добавить (с вопросом и адресом)
     || '<p class="m" style="padding:10px">Магазинов пока нет — впишите название</p>';
   $('#sl').hidden = false;
 }
-function selShop(x) { if (x.id && prevC[x.id] && !prevC[x.id].items.length) delete prevC[x.id];   // пустое «Брал раньше» перезапрашиваем при выборе магазина
+let shUndo = null;   // v34: магазин и экран до «Заявка» из маршрута или карточки — для «Отменить» рядом со «Сменить»
+async function orderAt(x) { // v34: «Заявка» из маршрута / карточки магазина. Товары в корзине для другого магазина — только с вопросом
+  if (!x) return; const n = lines().length, same = !!H.s && (x.id && H.sid ? x.id == H.sid : norm(x.n) == norm(H.s));
+  if (!same && n && H.s && !await ask('В заявке ' + n + ' ' + pl3(n, 'позиция', 'позиции', 'позиций') + ' для «' + H.s + '».\nПеренести их на «' + x.n + '»?', 'Перенести', 'Остаться в «' + H.s + '»')) return;
+  const u = same ? null : { H: { s: H.s || '', a: H.a || '', sid: H.sid || '', c: H.c || '', r: H.r || '' }, hfC, v: view, k: view == 'shopc' && cSh ? skey(cSh) : '' };
+  selShop(x); shUndo = u; drawHf(); closeSheet(); drawList() }
+function shopBack() { // v34: «Отменить» — вернуть прежний магазин (или пустой) и экран, откуда нажали «Заявка»
+  const u = shUndo; shUndo = null; if (!u) return drawHf(); Object.assign(H, u.H); $('#s').value = H.s; $('#a').value = H.a; cities(); shopWarn(); hfC = !!H.s && u.hfC; save(); drawHf(); if (P.length) { drawChips(); drawList() }
+  if (u.v == 'shopc' && u.k) { cKey = ''; shopCard(u.k) } else if (u.v == 'rplan') planView(); else if (u.v == 'shops') shopsView() }
+function selShop(x) { shUndo = null; if (x.id && prevC[x.id] && !prevC[x.id].items.length) delete prevC[x.id];   // пустое «Брал раньше» перезапрашиваем при выборе магазина
   H.s = x.n; H.a = x.a || ''; H.sid = x.id || ''; if (x.c) { H.c = x.c; H.r = ''; cities() } $('#s').value = H.s; $('#a').value = H.a; save(); shopWarn(); hfC = true; drawHf(); if (P.length) { drawChips(); if (!view) drawList() } }   // v31: «Брал раньше» — для выбранного магазина
 // --- раздел «Магазины»: «Все магазины» — справочник, «Маршрут на день» — маршрутный лист и подсказки «Стоит заехать» ---
 const TY = ['магазин', 'минимаркет', 'супермаркет'];   // тип торговой точки
@@ -726,10 +796,54 @@ function shopsView() { // раздел «Маршрут»: лист на сег�
   $('#sb').innerHTML = `<div class="seg" style="margin-bottom:12px">${[['route', 'На сегодня'], ['all', 'Все магазины']].map(([k, t]) => `<button data-a="shm" data-v="${k}" class="${shMode == k ? 'on' : ''}">${t}</button>`).join('')}</div>
   <div class="shsr"><div class="sf"><span class="si">${ico('search', 18)}</span><input id="shq" type="search" placeholder="Найти магазин" value="${esc(shQ)}"></div><button class="ghost shnew" data-a="shn">${ico('plus', 18)} Новый</button></div>
   <div id="shf"></div>
-  <div class="sfl">${cityF}<select id="sht" aria-label="Тип точки"><option value="">Любой тип</option>${TY.map(t => `<option ${t == shT ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
+  <div class="sfl">${cityF}<select id="sht" aria-label="Тип точки"><option value="">Любой тип</option>${TY.map(t => `<option ${t == shT ? 'selected' : ''}>${t}</option>`).join('')}</select>${(() => { const r = rgList(shCity); if (shRg && !r.some(x => norm(x) == norm(shRg))) shRg = ''; return r.length ? `<select id="shr" aria-label="Район"><option value="">Все районы</option>${r.map(x => `<option ${norm(x) == norm(shRg) ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select>` : '' })()}</div>
   <div id="shl"></div>`;
   drawShops();
 }
+/* v35. «Общий маршрут» — маршруты всех торговых на любой день (и прошлые): по блокам торговых + «Свободные точки» (без ответственного — в маршруте у всех).
+   Точки дня — по дням маршрута и ответственному (b.rw, b.ow) плюс правки дня (лист «Маршрут дня»); «пройдено» — визиты и заявки этого дня с сервера (q: 'route').
+   Для прошлых дней точки считаются по ТЕКУЩИМ дням маршрута (истории дней нет). Администратор добавляет и убирает точки торговым на сегодня и вперёд. Торговым раздел виден, если администратор не выключил его в настройках */
+let rgD = '', rgC = {}, rgBusy = '', rgAdd = '', rgQ = '', cfgShare = LS('cfgsh') !== false;   // rgD — выбранный день; rgC — данные дня с сервера; rgAdd — у какого торгового открыт поиск «+ Добавить точку»
+const rgOk = () => rdSrv() && (role == 'admin' || cfgShare);
+const dayB = d => { const [y, m, dd] = d.split('-').map(Number); const a = new Date(y, m - 1, dd).getTime(); return [a, new Date(y, m - 1, dd + 1).getTime()] };
+async function loadRg(d, force) { if (rgBusy || !rgOk() || !tok) return; const c = rgC[d]; if (!force && c && Date.now() - c.at < (c.err ? 15e3 : 6e4)) return;
+  if (!navigator.onLine) { rgC[d] = { at: Date.now(), err: 'нет связи' }; return }
+  rgBusy = d; const [from, to] = dayB(d); try { const r = await call({ q: 'route', d, from, to }); rgC[d] = r && r.ok ? { at: Date.now(), rd: safeA(r.rd), ev: safeA(r.ev) } : { at: Date.now(), err: 'сервер не отдал маршрут' } }
+  catch (e) { rgC[d] = { at: Date.now(), err: e && e.message || 'ошибка' } } finally { rgBusy = '' } if (view == 'rall') rgView() }
+const safeA = a => Array.isArray(a) ? a.filter(x => x && typeof x == 'object') : [];
+function rgOn(tr, d, id) { const c = rgC[d]; let v; (c && c.rd ? c.rd : RDS.filter(r => r.d == d)).forEach(r => { if (r.sid == id && norm(r.tr) == norm(tr)) v = !!r.on });
+  shopq.forEach(q => { if (q.op == 'rday' && q.d == d && q.id == id && norm(q.tr) == norm(tr)) v = !!q.on }); return v }   // правка дня: true / false / undefined (нет)
+function rgView() {
+  openSheet('rall', 'Общий маршрут'); const t0 = today(); if (!rgD) rgD = t0; const d = rgD, wd = wdOfD(d), c = rgC[d]; loadRg(d);
+  const adm = role == 'admin', edit = adm && d >= t0, T = [...new Set([...trs, me].filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ru')), L = base.filter(b => b.id);
+  const ev = c && c.ev ? c.ev : [], evOf = (id, tr) => ev.filter(x => x.sid == id && (!tr || norm(x.who) == norm(tr))).sort((p, q) => p.ts - q.ts);
+  const plan = tr => { const own = L.filter(b => b.ow && norm(b.ow) == norm(tr) && inWeek(b, wd)), add = L.filter(b => !own.includes(b) && rgOn(tr, d, b.id) === true);
+    return { pts: own.filter(b => rgOn(tr, d, b.id) !== false).concat(add).sort((p, q) => p.n.localeCompare(q.n, 'ru')), add, out: own.filter(b => rgOn(tr, d, b.id) === false) } };
+  const P = {}; T.forEach(t => { P[t] = plan(t) });
+  const taken = new Set(T.flatMap(t => P[t].add.map(b => b.id))), free = L.filter(b => !b.ow && inWeek(b, wd) && !taken.has(b.id)).sort((p, q) => p.n.localeCompare(q.n, 'ru'));
+  const lc = t => t ? t[0].toLowerCase() + t.slice(1) : '', pend = (b, tr) => shopq.some(q => q.op == 'rday' && q.id == b.id && q.d == d && norm(q.tr) == norm(tr)) ? ' · ждёт отправки' : '';
+  const st = (b, tr) => { const e = evOf(b.id, tr), cl = e.filter(x => x.k == 'o' || !DEFER.includes(x.val)), x = cl.length ? cl[cl.length - 1] : e[e.length - 1]; return x ? { x, done: !!cl.length } : null };   // последнее закрывающее (заявка / визит), иначе — отложенное
+  const sub = (x, tr) => (x.k == 'o' ? 'Заявка ' + hhmm(x.ts) : 'Визит ' + hhmm(x.ts) + ' · ' + esc(lc(x.val || ''))) + (tr ? '' : ' · ' + esc(x.who));
+  const tl = (node, body) => `<div class="tl">${node}${body}</div>`, addr = b => esc(b.a || b.c || 'без адреса');
+  const pt = (b, tr, note, act) => { const s0 = st(b, tr), k = esc(skey(b));   // точка — как в личном маршруте: пройдена — зелёная галочка, отложена — жёлтая пунктирная, впереди — пустой кружок
+    if (s0 && s0.done) return tl(`<span class="tn ok">${ico('check', 16)}</span>`, `<button class="tlp" data-a="scard" data-v="${k}"><b>${esc(b.n)}</b><span class="m">${sub(s0.x, tr)}${note || ''}</span></button>`);
+    const df = !!s0; return tl(`<span class="tn ${df ? 'df' : 'nx'}"></span>`, `<div class="tlb rgr"><button class="rrow${df ? ' df' : ''}" data-a="scard" data-v="${k}"><span class="rrt"><b>${esc(b.n)}</b><span class="m">${df ? 'Отложено в ' + hhmm(s0.x.ts) + ' · ' + esc(lc(s0.x.val || '')) + (tr ? '' : ' · ' + esc(s0.x.who)) : addr(b)}${note || ''}${tr ? pend(b, tr) : ''}</span></span>${act || `<span class="rgo">${ico('chev', 20)}</span>`}</button></div>`) };
+  const rm = (b, tr) => `<span class="rgx" data-a="rgrm" data-v="${esc(b.id)}" data-t="${esc(tr)}" role="button" aria-label="Убрать «${esc(b.n)}» у ${esc(tr)}">${ico('x', 18)}</span>`;
+  const blk = (tr, p) => { const inP = new Set(p.pts.map(b => b.id)), ext = [...new Set(ev.filter(x => norm(x.who) == norm(tr) && !inP.has(x.sid) && !free.some(b => b.id == x.sid)).map(x => x.sid))].map(byId).filter(Boolean);
+    const done = p.pts.filter(b => (st(b, tr) || {}).done), todo = p.pts.filter(b => !done.includes(b)), pct = p.pts.length ? Math.round(done.length / p.pts.length * 100) : 0;
+    return `<section class="rgs"><div class="rgh"><div class="rgw"><b>${esc(tr)}${norm(tr) == norm(me) ? ' <small>(вы)</small>' : ''}</b><span class="m">${p.pts.length ? p.pts.length + ' ' + pl3(p.pts.length, 'точка', 'точки', 'точек') : 'точек нет'}</span></div>${p.pts.length ? `<div class="rcn"><b>${done.length}<span>/${p.pts.length}</span></b><small>пройдено${ext.length ? ' · +' + ext.length + ' вне' : ''}</small></div>` : ''}</div>${p.pts.length ? `<div class="pbar"><span style="width:${pct}%"></span></div>` : ''}
+      <div class="tline">${done.map(b => pt(b, tr, p.add.includes(b) ? ' · на этот день' : '')).join('')}${ext.map(b => pt(b, tr, ' · вне маршрута')).join('')}${todo.map(b => pt(b, tr, p.add.includes(b) ? ' · на этот день' : '', edit ? rm(b, tr) : '')).join('')}
+      ${edit ? p.out.map(b => tl('<span class="tn nx"></span>', `<div class="tlb rgr"><div class="rrow rgo2"><span class="rrt"><b>${esc(b.n)}</b><span class="m">убрана на этот день</span></span><button class="ghost wkx" data-a="rgadd" data-v="${esc(b.id)}" data-t="${esc(tr)}">${ico('plus', 16)}<span>Вернуть</span></button></div></div>`)).join('') : ''}</div>
+      ${edit ? (rgAdd == tr ? `<div class="rga"><input id="rgq" type="search" placeholder="Найти магазин: название или район" value="${esc(rgQ)}"><div id="rgl">${rgPick(tr, p)}</div><button class="ghost radd" data-a="rgopen" data-t="">${ico('x', 18)} Скрыть</button></div>` : `<button class="ghost radd" data-a="rgopen" data-t="${esc(tr)}">${ico('plus', 18)} Добавить точку · ${esc(tr)}</button>`) : ''}</section>` };
+  const head = `<div class="day"><button class="dnb" data-a="rgprev" aria-label="Предыдущий день">${ico('back', 22)}</button><label class="dl"><span>${esc(d == t0 ? 'Сегодня · ' + fd(d) : WDF[wd][0].toUpperCase() + WDF[wd].slice(1) + ', ' + fd(d))}</span><small>${c && c.err ? 'не загрузилось: ' + esc(c.err) : !c && rgBusy ? 'загружаю…' : WD[wd] + ' · ' + T.length + ' ' + pl3(T.length, 'торговый', 'торговых', 'торговых')}</small><input type="date" id="rgdp" value="${esc(d)}" aria-label="Выбрать день"></label><button class="dnb" data-a="rgnext" aria-label="Следующий день">${ico('chev', 22)}</button></div>`
+    + `<div class="dsw">${d != t0 ? '<button class="lnk dall dtd" data-a="rgtoday">К сегодняшнему дню</button>' : ''}${c && c.err ? '<button class="lnk dall" data-a="rgretry">Повторить</button>' : ''}</div>`;
+  const fdone = free.filter(b => (st(b, '') || {}).done).length;
+  $('#sb').innerHTML = head + (d < t0 ? '<p class="m rgn">Точки прошлого дня — по нынешним дням маршрута; отметки — визиты и заявки этого дня.</p>' : '')
+    + T.map(t => blk(t, P[t])).join('')
+    + `<section class="rgs"><div class="rgh"><div class="rgw"><b>Свободные точки</b><span class="m">без ответственного — в маршруте у всех</span></div>${free.length ? `<div class="rcn"><b>${fdone}<span>/${free.length}</span></b><small>пройдено</small></div>` : ''}</div>${free.length ? `<div class="pbar"><span style="width:${Math.round(fdone / free.length * 100)}%"></span></div>` : ''}<div class="tline">${free.map(b => pt(b, '')).join('') || '<p class="m wke">Нет.</p>'}</div></section>` }
+function rgPick(tr, p) { const q = norm(rgQ); if (!q) return '<p class="m wke">Начните вводить название.</p>'; const has = new Set(p.pts.map(b => b.id));
+  const L = base.filter(b => b.id && !has.has(b.id) && shMatch(b, q)).sort((x, y) => x.n.localeCompare(y.n, 'ru'));
+  return L.slice(0, 30).map(b => `<button class="shi" data-a="rgadd" data-v="${esc(b.id)}" data-t="${esc(tr)}"><div style="flex:1;min-width:0"><b>${esc(b.n)}</b><div class="m">${esc([b.a, b.c].filter(Boolean).join(' · ') || 'без адреса')}${b.ow ? ' · ' + esc(b.ow) : ''}</div></div><span class="pl add">+ добавить</span></button>`).join('') || '<p class="m wke">Не найдено.</p>' }
 function planView() { // постоянный маршрут по дням недели и правила подсказок — отдельная страница, чтобы не мешать листу на сегодня
   if (rtDay < 0) rtDay = wdNow(); shMode = 'route'; openSheet('rplan', 'Маршрут по дням');   // v33: неделя целиком (DECISIONS п. 51)
   $('#sb').innerHTML = `<p class="m wkin" id="wki"></p><div id="shl"></div>
@@ -753,7 +867,18 @@ const wdays = b => CFG.API_URL && srvV >= 31 && Array.isArray(b.rw) ? b.rw : Arr
 const inWeek = (b, i) => wdays(b).includes(i);
 const myPt = b => !b.ow || norm(b.ow) == norm(me), canDays = b => role == 'admin' || myPt(b);   // своя или свободная точка; дни чужой меняет только администратор
 const daysDeny = b => say('Точка «' + b.n + '» закреплена за «' + b.ow + '»: дни маршрута меняет он или администратор.\nДобавить её себе на сегодня можно кнопкой «В маршрут на сегодня».');
-function inToday(b) { const d = rdToday(), k = skey(b); return !d.rm.includes(k) && (d.add.includes(k) || (inWeek(b, wdNow()) && myPt(b))) }
+/* v35. Маршрут на день — общий, в таблице (лист «Маршрут дня»): правки дня видны торговому на любом телефоне, администратор составляет маршрут за торговых.
+   RDS — правки с сервера (последняя по дате, торговому и точке), поверх — неотправленные из очереди. Пока сервер старше 35 или у точки нет ID — как раньше, на телефоне (RD) */
+let RDS = Array.isArray(LS('rds')) ? LS('rds') : [];
+const rdSrv = () => !!CFG.API_URL && srvV >= 35;
+const rdOn = (tr, d, id) => { let v; RDS.forEach(r => { if (r.d == d && r.sid == id && norm(r.tr) == norm(tr)) v = !!r.on }); shopq.forEach(q => { if (q.op == 'rday' && q.d == d && q.id == id && norm(q.tr) == norm(tr)) v = !!q.on }); return v };
+const wdOfD = d => (new Date(d + 'T12:00:00').getDay() + 6) % 7, autoIn = (b, tr, d) => inWeek(b, wdOfD(d)) && (!b.ow || norm(b.ow) == norm(tr));   // по дням маршрута: своя или свободная точка
+const inPlan = (b, tr, d) => { const v = b.id ? rdOn(tr, d, b.id) : undefined; return v !== undefined ? v : autoIn(b, tr, d) };
+function rdSet(b, tr, d, on) { shopq.push({ op: 'rday', id: b.id, n: b.n, c: b.c || '', a: b.a || '', d, tr, on, rid: 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6) }); LS('shopq', shopq); sync() }
+function inToday(b) { if (rdSrv() && b.id) return inPlan(b, me, today()); const d = rdToday(), k = skey(b); return !d.rm.includes(k) && (d.add.includes(k) || (inWeek(b, wdNow()) && myPt(b))) }
+function migRd() { // v35: один раз — разовые правки сегодняшнего дня с телефона в таблицу (только точки с ID); после этого правки дня живут на сервере
+  const k = today(), x = RD[k]; if (!x) return false; let n = 0; const go = (ids, on) => (Array.isArray(ids) ? ids : []).forEach(id => { const b = byId(id); if (b) { shopq.push({ op: 'rday', id: b.id, n: b.n, c: b.c || '', a: b.a || '', d: k, tr: me, on, rid: 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6) }); n++ } });
+  go(x.add, true); go(x.rm, false); delete RD[k]; saveRoute(); if (n) LS('shopq', shopq); return n > 0 }
 /* v30. «Никого не было» и «Зайти позже» откладывают точку, а не закрывают: она остаётся в списке на сегодня (внизу, с пометкой), а если у неё нет плана —
    получает план на конец сегодняшнего дня. Не дошли — завтра точка в «Стоит заехать» как просроченная. План ставится на 23:59, а не на 00:00:
    сервер снимает план при визите, если план не позже времени визита, и иначе стёр бы его тем же отложенным визитом */
@@ -769,7 +894,7 @@ function planAfter(x, val, ts) { // после визита или заявки 
   if (!x || !isToday(ts)) return false;
   if (val && DEFER.includes(val)) { if (x.pl) return false; x.pl = eod() } else { if (!x.pl || x.pl > eod()) return false; x.pl = 0 }
   saveMeta(x); return true }
-function setToday(b, on) { const d = rdToday(), k = skey(b), auto = inWeek(b, wdNow()) && myPt(b); d.add = d.add.filter(x => x != k); d.rm = d.rm.filter(x => x != k); if (on && !auto) d.add.push(k); if (!on && auto) d.rm.push(k); saveRoute() }   // auto — точка и так в маршруте сегодня (по дням и своя/свободная)
+function setToday(b, on) { if (rdSrv() && b.id) return rdSet(b, me, today(), on); const d = rdToday(), k = skey(b), auto = inWeek(b, wdNow()) && myPt(b); d.add = d.add.filter(x => x != k); d.rm = d.rm.filter(x => x != k); if (on && !auto) d.add.push(k); if (!on && auto) d.rm.push(k); saveRoute() }   // auto — точка и так в маршруте сегодня (по дням и своя/свободная)
 function setWeek(b, i, on) { const a = wdays(b).filter(x => x != i); if (on) a.push(i); a.sort();
   if (CFG.API_URL && srvV >= 31 && b.id) { b.rw = a; LS('base', base); shopq.push({ op: 'days', id: b.id, n: b.n, c: b.c || '', a: b.a || '', days: a }); LS('shopq', shopq); sync(); return }   // v31: в таблицу, через очередь
   const k = skey(b); if (a.length) RW[k] = a; else delete RW[k]; saveRoute() }
@@ -822,18 +947,18 @@ function drawToday(L) {
   $('#shl').innerHTML = h;
   const w = document.getElementById('shaw'); if (w) w.hidden = !rtAdd;
   const pick = (b, tags) => `<button class="shi" data-a="rpick" data-v="${esc(skey(b))}"><div style="flex:1;min-width:0"><b>${esc(b.n)}</b><div class="m">${addr(b)}</div>${tags ? `<div class="tg">${tags.map(t => `<span>${esc(t)}</span>`).join('')}</div>` : ''}</div><span class="pl add">+ добавить</span></button>`;
-  if (rtAdd) { const q = norm(shQ), ad = L.filter(b => !cur.includes(b) && norm(b.n).includes(q)).sort(byName);
+  if (rtAdd) { const q = norm(shQ), ad = L.filter(b => !cur.includes(b) && shMatch(b, q)).sort(byName);
     $('#sha').innerHTML = ad.slice(0, 40).map(b => pick(b)).join('') + (ad.length > 40 ? `<p class="m" style="margin:0 2px 8px">Показаны первые 40 из ${ad.length}. Уточните поиском.</p>` : '') || '<p class="empty">Подходящих магазинов нет: все уже в списке или не подходят под поиск.</p>' }
   const tips = L.filter(b => !inToday(b) && myPt(b)).map(b => ({ b, d: dueInfo(b) })).filter(x => x.d).sort((x, y) => y.d.sc - x.d.sc).slice(0, 20);
   $('#shx').innerHTML = (tips.length ? `<details class="rt rtip"><summary><span>Стоит заехать · ${tips.length}</span><small class="m">не в маршруте, но давно не были или есть вопрос</small></summary>${tips.map(({ b, d }) => pick(b, d.tags)).join('')}</details>` : '')
-    + `<div class="rnav"><button class="ghost" data-a="shm" data-v="all">Все магазины</button><button class="ghost" data-a="rplan">Маршрут по дням</button></div>`;
+    + `<div class="rnav"><button class="ghost" data-a="shm" data-v="all">Все магазины</button><button class="ghost" data-a="rplan">Маршрут по дням</button>${rgOk() ? `<button class="ghost rnw" data-a="rgall">${ico('user', 18)} Общий маршрут — все торговые</button>` : ''}</div>`;   // v35: общий маршрутный лист (администратор там же ставит точки торговым)
   syncStatus();
 }
 function drawShops() {
   const route = shMode == 'route', q = norm(shQ);
   if (route && rtDay < 0) return drawToday(base);
   if (route) return drawWeek(base);   // v33: «Маршрут по дням» — вся неделя; лента на сегодня — все точки дня, поиск — только в списке для добавления
-  let L = base.filter(b => (!shCity || norm(b.c) == norm(shCity)) && (!shT || b.ty == shT) && norm(b.n).includes(q));
+  let L = base.filter(b => (!shCity || norm(b.c) == norm(shCity)) && (!shT || b.ty == shT) && (!shRg || norm(b.rg) == norm(shRg)) && shMatch(b, q));   // v35: статус — рядом кнопок в drawAll (числа считаются с учётом обоих рядов)
   return drawAll(L);
 }
 /* v33. «Маршрут по дням» — неделя целиком: полоса нагрузки и карточка на каждый день; выбранный день раскрыт (DECISIONS п. 51) */
@@ -852,33 +977,37 @@ function drawWeek(L) {
   $('#shl').innerHTML = h; if (rtAdd) drawWeekAdd(L);
 }
 function drawWeekAdd(L = base) { const i = rtDay, q = norm(shQ), cur = L.filter(b => inWeek(b, i));
-  const rest = L.filter(b => !cur.includes(b) && canDays(b) && norm(b.n).includes(q)).sort((a, b) => a.n.localeCompare(b.n, 'ru'));
+  const rest = L.filter(b => !cur.includes(b) && canDays(b) && shMatch(b, q)).sort((a, b) => a.n.localeCompare(b.n, 'ru'));
   $('#sha').innerHTML = rest.slice(0, 40).map(b => `<button class="shi" data-a="rpick" data-v="${esc(skey(b))}"><div style="flex:1;min-width:0"><b>${esc(b.n)}</b><div class="m">${esc([b.a, b.c].filter(Boolean).join(' · ') || 'без адреса')}</div></div><span class="pl add">+ добавить</span></button>`).join('')
     + (rest.length > 40 ? `<p class="m" style="margin:0 2px 8px">Показаны первые 40 из ${rest.length}. Уточните поиском.</p>` : '') || '<p class="empty">Подходящих магазинов нет: все уже в этом дне или не подходят под поиск.</p>' }
 /* v33. «Все магазины» — вкладки по смыслу и срочность (DECISIONS п. 49). Только на устройстве, по данным, которые уже есть; пороги — те же, что у подсказок (RT.vd, RT.od) */
 let shF = 'all';
-const SHF = [['all', 'Все'], ['far', 'Давно не были'], ['noord', 'Без заказов'], ['mine', 'Мои'], ['ref', 'Отказались']];
+const SHF = [['all', 'Все'], ['took', 'Брали заявку'], ['far', 'Давно без визита'], ['noord', 'Без заказов'], ['mine', 'Мои'], ['ref', 'Не работаем']];   // v34: «Брали заявку» — заявка за 5 дней (сегодня и 4 дня назад); «Давно без визита» — ни визита, ни заявки (заявка — тоже посещение, как «Взяли заказ»); «Не работаем» — отказались, не заходить, закрыты
 const dAgo = ms => ms ? Math.max(0, Math.floor((dayMs(Date.now()) - dayMs(ms)) / 864e5)) : null;   // дней с даты; null — не было
 const shOut = b => b.st == 'ref' || b.st == 'no' || b.st == 'closed';   // не работаем: в общем списке — свёрнуто внизу
 function shClass(b) { const dc = dAgo(lastC(b)), dor = dAgo(b.lo), out = shOut(b);
-  return { dc, out, far: !out && (dc === null || dc >= RT.vd), noord: !out && (dor === null || dor >= RT.od), mine: !!b.ow && norm(b.ow) == norm(me), ref: b.st == 'ref' } }
+  return { dc, out, far: !out && (dc === null || dc >= RT.vd), noord: !out && (dor === null || dor >= RT.od), mine: !!b.ow && norm(b.ow) == norm(me), ref: out, took: dor !== null && dor <= 4 } }
 const shUrg = (a, b) => { const x = shClass(a).dc, y = shClass(b).dc; return (x === null ? 1e9 : x) == (y === null ? 1e9 : y) ? a.n.localeCompare(b.n, 'ru') : (y === null ? 1e9 : y) - (x === null ? 1e9 : x) };   // сначала без контактов, потом — дольше всего не были
 function shRow(b) { const k = shClass(b), urg = k.dc === null || k.dc >= RT.vd;
   const own = b.ow ? (k.mine ? 'вы' : esc(b.ow)) : (CFG.API_URL && srvV >= 31 ? 'свободная' : '');
   const sub = !b.lv && !b.lo ? 'Ни визитов, ни заказов' : [b.lv ? 'Визит ' + ago(b.lv) : '', b.lo ? 'заказ ' + ago(b.lo) : 'заказов не было'].filter(Boolean).join(' · ');
   const tile = k.dc === null ? '<b>нет</b><small>визитов</small>' : k.dc == 0 ? '<b class="sm">сегодня</b>' : `<b>${k.dc}</b><small>дн.</small>`;
-  return `<button class="shrow" data-a="scard" data-v="${esc(skey(b))}"><span class="srt"><b>${esc(b.n)}</b><span class="srp">${pillOf(b) || '<span class="pl nt">Без статуса</span>'}${own ? `<span class="m">· ${own}</span>` : ''}</span><span class="m">${[b.ty, b.a].filter(Boolean).map(esc).join(' · ') || esc(b.c || '')}</span><span class="m">${sub}</span></span><span class="sdt${urg ? ' urg' : ''}" aria-label="${k.dc === null ? 'контактов не было' : 'дней с последнего контакта: ' + k.dc}">${tile}</span></button>` }
-function drawAll(L) {
-  const cnt = {}; SHF.forEach(([f]) => { cnt[f] = f == 'all' ? L.length : L.filter(b => shClass(b)[f]).length });
+  return `<button class="shrow" data-a="scard" data-v="${esc(skey(b))}"><span class="srt"><b>${esc(b.n)}</b><span class="srp">${pillOf(b) || '<span class="pl nt">Без статуса</span>'}${own ? `<span class="m">· ${own}</span>` : ''}</span><span class="m">${[b.ty, b.a, b.rg].filter(Boolean).map(esc).join(' · ') || esc(b.c || '')}</span><span class="m">${sub}</span></span><span class="sdt${urg ? ' urg' : ''}" aria-label="${k.dc === null ? 'контактов не было' : 'дней с последнего контакта: ' + k.dc}">${tile}</span></button>` }
+const STS = { reg: 'Постоянный', good: 'Хороший', prom: 'Перспективный', neu: 'Нейтральный', hard: 'Сложный', no: 'Не заходить', closed: 'Закрыт', ref: 'Отказались' };   // v35: короткие названия статусов для ряда кнопок
+function drawAll(L0) { // v35: два ряда кнопок — «что с точкой» и статус; числа в каждом ряду — с учётом выбора в другом
+  const stOk = b => !shSt || (shSt == '-' ? !b.st : b.st == shSt), fOk = b => shF == 'all' || shClass(b)[shF], L = L0.filter(stOk), cnt = {};
+  SHF.forEach(([f]) => { cnt[f] = f == 'all' ? L.length : L.filter(b => shClass(b)[f]).length });
   if (shF != 'all' && !SHF.some(([f]) => f == shF)) shF = 'all'; if (shF == 'mine' && !cnt.mine) shF = 'all';
-  $('#shf').innerHTML = `<div class="chips shfc">${SHF.filter(([f]) => f != 'mine' || cnt.mine).map(([f, t]) => `<button class="chip${shF == f ? ' on' : ''}" data-a="shf" data-v="${f}" aria-pressed="${shF == f}">${t} <em>${cnt[f]}</em></button>`).join('')}</div>
-    <div class="shsort m">${ico('down', 16)} По срочности: сначала те, где давно не были</div>`;
+  const Lf = L0.filter(fOk), sc = k => Lf.filter(b => k == '-' ? !b.st : b.st == k).length, sts = [['', 'Любой', Lf.length], ...Object.keys(ST).map(k => [k, STS[k] || ST[k][0], sc(k)]).filter(x => x[2] || x[0] == shSt), ...(sc('-') || shSt == '-' ? [['-', 'Без статуса', sc('-')]] : [])];
+  $('#shf').innerHTML = `<div class="shfg"><small class="shfl">Что с точкой</small><div class="chips shfc">${SHF.filter(([f]) => f != 'mine' || cnt.mine).map(([f, t]) => `<button class="chip${shF == f ? ' on' : ''}" data-a="shf" data-v="${f}" aria-pressed="${shF == f}">${t} <em>${cnt[f]}</em></button>`).join('')}</div></div>
+    <div class="shfg"><small class="shfl">Статус</small><div class="chips shfc">${sts.map(([k, t, n]) => `<button class="chip${shSt == k ? ' on' : ''}" data-a="shst" data-v="${k}" aria-pressed="${shSt == k}">${k && k != '-' ? `<span class="sdot" style="background:${ST[k][1]}"></span>` : ''}${t} <em>${n}</em></button>`).join('')}</div></div>
+    <div class="shsort m">${ico('down', 16)} ${shF == 'took' ? 'Заявки с ' + fd(locIso(Date.now() - 4 * 864e5)) + ' по ' + fd(locIso(Date.now())) + ' (5 дней), сначала свежие' : 'По срочности: сначала те, где давно не были'}</div>`;
   const grp = (t, list) => list.length ? `<h3 class="sub">${t} · ${list.length}</h3><div class="shls">${list.map(shRow).join('')}</div>` : '';
   let h;
   if (shF == 'all') { const live = L.filter(b => !shOut(b)), out = L.filter(shOut).sort(shUrg);
-    h = grp('Давно не были', live.filter(b => shClass(b).far).sort(shUrg)) + grp('Были недавно', live.filter(b => !shClass(b).far).sort(shUrg))
+    h = grp('Давно без визита', live.filter(b => shClass(b).far).sort(shUrg)) + grp('Были недавно', live.filter(b => !shClass(b).far).sort(shUrg))
       + (out.length ? `<details class="rt shout"><summary>Отказались, не заходить, закрыты · ${out.length}</summary><div class="shls">${out.map(shRow).join('')}</div></details>` : '') }
-  else h = grp(SHF.find(([f]) => f == shF)[1], L.filter(b => shClass(b)[shF]).sort(shUrg));
+  else h = grp(SHF.find(([f]) => f == shF)[1], L.filter(b => shClass(b)[shF]).sort(shF == 'took' ? (a, b) => (b.lo || 0) - (a.lo || 0) : shUrg));
   $('#shl').innerHTML = h || '<p class="empty">Магазинов не найдено</p>';
 }
 const shopById = v => String(v).startsWith('n:') ? base.find(b => b.n == v.slice(2)) : byId(v);
@@ -888,7 +1017,7 @@ function shopCard(v) {
   const x = shopById(v) || cSh; if (!x) return shopsView();
   if (cKey != (x.id || x.n)) { cKey = x.id || x.n; cLog = null; cMine = 0; cTot = 0; evF = 'all'; evEd = ''; cErr = ''; cSt = x.st || '-'; cVO = false; loadLog(x) } cSh = x;
   openSheet('shopc', ''); const tdy = inToday(x), wk = WD.filter((d, i) => inWeek(x, i));
-  const sec = (id, title, sub, body, ic) => `<details class="sc cs" data-s="${id}"${cOpen.has(id) ? ' open' : ''}><summary>${ic ? ico(ic, 22) : ''}<span class="cst">${title}<small class="m"${id == 'feed' ? ' id="fsub"' : ''}>${sub}</small></span></summary>${body}</details>`;
+  const sec = (id, title, sub, body, ic) => `<details class="sc cs" data-s="${id}"${cOpen.has(id) ? ' open' : ''}><summary>${ic ? ico(ic, 22) : ''}<span class="cst">${title}<small class="m"${id == 'feed' ? ' id="fsub"' : ''}>${sub}<em class="svm" id="sv-${id}">${secMark(x, id)}</em></small></span></summary>${body}</details>`;
   const visit = cVO ? `<div class="sum rv" style="margin-top:10px"><b>Результат визита</b><p class="m" style="margin:4px 0 8px">Нажмите результат — визит запишется. Комментарий — по желанию.</p><input id="vn" maxlength="500" placeholder="Комментарий (для «Другое» — обязательно)" style="margin:0 0 10px"><div class="vg vg2">${VO.map((t, i) => `<button data-a="vis" data-v="${i}">${t}</button>`).join('')}</div>
     <details class="mini" style="margin-top:10px"><summary>Визит был раньше — указать дату и время</summary><div class="vdt"><input type="date" id="vd" max="${today()}" value="${today()}" aria-label="Дата визита"><input type="time" id="vt" value="${hhmm(Date.now())}" data-t0="${hhmm(Date.now())}" aria-label="Время визита"></div></details>
     <div class="m" id="myl" style="margin-top:8px">${myLast(x) ? 'Ваш последний визит сюда: ' + ft(myLast(x)) : 'Вы здесь ещё не отмечались'}</div></div>` : '';
@@ -896,14 +1025,14 @@ function shopCard(v) {
     <div id="stw" ${cSt == '-' ? 'hidden' : ''}><input id="stn" maxlength="500" placeholder="${stPh(cSt)}" value="${esc(x.nt || '')}" style="margin:10px 0 0"><div class="rsn"${cSt == 'ref' ? '' : ' hidden'}><p class="m" style="margin:8px 0 6px">Причина — по желанию. Частые:</p>${RSN.map(r => `<button data-a="rsn" data-v="${esc(r)}">${esc(r)}</button>`).join('')}<button data-a="rsn" data-v="">Без причины</button></div></div><div class="m" style="margin-top:10px">Действует с (необязательно — если статус был установлен раньше)</div><input type="date" id="sef" max="${today()}" style="margin-top:4px"><button class="send" style="margin-top:10px" data-a="sstsave">Сохранить статус</button>`;
   const plBody = `<div class="pr2"><input type="date" id="pld" min="${today()}" value="${x.pl ? isoDay(x.pl) : today()}" aria-label="Дата визита по плану"><button data-a="plan">${x.pl ? 'Перенести' : 'Запланировать'}</button>${x.pl ? '<button class="ghost2" data-a="planx">Убрать</button>' : ''}</div>
     <input id="fqi" maxlength="500" placeholder="Открытый вопрос / что не забыть" value="${esc(x.fq || '')}" style="margin:10px 0 0"><div class="pr2"><button data-a="fqs">Сохранить вопрос</button>${x.fq ? '<button class="ghost2" data-a="fqx">Решён</button>' : ''}</div>`;
-  const ctBody = `<input id="ict" maxlength="100" placeholder="Имя, должность" value="${esc(x.ct || '')}" style="margin:4px 0 8px"><input id="itl" maxlength="40" inputmode="tel" placeholder="Телефон" value="${esc(x.tl || '')}" style="margin:0 0 8px"><input id="irg" maxlength="100" placeholder="Район / ориентир" value="${esc(x.rg || '')}" style="margin:0 0 8px"><input id="iul" maxlength="120" placeholder="Юрлицо: ИП или ТОО (как в документах)" value="${esc(x.ul || '')}" style="margin:0 0 8px"><button class="ghost" style="margin-top:0" data-a="sinfo">${ico('save', 18)} Сохранить контакт</button>`;
+  const ctBody = `<input id="ict" maxlength="100" placeholder="Имя, должность" value="${esc(x.ct || '')}" style="margin:4px 0 8px"><input id="itl" maxlength="40" inputmode="tel" placeholder="Телефон" value="${esc(x.tl || '')}" style="margin:0 0 8px"><input id="irg" maxlength="100" placeholder="Район / ориентир" list="rgl" autocomplete="off" value="${esc(x.rg || '')}" style="margin:0 0 8px"><datalist id="rgl">${rgList(x.c).map(r => `<option value="${esc(r)}"></option>`).join('')}</datalist><input id="iul" maxlength="120" placeholder="Юрлицо: ИП или ТОО (как в документах)" value="${esc(x.ul || '')}" style="margin:0 0 8px"><button class="ghost" style="margin-top:0" data-a="sinfo">${ico('save', 18)} Сохранить контакт</button>`;
   const own0 = CFG.API_URL && srvV >= 31 ? `<span class="pl nt">${x.ow ? (norm(x.ow) == norm(me) ? 'Ваша точка' : 'Ответственный: ' + esc(x.ow)) : 'Точка свободна'}</span>` : '';
   $('#sb').innerHTML = `<div class="shh"><div class="shr"><div class="shk">${esc([x.ty || 'точка', x.c].filter(Boolean).join(' · ').toUpperCase())}</div><button class="ghost shed" data-a="sedit2">${ico('edit', 18)} Изменить</button></div>
     <div class="shn">${esc(x.n)}</div><div class="gom">${esc(x.a || 'без адреса')}</div>${x.ul ? `<div class="shul">${esc(x.ul)}</div>` : ''}
     <div class="shp">${pillOf(x) || '<span class="pl nt">Без статуса</span>'}${own0}${x.pl ? `<span class="pl wait">Визит по плану: ${fd(isoDay(x.pl))}</span>` : ''}</div>
     ${x.sb ? `<div class="m">Статус поставил ${esc(x.sb)}, ${fd(isoDay(x.sa))}</div>` : ''}${x.nt ? `<div class="shnt">${esc(x.nt)}</div>` : ''}</div>
   <div class="sht3" id="sml">${sumTiles(x)}</div>
-  ${x.fq ? `<div class="shq"><small>ОТКРЫТЫЙ ВОПРОС</small><b>${esc(x.fq)}</b></div>` : ''}
+  ${x.fq ? `<div class="shq"><small>ОТКРЫТЫЙ ВОПРОС</small><b>${esc(x.fq)}</b></div>` : ''}${x.nb ? `<div class="shnb"><small>ЗАМЕТКИ</small><div>${esc(x.nb)}</div></div>` : ''}
   <div class="cta"><button class="send alt${cVO ? ' on' : ''}" data-a="cvis">${ico(cVO ? 'x' : 'check', 22)} ${cVO ? 'Закрыть' : 'Визит'}</button><button class="send" data-a="sord" data-v="${esc(x.id || '')}">${ico('bag', 22)} Заявка</button></div>
   ${visit}
   ${x.tl || gq(x) ? `<div class="cta2">${x.tl ? `<a class="ghost" href="tel:${esc(x.tl.replace(/[^\d+]/g, ''))}">${ico('phone', 18)} Позвонить</a>` : ''}${gq(x) ? `<a class="ghost" href="${esc(geoUrl(x))}" target="_blank" rel="noopener">${ico('nav', 18)} Как проехать</a>` : ''}</div>` : ''}
@@ -911,6 +1040,7 @@ function shopCard(v) {
   ${sec('days', 'Дни маршрута', wk.length ? wk.join(', ') : 'не заданы', `<div class="m">${canDays(x) ? 'В эти дни магазин сам попадает в маршрут на сегодня' + (x.ow ? '' : ' (у всех торговых, пока точка свободна)') : 'Точка закреплена за «' + esc(x.ow) + '»: дни меняет он или администратор'}</div><div class="wk" style="margin:8px 0 0">${WD.map((d, i) => `<button data-a="rwd" data-v="${i}" class="${inWeek(x, i) ? 'on' : ''}"${canDays(x) ? '' : ' disabled'}>${d}</button>`).join('')}</div>`, 'cal')}
   ${CFG.API_URL && srvV >= 31 ? sec('own', 'Ответственный', x.ow ? esc(x.ow) + (norm(x.ow) == norm(me) ? ' (вы)' : '') : 'свободная точка', ownBody(x), 'user') : ''}
   ${sec('vat', 'Цены для магазина', vatSub(x), vatBody(x), 'tag')}
+  ${x.id && CFG.API_URL ? sec('nb', 'Заметки', x.nb ? esc(x.nb.split('\n')[0].slice(0, 40)) + (x.nb.length > 40 || x.nb.includes('\n') ? '…' : '') : 'нет', `<textarea id="inb" maxlength="2000" rows="4" placeholder="Что важно знать о точке: как подъехать, кого спросить, когда принимают товар">${esc(x.nb || '')}</textarea><button class="ghost" style="margin-top:8px" data-a="snb">${ico('save', 18)} Сохранить заметку</button>`, 'edit') : ''}
   ${sec('ct', 'Контакт и юрлицо', esc([x.ct, x.tl, x.ul].filter(Boolean).join(' · ')) || 'не указаны', ctBody, 'phone')}
   ${sec('geo', 'Место точки', geoTxt(x), geoBody(x), 'pin')}
   ${sec('plan', 'План и вопрос', [x.pl ? 'визит ' + fd(isoDay(x.pl)) : '', x.fq ? 'есть вопрос' : ''].filter(Boolean).join(' · ') || 'не заданы', plBody, 'clock')}
@@ -933,6 +1063,7 @@ function ownBody(x) { // v31: ответственный за точку. Сво
 /* v31. Место точки (GPS): только по кнопке или по предложению после визита «прямо сейчас». До 10 секунд уточнения, без отказа; хуже 100 м — вопрос.
    Хранится в таблице: широта, долгота, точность, кто и когда. «Нет» на предложение — запоминается на этом телефоне для этой точки */
 let GEO_MS = 1e4, geoNo = new Set((Array.isArray(LS('geono')) ? LS('geono') : []).map(String)), geoBusy = false;
+const geoDist = (p, q) => { const R = 6371e3, r = Math.PI / 180, dl = (q.la - p.la) * r, dn = (q.ln - p.ln) * r, h = Math.sin(dl / 2) ** 2 + Math.cos(p.la * r) * Math.cos(q.la * r) * Math.sin(dn / 2) ** 2; return 2 * R * Math.asin(Math.sqrt(h)) };   // метры
 const gq = x => !!x && x.la != null && x.ln != null && isFinite(x.la) && isFinite(x.ln);
 const geoTxt = x => gq(x) ? (nz(x.ac) <= 100 ? 'точно' : 'приблизительно') + ' (±' + nz(x.ac) + ' м)' : 'не записано';
 const geoUrl = x => 'https://www.google.com/maps/dir/?api=1&destination=' + nz(x.la) + ',' + nz(x.ln);   // официальный формат ссылок Google Maps: на телефоне открывает приложение карт
@@ -957,6 +1088,8 @@ async function geoSave(x, again) {
   try { g = await geoGet() } catch (e) { geoBusy = false; geoProg(''); return say(e && e.code == 1 ? 'Нет разрешения на местоположение. Разрешите его для этого сайта в настройках браузера и нажмите ещё раз.' : e && e.code == -1 ? 'Этот телефон или браузер не умеет определять место.' : 'Не удалось определить место. Выйдите на улицу и нажмите ещё раз.') }
   geoBusy = false; geoProg('');
   if (g.ac > 100 && !await ask('Место определилось приблизительно (±' + g.ac + ' м).\nСохранить так или попробовать ещё раз на улице?', 'Сохранить так', 'Попробовать ещё раз')) return geoSave(x, true);
+  { const nb = base.filter(b => b !== x && gq(b)).map(b => [b, geoDist(b, g)]).filter(z => z[1] <= Math.max(30, g.ac)).sort((p, q) => p[1] - q[1])[0];   // v35: рядом уже записана другая точка — может, это дубль
+    if (nb && !await ask('Рядом (' + Math.round(nb[1]) + ' м) уже записана точка «' + nb[0].n + '»' + (nb[0].a ? ' · ' + nb[0].a : '') + '.\nЭто не один и тот же магазин? Записать место для «' + x.n + '»?', 'Записать', 'Отмена')) return }
   Object.assign(x, g, { gb: me, ga: Date.now() }); LS('base', base);
   if (CFG.API_URL && srvV >= 31 && x.id) { shopq.push({ op: 'geo', id: x.id, n: x.n, c: x.c || '', a: x.a || '', la: g.la, ln: g.ln, ac: g.ac }); LS('shopq', shopq); sync() }
   toast('Место точки записано (±' + g.ac + ' м)'); if (view == 'shopc' && cSh === x) shopCard(skey(x)) }
@@ -973,6 +1106,13 @@ async function loadLog(x) {
 }
 const stPh = st => st == 'no' ? 'Причина (обязательно)' : st == 'ref' ? 'Другая причина (необязательно)' : 'Заметка';
 const myLast = x => Math.max(cMine || 0, x.lw == me ? x.lv || 0 : 0);   // когда этот профиль последний раз отмечал визит в магазине
+/* v34. Сохранения в карточке магазина — по одному правилу: сообщение «… · отправляется» (с «Отменить», где можно) и пометка у раздела: «ждёт отправки» → «сохранено ЧЧ:ММ» после ответа сервера */
+const SEC_OP = { note: 'nb', info: 'ct', meta: 'plan', days: 'days', owner: 'own', vat: 'vat', status: 'st', geo: 'geo', geodel: 'geo' };   // операция очереди → раздел карточки
+let svAt = {};   // когда сервер подтвердил сохранение раздела: { 'ID|раздел': время } (только в памяти)
+const secKey = (x, sc) => (x.id || 'n:' + x.n) + '|' + sc;
+const secMark = (x, sc) => !CFG.API_URL ? '' : shopq.some(q => SEC_OP[q.op] == sc && (x.id ? q.id == x.id : q.n == x.n)) ? ' · ждёт отправки' : svAt[secKey(x, sc)] ? ' · сохранено ' + hhmm(svAt[secKey(x, sc)]) : '';
+function drawMarks(x) { if (!x) return; Object.values(SEC_OP).forEach(sc => { const e = document.getElementById('sv-' + sc); if (e) e.textContent = secMark(x, sc) }) }   // после ответа сервера — без перерисовки карточки (не сбивает ввод)
+const cSaved = (t, undo) => toast(t + (CFG.API_URL ? ' · отправляется' : ' на этом устройстве'), undo);
 function saveMeta(x) { LS('base', base); if (CFG.API_URL) { shopq.push({ op: 'meta', id: x.id || '', n: x.n, c: x.c, a: x.a, ty: x.ty || '', pl: x.pl || 0, fq: x.fq || '' }); LS('shopq', shopq); sync() } }
 function setShopStatus(x, st, nt, at0) { // статус магазина: локально сразу, на сервер через очередь; прежние отметки остаются в журнале. at0 — «действует с» (необязательно)
   const reg = Date.now(), at = at0 || reg, rid = 'r' + reg.toString(36) + Math.random().toString(36).slice(2, 6);
@@ -1012,7 +1152,7 @@ function evHtml(e, x) {
     const ed = (e.hist || []).filter(h => h.k == 'edit').length;
     return `<div class="ev${cx ? ' cx' : ''}"><div class="m">${tm}${ch}</div><div class="t">Визит: ${esc(e.val)}${e.nt ? ' — ' + esc(e.nt) : ''}</div>${cx ? '<div class="m">Отменён' + (e.by ? ' · ' + esc(e.by) + (e.at ? ', ' + ft(e.at) : '') : '') + '</div>' : ed ? '<div class="m">Исправлялся: ' + ed + ' р.</div>' : ''}${my ? `<div class="evb">${cx ? `<button data-a="evres" data-v="${esc(e.id)}">Восстановить</button>` : `<button data-a="eved" data-v="${esc(e.id)}">Изменить</button><button data-a="evcan" data-v="${esc(e.id)}">Отменить</button>`}</div>` : ''}</div>` }
   if (e.k == 'status') return `<div class="ev"><div class="m">${tm}${ch}</div><div class="t">${e.val ? 'Статус: ' + esc((ST[e.val] || [e.val])[0]) : 'Статус снят (не были)'}${e.nt ? ' — ' + esc(e.nt) : ''}</div></div>`;
-  const cur = e.cur, nowS = cur ? (cur.del ? 'сейчас удалена' : '') : '', lab = { order_create: 'Заказ создан', order_edit: 'Заказ изменён', order_cancel: 'Заказ удалён', order_restore: 'Заказ восстановлен' }[e.k] || esc(e.k), can = !!histById(e.oid);
+  const cur = e.cur, nowS = cur ? (cur.del ? 'сейчас удалена' : '') : '', lab = ({ order_create: 'Заказ создан', order_edit: 'Заказ изменён', order_cancel: 'Заказ удалён', order_restore: 'Заказ восстановлен' }[e.k] || esc(e.k)) + (e.by && e.by != e.who && /cancel|restore/.test(e.k) ? ' (' + esc(e.by) + ')' : ''), can = !!histById(e.oid);
   const pv = e.prev ? ` · было ${tg(e.prev.sum)}, поставка ${esc(dd(e.prev.d))}` : '', mv = e.mv == 'out' ? '<div class="m">Перенесён в другой магазин</div>' : e.mv == 'in' ? '<div class="m">Перенесён из другого магазина</div>' : '';
   return `<div class="ev"><div class="m">${tm}${ch}${e.legacy ? ' · по данным заявки' : ''}</div><div class="t">${lab}${nz(e.val) ? ' · ' + tg(e.val) : ''}${e.nt ? ' · ' + esc(dd(e.nt)) : ''}${pv}</div>${mv}${nowS ? '<div class="m">' + nowS + '</div>' : ''}${can ? `<div class="evb"><button data-a="hd" data-v="${esc(e.oid)}">Открыть заявку</button></div>` : ''}</div>`;
 }
@@ -1037,7 +1177,7 @@ function shopNew() {
   openSheet('shopn', 'Новый магазин');
   $('#sb').innerHTML = `<p class="m" style="margin:0 2px 12px">Точка сразу появится у всех торговых. Дни маршрута, контакт и место можно задать потом в её карточке.</p>
   <div class="sum frm"><label><b>Название</b><input id="nn" maxlength="120" placeholder="Например: Магнум №3"></label><label><b>Город</b><select id="nc">${S.cities.map(c => `<option ${c == (shCity || H.c) ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></label>
-  <label><b>Адрес</b><input id="na" maxlength="300" placeholder="Улица, дом"></label><label><b>Тип точки</b><select id="nty">${tyOpts('')}</select></label><label><b>Юрлицо <span class="m">— необязательно</span></b><input id="nul" maxlength="120" placeholder="ИП или ТОО, как в документах"></label></div>
+  <label><b>Адрес</b><input id="na" maxlength="300" list="stl" autocomplete="off" placeholder="Улица, дом"></label><label><b>Тип точки</b><select id="nty">${tyOpts('')}</select></label><label><b>Юрлицо <span class="m">— необязательно</span></b><input id="nul" maxlength="120" placeholder="ИП или ТОО, как в документах"></label></div>
   <button class="send" data-a="shns">${ico('plus', 22)} Создать точку</button>`;
 }
 
@@ -1050,6 +1190,14 @@ document.addEventListener('click', async e => {   // async: вопросы (ask)
   if (a == 'nroute') return goHome(); if (a == 'nmain') { closeSheet(); drawList(); return } if (a == 'nmore') return moreView();
   if (a == 'back') { const f = BACK[view]; if (f) f(); else { closeSheet(); drawList() } return }
   if (a == 'rplan') { rtDay = -1; rtAdd = false; rvK = ''; return planView() }
+  if (a == 'shrt') { const on = v == '1'; if (on == cfgShare) return; const r = await admDo({ op: 'cfg', share: on }); if (r) { cfgShare = on; LS('cfgsh', on); toast(on ? 'Общий маршрут виден торговым' : 'Общий маршрут — только администраторам') } if (view == 'set') setView(); return }   // v35: сразу на сервер (нужна связь)
+  if (a == 'shst') { shSt = v || ''; return drawShops() }   // v35: статус — кнопкой
+  if (a == 'rgall') { rgD = today(); rgAdd = ''; rgQ = ''; return rgView() }
+  if (a == 'rgprev' || a == 'rgnext') { const [y, m, d] = rgD.split('-').map(Number); rgD = locIso(new Date(y, m - 1, d + (a == 'rgnext' ? 1 : -1), 12).getTime()); rgAdd = ''; return rgView() }
+  if (a == 'rgtoday') { rgD = today(); return rgView() } if (a == 'rgretry') { delete rgC[rgD]; return rgView() }
+  if (a == 'rgopen') { rgAdd = b.dataset.t || ''; rgQ = ''; rgView(); const q = document.getElementById('rgq'); if (q && q.focus) try { q.focus() } catch (_) {} return }
+  if (a == 'rgrm' || a == 'rgadd') { const x = byId(v), tr = b.dataset.t || '', d = rgD; if (!x || !tr || role != 'admin' || d < today()) return; const on = a == 'rgadd'; rdSet(x, tr, d, on); rgQ = ''; rgView();   // v35: администратор ставит маршрут торговому
+    return cSaved((on ? 'Добавлена' : 'Убрана') + ': «' + x.n + '» · ' + tr + ', ' + fd(d), () => { rdSet(x, tr, d, !on); if (view == 'rall') rgView() }) }
   if (a == 'cvis') { cVO = !cVO; return shopCard(skey(cSh)) }
   if (a == 'cat') { cat = v; drawChips(); drawList() }
   else if (a == 'fav') { fav = isFav(p) ? fav.filter(k => k != id) : [...fav, id]; LS('fav', fav); drawChips(); if (cat == FAV) drawList(); else b.classList.toggle('on', isFav(p)) }
@@ -1062,7 +1210,7 @@ document.addEventListener('click', async e => {   // async: вопросы (ask)
   else if (a == 'zoom') { $('#lb img').src = b.dataset.src; $('#lb').classList.add('on') }
   else if (a == 'lbx') $('#lb').classList.remove('on');
   else if (a == 'edit') { editId = id; cartView() }
-  else if (a == 'pdone') { const t = document.querySelector('[data-np]'); if (t && editId) commitNp(t); else { editId = ''; cartView() } }
+  else if (a == 'pdone') { if (Date.now() - npAt < 800) return; const t = document.querySelector('[data-np]'); if (t && editId) commitNp(t); else { editId = ''; cartView() } }   // v34: уже сохранено по касанию «Готово» (pointerdown) — второй раз не перерисовываем
   else if (a == 'reset') { delete cart[id].p; save(); bar(); cartView() }
   else if (a == 'disc') { disc = +v; save(); bar(); cartView() }
   else if (a == 'new') { const z = snap(); cart = {}; disc = 0; eo = ''; H.t = 0; save(); closeSheet(); drawList(); toast('Изменено: заявка очищена', () => unsnap(z)) }
@@ -1070,7 +1218,11 @@ document.addEventListener('click', async e => {   // async: вопросы (ask)
     if (CFG.API_URL && (!me || !tok)) { authView('login'); return say('Сначала войдите в свой профиль: заявка записывается от вашего имени.') }
     if (a == 'esave' && !eo) return;
     if (!H.s || !lines().length) return say('Укажите магазин и добавьте товары');
-    if (!H.d || H.d < today()) { H.dm = 0; fixDate(); fill(); return say('Дата поставки не может быть в прошлом. Поставлена ближайшая пятница — проверьте и отправьте снова.') }
+    if (!H.d) { H.dm = 0; fixDate(); fill() }
+    { const ot = H.t > 0 && H.t <= Date.now() ? H.t : eo ? nz((histById(eo) || {}).ts) || Date.now() : Date.now(), od = locIso(ot);   // v34: поставка — не раньше дня заявки; в прошлом — только с подтверждением
+      if (!eo && !(H.t > 0) && H.d < od) { const y = await ask('Дата поставки ' + fd(H.d) + ' уже прошла, а время заявки — «сейчас».\nЕсли заявку приняли раньше — укажите «Время заявки», и эту дату поставки можно оставить.', 'Указать время заявки', 'Поставить ближайшую пятницу');
+        if (y) tOpen = true; else { H.dm = 0; fixDate(); save(); fill() } return cartView() }
+      if (H.d < od) return say('Дата поставки (' + fd(H.d) + ') раньше дня заявки (' + fd(od) + '). Исправьте дату поставки или «Время заявки».') }
     const sh = curShop(); if (sh && sh.st == 'no' && !await ask('⚠ Магазин помечен «Не заходить»' + (sh.nt ? ': ' + sh.nt : '') + '.\nВсё равно отправить заявку?', 'Отправить')) return;
     { const nm = vatNorm(sh, eo), vd = !!nm && nm.m != S.mode, vs = !!msw && msw != S.mode;   // v30: режим цен не совпадает с нормой точки или его переключали во время заявки — один вопрос
       if (vd || vs) { const o = otherM(S.mode), r = await askVat(vatMsg(sh, nm, vd, vs), (a == 'esave' ? 'Сохранить ' : 'Отправить ') + ML[S.mode], 'Переключить на ' + ML[o]);
@@ -1083,24 +1235,26 @@ document.addEventListener('click', async e => {   // async: вопросы (ask)
     const rc = rcPick(), num2 = String(rc.p || S.op || '').replace(/\D/g, ''); if (!num2 && !eo) return say('Не указан номер получателя: заполните лист «Получатели» или номер в настройках');
     const tx = text();
     const o = { id: eo || Date.now().toString(36) + Math.random().toString(36).slice(2, 6), ts: H.t > 0 && H.t <= Date.now() ? H.t : eo ? old.ts : Date.now(), trader: eo ? old.trader || me : me, h: { d: H.d, c: H.c, s: H.s, a: H.a, sid: H.sid || '' }, cart: JSON.parse(JSON.stringify(cart)), disc, sum: final(), m: S.mode, rc: eo && old.rc && old.rc.p ? old.rc : { n: rc.n, p: num2 }, text: tx, items: lines().map(p => ({ n: p.n, g: p.g, u: p.u, q: qty(p), p: price(p), o: p.pr })) };
-    if (eo) { o.ed = Date.now(); if (old.rg) o.rg = old.rg } else o.rg = Date.now();   // rg — когда заявка записана: от него считается срок правки (сервер это поле не принимает и считает сам)
+    if (eo) { o.ed = Date.now(); if (old.rg) o.rg = old.rg; if (eob != null) o.bed = eob } else o.rg = Date.now();   // rg — когда заявка записана: от него считается срок правки (сервер это поле не принимает и считает сам)
     if (eo) { commitOrder(o); return toast('Изменение сохранено') }
     LS('pending', o); waOpen(num2, o.text); }
   else if (a == 'eoc') { const z = snap(); eo = ''; cart = {}; disc = 0; clrShop(); save(); fill(); closeSheet(); drawList(); toast('Правка отменена, заявка осталась как была', () => unsnap(z)) }
   else if (a == 'hedit') { const x = histById(v); if (!x || !canEdit(x)) return say('Изменить можно свою заявку в течение ' + CFG.EDIT_HOURS + ' ч после создания. Более старые и чужие заявки правит администратор.');
     if (lines().length && !await ask('Текущая заявка в корзине будет заменена. Продолжить?', 'Заменить')) return;
     if (x.m && x.m != S.mode) { S.mode = x.m; LS('set', S); applyMode(); drawSeg() }
-    cart = JSON.parse(JSON.stringify(x.cart || {})); disc = x.disc || 0; H = { ...x.h, dm: 1, r: x.rc && x.rc.n || '', t: nz(x.ts) }; eo = x.id; msw = ''; save(); fill(); closeSheet(); drawList(); cartView() }
+    cart = JSON.parse(JSON.stringify(x.cart || {})); disc = x.disc || 0; H = { ...x.h, dm: 1, r: x.rc && x.rc.n || '', t: nz(x.ts) }; eo = x.id; msw = ''; { const pe = outbox.find(y => y.id == x.id); eob = pe ? (typeof pe.bed == 'number' ? pe.bed : null) : nz(x.ed) } save(); fill(); closeSheet(); drawList(); cartView() }   // v34: eob — версия, с которой начата правка (у неотправленной правки — её исходная); сервер откажет, если заявку тем временем изменили
   else if (a == 'clr') { const z = snap(); cart = {}; disc = 0; eo = ''; save(); bar(); drawList(); toast('Изменено: корзина очищена', () => unsnap(z)) }
   else if (a == 'hd') histDetail(v);
   else if (a == 'htab') { histTab = v; LS('htab', v); histView() }
-  else if (a == 'hdel') { const x = histById(v); if (x && isMine(x) && await ask('Удалить заявку «' + (x.h.s || '—') + '» на ' + tg(x.sum) + '?\nЕё можно будет вернуть в течение ' + CFG.UNDO_HOURS + ' ч.', 'Удалить', '', true)) { delOrder(v, Date.now()); histView() } }
+  else if (a == 'hdel') { const x = histById(v); if (x && canDel(x) && await ask('Удалить заявку «' + (x.h.s || '—') + '» на ' + tg(x.sum) + (isMine(x) ? '' : ' (торговый ' + x.trader + ')') + '?\nЕё можно будет вернуть в течение ' + CFG.UNDO_HOURS + ' ч.', 'Удалить', '', true)) { delOrder(v, Date.now()); histView() } }
   else if (a == 'hres') { delOrder(v, 0); histView() }
   else if (a == 'hcopy') { try { navigator.clipboard.writeText(histById(v).text || '').then(() => say('Текст скопирован')) } catch (e) { say('Не удалось скопировать') } }
-  else if (a == 'hopen') { histDay = dayMs(Date.now()); histView() }
-  else if (a == 'dprev') { histDay = dayMs(histDay - 12 * 36e5); histView() }
-  else if (a == 'dnext') { histDay = Math.min(dayMs(histDay + 36 * 36e5), dayMs(Date.now())); histView() }
-  else if (a == 'dall') { histDay = 0; histView() } else if (a == 'dtoday') { histDay = dayMs(Date.now()); histView() }
+  else if (a == 'hopen') { histDay = 0; histView() }
+  else if (a == 'dprev') { histDay = pShift(hP, histDay || Date.now(), -1); histView() }
+  else if (a == 'dnext') { histDay = Math.min(pShift(hP, histDay || Date.now(), 1), pRange(hP, Date.now())[0]); histView() }
+  else if (a == 'dtoday' || a == 'dall') { histDay = 0; histView() }
+  else if (a == 'hp') { if (HP.some(x => x[0] == v)) { const cur = !histDay || histDay == pRange(hP, Date.now())[0]; hP = v; LS('hp', v); histDay = cur ? 0 : pRange(v, histDay)[0]; histView() } }   // был текущий период — остаёмся в текущем (неделя → сегодня), иначе — период с той же даты   // v35: период истории
+  else if (a == 'hpm') { hP = 'm'; LS('hp', 'm'); histDay = +v; histView() }   // год → месяц
   else if (a == 'dretry') { dayErr = 0; histView() }
   else if (a == 'inst') { if (instEv) { instEv.prompt(); instEv.userChoice.finally(() => { instEv = null; hideInst() }) } else say('Android (Chrome): меню ⋮ → «Установить приложение» или «Добавить на главный экран».\niPhone (Safari): «Поделиться» → «На экран Домой».') }
   else if (a == 'instx') { LS('instx', 1); hideInst() }
@@ -1117,11 +1271,12 @@ document.addEventListener('click', async e => {   // async: вопросы (ask)
   else if (a == 'rgox') { setGo(''); rvK = ''; drawShops() }
   else if (a == 'syn') { CFG.API_URL && !tok ? authView() : sync() }
   else if (a == 'rres') { const x = shopById(rvK), nt = $('#rvn').value.trim(), val = VO[+v]; if (!x || !val) return; if (val == 'Другое' && !nt) return say('Для результата «Другое» напишите комментарий'); rvK = ''; quickVisit(x, val, nt); if (rtDay < 0 && DEFER.includes(val)) setGo(skey(x), true); drawShops() }   // отложили — точка уходит вниз, снова «Куда дальше?»
-  else if (a == 'rord') { const x = shopById(v); if (!x) return; selShop(x); closeSheet(); drawList() }
+  else if (a == 'rord') orderAt(shopById(v))
   else if (a == 'rrm') { const x = shopById(v); if (!x) return; setToday(x, false); drawShops(); toast('Изменено: «' + x.n + '» убран из листа на сегодня', () => { setToday(x, true); if (view == 'shops') drawShops() }) }   // убрать из листа на сегодня (v30: кнопка «Не зайду» у отложенной точки; план остаётся — завтра точка в подсказках)
   else if (a == 'rwrm') { const x = shopById(v), i = rtDay; if (!x || i < 0) return; if (!canDays(x)) return daysDeny(x); setWeek(x, i, false); drawShops(); toast('Изменено: «' + x.n + '» убран из маршрута (' + WDF[i] + ')', () => { setWeek(x, i, true); if (view == 'shops') drawShops() }) }
   else if (a == 'rpick') { const x = shopById(v); if (!x) return; if (rtDay >= 0 && !canDays(x)) return daysDeny(x); if (rtDay < 0) setToday(x, true); else setWeek(x, rtDay, true); drawShops() }
-  else if (a == 'rwd') { const x = cSh; if (!x) return; if (!canDays(x)) return daysDeny(x); setWeek(x, +v, !inWeek(x, +v)); shopCard(skey(x)) }
+  else if (a == 'rwd') { const x = cSh; if (!x) return; if (!canDays(x)) return daysDeny(x); const i = +v, was = inWeek(x, i); setWeek(x, i, !was); shopCard(skey(x));
+    cSaved('Дни маршрута: ' + (WD.filter((d, k) => inWeek(x, k)).join(', ') || 'не заданы'), () => { setWeek(x, i, was); if (view == 'shopc' && cSh === x) shopCard(skey(x)) }) }
   else if (a == 'own') { const x = cSh; if (!x || !x.id || !CFG.API_URL || srvV < 31) return; const act = v == 'take' || v == 'release' || v == 'set' ? v : '', nm = act == 'set' ? String(b.dataset.n || '') : ''; if (!act) return;   // v31: ответственный
     if (act == 'set' && !await ask('Передать точку «' + x.n + '» торговому «' + nm + '»?', 'Передать')) return;
     if (act == 'release' && x.ow && norm(x.ow) != norm(me) && !await ask('Освободить точку «' + x.n + '»? Сейчас она закреплена за «' + x.ow + '».', 'Освободить')) return;
@@ -1130,7 +1285,6 @@ document.addEventListener('click', async e => {   // async: вопросы (ask)
     toast(act == 'take' ? 'Точка закреплена за вами' : act == 'release' ? 'Точка свободна' : 'Точка передана: ' + nm); void prev }
   else if (a == 'geo') geoSave(cSh)
   else if (a == 'geodel') geoDel(cSh)
-  else if (a == 'stp') { if (['w', 'm', 'y'].includes(v)) { stP = v; LS('stp', v); histView() } }
   else if (a == 'promo') promoView()
   else if (a == 'prm') { if (prBusy || role != 'admin' || !id) return; prBusy = true;
     try { const r = await call({ admin: { op: 'promo', key: id, on: v == '1' } }); if (r && Array.isArray(r.promo)) { promoL = r.promo.map(String); LS('promo', promoL); applyFlags(); drawChips(); toast(v == '1' ? 'Товар продвигается' : 'Отметка снята') } else say('Не сохранилось: ' + (FAILR[r && r.reason] || (r && r.reason) || 'ошибка')) }
@@ -1139,19 +1293,23 @@ document.addEventListener('click', async e => {   // async: вопросы (ask)
   else if (a == 'rsn') { const e = $('#stn'); e.value = v || ''; document.querySelectorAll('.rsn button').forEach(q => q.classList.toggle('on', q.dataset.v == (v || ''))) }   // v31: причина «Отказались» одним нажатием
   else if (a == 'rtd') { const x = cSh; if (!x) return; const on = !inToday(x); setToday(x, on); shopCard(skey(x)); if (!on) toast('«' + x.n + '» убран из маршрута на сегодня', () => { setToday(x, true); if (view == 'shopc') shopCard(skey(x)) }) }
   else if (a == 'shns') { const n = $('#nn').value.trim().replace(/\s+/g, ' '), c = $('#nc').value, ad = $('#na').value.trim(), ty = $('#nty').value; if (!n) return;
-    if (findBase(n, c)) return say('Такой магазин в этом городе уже есть');
-    const ul = String($('#nul').value || '').trim().slice(0, 120), o = upShop(n, c, ad); o.ty = ty; if (ul) o.ul = ul; LS('base', base);
+    { const r = await dupAsk(n, c, ad); if (!r) return; if (r !== 'new') { cKey = ''; return shopCard(skey(r)) } }   // v35: одноимённый — «это он?», новый — только с адресом
+    const ul = String($('#nul').value || '').trim().slice(0, 120), o = upShop(n, c, ad, newSid()); o.ty = ty; if (ul) o.ul = ul; LS('base', base);
     if (CFG.API_URL) { shopq.push({ n, c, a: ad, id: o.id, ty }); if (ul) shopq.push({ op: 'info', id: o.id, n, c, a: ad, ct: '', tl: '', rg: '', ul }); LS('shopq', shopq); sync() } cKey = ''; shopCard(o.id) }   // v33: юрлицо — отдельной операцией после создания
-  else if (a == 'sord') { selShop(cSh); closeSheet(); drawList() }
+  else if (a == 'sord') orderAt(cSh)
   else if (a == 'sst') { cSt = v; document.querySelectorAll('.sg button').forEach(e => e.classList.toggle('on', e.dataset.v == v)); $('#stw').hidden = v == '-'; $('#stn').placeholder = stPh(v); document.querySelectorAll('.rsn').forEach(e => { e.hidden = v != 'ref' }) }
   else if (a == 'sstsave') { const x = cSh, none = cSt == '-', st = none ? '' : cSt, nt = none ? '' : $('#stn').value.trim(); if (!cSt) return say('Выберите статус');
     if (st == 'no' && !nt) return say('Для статуса «Не заходить» укажите причину в заметке');
     const sef = $('#sef').value, at = !sef || sef == today() ? 0 : tsOf(sef, '12:00'); if (at > Date.now()) return say('Дата «действует с» не может быть в будущем');
     const prev = { st: x.st || '', nt: x.nt || '' }, old = at && at < (x.sa || 0); setShopStatus(x, st, nt, at);
-    toast(old ? 'Записано в историю с датой ' + fd(isoDay(at)) + '; текущий статус новее и не изменён' : 'Статус ' + (st ? '«' + ST[st][0] + '»' : 'снят') + (CFG.API_URL ? ' · ожидает отправки' : ''), old ? undefined : () => { setShopStatus(x, prev.st, prev.nt); if (view == 'shopc' && cKey == (x.id || x.n)) { cSt = prev.st || '-'; shopCard(x.id || 'n:' + x.n) } });
+    toast(old ? 'Записано в историю с датой ' + fd(isoDay(at)) + '; текущий статус новее и не изменён' : 'Статус ' + (st ? '«' + ST[st][0] + '» сохранён' : 'снят') + (CFG.API_URL ? ' · отправляется' : ''), old ? undefined : () => { setShopStatus(x, prev.st, prev.nt); if (view == 'shopc' && cKey == (x.id || x.n)) { cSt = prev.st || '-'; shopCard(x.id || 'n:' + x.n) } });
     shopCard(x.id || 'n:' + x.n) }
-  else if (a == 'sinfo') { const x = cSh; x.ct = $('#ict').value.trim(); x.tl = $('#itl').value.trim(); x.rg = $('#irg').value.trim(); x.ul = String($('#iul').value || '').trim().slice(0, 120); LS('base', base);
-    if (CFG.API_URL) { shopq.push({ op: 'info', id: x.id || '', n: x.n, c: x.c, a: x.a, ct: x.ct, tl: x.tl, rg: x.rg, ul: x.ul }); LS('shopq', shopq); sync() } shopCard(x.id || 'n:' + x.n) }
+  else if (a == 'snb') { const x = cSh; if (!x || !x.id) return; const pv = x.nb || '', nb = String($('#inb').value || '').trim().slice(0, 2000); if (nb == pv) return toast('Заметка не изменилась');   // v35: заметки о точке — колонка AB
+    const put = v => { x.nb = v; LS('base', base); shopq.push({ op: 'note', id: x.id, n: x.n, c: x.c || '', a: x.a || '', nb: v }); LS('shopq', shopq); sync() };
+    put(nb); shopCard(skey(x)); cSaved(nb ? 'Заметка сохранена' : 'Заметка удалена', () => { put(pv); if (view == 'shopc' && cSh === x) shopCard(skey(x)) }) }
+  else if (a == 'sinfo') { const x = cSh, pv = { ct: x.ct || '', tl: x.tl || '', rg: x.rg || '', ul: x.ul || '' }, put = () => { if (CFG.API_URL) { shopq.push({ op: 'info', id: x.id || '', n: x.n, c: x.c, a: x.a, ct: x.ct, tl: x.tl, rg: x.rg, ul: x.ul }); LS('shopq', shopq); sync() } }; x.ct = $('#ict').value.trim(); x.tl = $('#itl').value.trim(); x.rg = $('#irg').value.trim(); x.ul = String($('#iul').value || '').trim().slice(0, 120); LS('base', base);
+    if (['ct', 'tl', 'rg', 'ul'].every(k => (x[k] || '') == pv[k])) return toast('Контакт не изменился');
+    put(); shopCard(x.id || 'n:' + x.n); cSaved('Контакт, район и юрлицо сохранены', () => { Object.assign(x, pv); LS('base', base); put(); if (view == 'shopc' && cSh === x) shopCard(skey(x)) }) }
   else if (a == 'vis') { cVO = false; const x = cSh, nt = $('#vn').value.trim(), val = VO[+v], vt = $('#vt'), fresh = $('#vd').value == today() && vt.value == vt.dataset.t0, ts = fresh ? Date.now() : tsOf($('#vd').value, vt.value), my = myLast(x);   // время не трогали — берём момент нажатия
     const er = tsErr(ts); if (er) return say(er); if (val == 'Другое' && !nt) return say('Для результата «Другое» напишите комментарий');
     if (my && dayMs(my) == dayMs(ts) && !await ask('Вы уже отмечали визит в этот магазин в этот день (' + new Date(my).toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' }) + ').\nОтметить ещё раз?', 'Отметить ещё раз')) return;
@@ -1170,24 +1328,27 @@ document.addEventListener('click', async e => {   // async: вопросы (ask)
     const back = visOp(x, 'edit', e, { ts, val, nt }); evEd = ''; afterVis(x); toast('Визит изменён · ожидает отправки', () => { back(); afterVis(x) }) }
   else if (a == 'evcan' || a == 'evres') { const x = cSh, e = feed(x).find(y => y.id == v); if (!e) return; const act = a == 'evcan' ? 'cancel' : 'restore', back = visOp(x, act, e, {}); afterVis(x);
     toast(act == 'cancel' ? 'Визит отменён (запись сохраняется, можно восстановить) · ожидает отправки' : 'Визит восстановлен · ожидает отправки', () => { back(); afterVis(x) }) }
-  else if (a == 'plan' || a == 'planx' || a == 'fqs' || a == 'fqx') { const x = cSh;
+  else if (a == 'plan' || a == 'planx' || a == 'fqs' || a == 'fqx') { const x = cSh, pv = { pl: x.pl || 0, fq: x.fq || '' };
     if (a == 'plan') { const v2 = $('#pld').value; if (!v2 || v2 < today()) return say('Выберите сегодняшнюю или будущую дату'); const [y, m, d] = v2.split('-').map(Number); x.pl = new Date(y, m - 1, d).getTime() }
     else if (a == 'planx') x.pl = 0; else if (a == 'fqs') x.fq = $('#fqi').value.trim(); else x.fq = '';
-    saveMeta(x); shopCard(x.id || 'n:' + x.n) }
+    if ((x.pl || 0) == pv.pl && (x.fq || '') == pv.fq) return toast('Без изменений');
+    saveMeta(x); shopCard(x.id || 'n:' + x.n); cSaved({ plan: 'Визит по плану на ' + fd(isoDay(x.pl || Date.now())) + ' сохранён', planx: 'План визита убран', fqs: 'Вопрос сохранён', fqx: 'Вопрос отмечен решённым' }[a], () => { Object.assign(x, pv); saveMeta(x); if (view == 'shopc' && cSh === x) shopCard(skey(x)) }) }
   else if (a == 'slog') { cLog = null; cErr = ''; shopCard(cSh.id || 'n:' + cSh.n); loadLog(cSh) }
   else if (a == 'ssave') { const n = $('#en').value.trim().replace(/\s+/g, ' '), c = $('#ec').value, ad = $('#ea').value.trim(), ty = $('#ety').value; if (!n) return;
-    if (base.some(b => b !== eSh && norm(b.n) == norm(n) && norm(b.c) == norm(c))) return say('Магазин с таким названием в этом городе уже есть');
+    { const m = sameName(n, c, eSh); if (m.length && (!ad || m.some(b => norm(b.a) == norm(ad)))) return say(ad ? '«' + n + '» по этому адресу в этом городе уже есть' : 'В этом городе уже есть «' + n + '» — укажите адрес, чтобы их различать') }   // v35: одноимённые — только с разными адресами
     const old = eSh.n; eSh.n = n; eSh.c = c; eSh.a = ad; eSh.ty = ty; LS('base', base);
     if (curShop() === eSh || (H.sid && H.sid == eSh.id)) { H.s = n; H.a = ad; H.c = c; cities(); $('#s').value = n; $('#a').value = ad; save() }
-    if (CFG.API_URL) { shopq.push({ op: 'edit', id: eSh.id || '', old, n, c, a: ad, ty }); LS('shopq', shopq); sync() } cKey = ''; shopCard(eSh.id || 'n:' + n) }
+    if (CFG.API_URL) { shopq.push({ op: 'edit', id: eSh.id || '', old, n, c, a: ad, ty }); LS('shopq', shopq); sync() } cKey = ''; shopCard(eSh.id || 'n:' + n); cSaved('Название, адрес и тип сохранены') }
   else if (a == 'sdel') { if (!await ask('Удалить магазин «' + eSh.n + '» из общей базы? Старые заявки и журнал сохранятся.', 'Удалить', '', true)) return;
     const x = eSh; base = base.filter(b => b !== x); LS('base', base);
     if (H.sid && H.sid == x.id || norm(H.s) == norm(x.n)) { clrShop(); $('#s').value = ''; $('#a').value = ''; save(); shopWarn() }
     if (CFG.API_URL) { shopq.push({ op: 'del', id: x.id || '', old: x.n }); LS('shopq', shopq); sync() } cSh = null; cKey = ''; shopsView() }
   else if (a == 'pick') { selShop(ddL[v]); $('#sl').hidden = true }
-  else if (a == 'hfch' || a == 'ochg') { if (view) { closeSheet(); drawList() } hfC = false; drawHf(); if (typeof scrollTo == 'function') scrollTo(0, 0); const s = document.getElementById('s'); if (s && s.focus) try { s.focus() } catch (_) {} }   // v33: «Сменить» — на главном экране и в оформлении
+  else if (a == 'hfch' || a == 'ochg') { shUndo = null; if (view) { closeSheet(); drawList() } hfC = false; drawHf(); if (typeof scrollTo == 'function') scrollTo(0, 0); const s = document.getElementById('s'); if (s && s.focus) try { s.focus() } catch (_) {} }   // v33: «Сменить» — на главном экране и в оформлении
+  else if (a == 'hfund') shopBack()
   else if (a == 'hfok') { hfC = true; $('#sl').hidden = true; drawHf() }
-  else if (a == 'padd') { const n = $('#s').value.trim().replace(/\s+/g, ' '); if (!n) return; H.s = n; $('#s').value = n; addShop(n); save(); shopWarn(); $('#sl').hidden = true }
+  else if (a == 'padd') { const n = $('#s').value.trim().replace(/\s+/g, ' '); if (!n) return; H.a = ($('#a').value || '').trim(); const r = await dupAsk(n, H.c, H.a); if (!r) return; $('#sl').hidden = true; if (r !== 'new') return selShop(r);   // v35: «Продукты» уже есть — спрашиваем
+    H.s = n; $('#s').value = n; addShop(n); save(); shopWarn() }
   else if (a == 'pyes') { const o = LS('pending'); localStorage.removeItem('pending'); if (!o) return; commitOrder(o); goHome() }   // заявка ушла — обратно к маршруту, к следующей точке
   else if (a == 'pno') { localStorage.removeItem('pending'); closeSheet() }
   else if (a == 'drafts') draftView(); else if (a == 'dsave') draftSave();
@@ -1213,12 +1374,15 @@ document.addEventListener('click', async e => {   // async: вопросы (ask)
   else if (a == 'aoapply') { const w = admOw, own = $('#aow').value; if (!w || !nz(w.count)) return; if (!own) return say('Выберите торгового'); if (!$('#aoc').checked) return say('Отметьте, что вы проверили список');
     if (!await ask('Назначить «' + own + '» владельцем ' + nz(w.count) + ' заявок без торгового?\nЭто изменит лист «Заявки». Копия листа будет создана автоматически.')) return;
     admDo({ op: 'ownersApply', owner: own, expect: nz(w.count), confirm: 'НАЗНАЧИТЬ' }).then(r => { if (!r) return; admOw = null; say('Готово. Назначено заявок: ' + nz(r.updated) + '.' + (r.backup ? '\nКопия прежнего состояния: лист «' + r.backup + '».' : '')); if (view == 'adm') admView(false); sync() }) }
-  else if (a == 'rep') { const x = histById(v); if (!x) return; if (x.m && x.m != S.mode) { S.mode = x.m; LS('set', S); applyMode(); drawSeg() } cart = JSON.parse(JSON.stringify(x.cart || {})); disc = x.disc; eo = ''; msw = ''; H = { ...x.h, dm: 0, r: '' }; save(); fill(); closeSheet(); drawList() }
+  else if (a == 'rep') { const x = histById(v); if (!x) return; const n = lines().length;   // v34: «Заказать снова» — не затирает корзину и правку молча
+    if (n && !await ask((eo ? 'Сейчас открыта правка заявки — она закроется без сохранения.\n' : '') + 'В заявке ' + n + ' ' + pl3(n, 'позиция', 'позиции', 'позиций') + (H.s ? ' для «' + H.s + '»' : '') + '.\nЗаменить их товарами из заявки «' + (x.h.s || '—') + '»?', 'Заменить')) return;
+    const z = snap(); if (x.m && x.m != S.mode) { S.mode = x.m; LS('set', S); applyMode(); drawSeg() } cart = JSON.parse(JSON.stringify(x.cart || {})); disc = x.disc; eo = ''; msw = ''; H = { ...x.h, dm: 0, r: '', t: 0 }; shUndo = null; save(); fill(); closeSheet(); drawList(); bar();
+    toast('Товары из заявки «' + (x.h.s || '—') + '» — в корзине', () => unsnap(z)) }
   else if (a == 'uith') { if (TH.some(t => t[0] == v)) setUI('th', v) }
   else if (a == 'uifs') { const n = +v; if ([0, 1, 2].includes(n)) setUI('fs', n) }
   else if (a == 'svat') { if (!cSh) return; const x = cSh, k = skey(x), m = v == 'vat' || v == 'net' ? v : '';
     if (CFG.API_URL && srvV >= 31 && x.id) { x.vm = m; delete VATP[k]; LS('vatp', VATP); LS('base', base); shopq.push({ op: 'vat', id: x.id, n: x.n, c: x.c || '', a: x.a || '', m }); LS('shopq', shopq); sync() }   // v31: в таблицу
-    else { if (m) VATP[k] = m; else delete VATP[k]; LS('vatp', VATP) } shopCard(k) }
+    else { if (m) VATP[k] = m; else delete VATP[k]; LS('vatp', VATP) } shopCard(k); cSaved('Цены для магазина: ' + (m ? ML[m] : 'по последней заявке')) }
   else if (a == 'uicv') { if (CV.some(t => t[0] == v)) setUI('cv', v) }
   else if (a == 'cv') setUI('cv', UI.cv == 'list' ? 'grid' : 'list')
   else if (a == 'ss') { S.op = $('#op').value.trim() || CFG.OPERATOR; S.cities = $('#ct').value.split(',').map(s => s.trim()).filter(Boolean); LS('set', S); cities(); closeSheet() }
@@ -1231,22 +1395,21 @@ document.addEventListener('change', e => { const t = e.target;
   else if (t.id == 'dc') { disc = Math.min(100, num(t.value)); save(); bar(); cartView() }
   else if (t.id == 'rch') { H.r = t.value; save() }
   else if (t.id == 'ots') { const v = t.value ? new Date(t.value).getTime() : 0, o = eo && histById(eo);   // когда заявка сделана: не в будущем и не старше года
-    if (!v) H.t = o ? nz(o.ts) : 0; else if (v > Date.now() + 6e4) say('Дату заявки нельзя поставить в будущее.'); else if (v < Date.now() - 365 * 864e5) say('Слишком давняя дата.'); else H.t = v; save(); cartView() }
-  else if (t.id == 'cd') { if (!t.value || t.value < today()) { H.dm = 0; fixDate(); say('Прошедшую дату выбрать нельзя. Поставлена ближайшая пятница.') } else { H.d = t.value; H.dm = 1 } save(); fill(); cartView() }
+    if (!v) H.t = o ? nz(o.ts) : 0; else if (v > Date.now() + 6e4) say('Дату заявки нельзя поставить в будущее.'); else if (v < Date.now() - 365 * 864e5) say('Слишком давняя дата.'); else { H.t = v; if (H.dm && H.d < locIso(ordT())) { H.dm = 0; toast('Поставка была раньше дня заявки — поставлена ' + fd(nextFri(ordT()))) } } fixDate(); save(); fill(); cartView() }   // v34: поставка не раньше дня заявки   // v34: автоматическая поставка пересчитывается от времени заявки
+  else if (t.id == 'cd') { pickD(t.value); save(); fill(); cartView() }
   else if (t.id == 'htr') { hTr = t.value; histView() }
-  else if (t.id == 'tys') { cSh.ty = t.value; saveMeta(cSh) }
+  else if (t.id == 'tys') { cSh.ty = t.value; saveMeta(cSh); cSaved('Тип точки сохранён') }
   else if (t.id == 'sht') { shT = t.value; shopsView() }
   else if (/^rt(p|v|o|q|vd|od)$/.test(t.id)) { const k = { rtp: 'plan', rtv: 'visit', rto: 'order', rtq: 'q', rtvd: 'vd', rtod: 'od' }[t.id]; RT[k] = t.type == 'checkbox' ? t.checked : Math.max(1, Math.min(365, +t.value || RT0[k])); LS('rt', RT); drawShops() }
-  else if (t.id == 'shc') { shCity = t.value; shopsView() } else if (t.id == 'shs') { shSt = t.value; shopsView() }
+  else if (t.id == 'shc') { shCity = t.value; shopsView() } else if (t.id == 'shr') { shRg = t.value; drawShops() } else if (t.id == 'rgdp') { if (/^\d{4}-\d\d-\d\d$/.test(t.value)) { rgD = t.value; rgAdd = ''; rgView() } }
   else if (t.id == 'impf') importBackup(t.files[0]); });
 document.addEventListener('toggle', e => { const d = e.target; if (!d || !d.matches || !d.matches('details.cs') || !d.dataset || !d.dataset.s) return;   // v30: раскрытые разделы карточки запоминаются (раньше сворачивались при любом нажатии внутри)
   if (d.open) cOpen.add(d.dataset.s); else cOpen.delete(d.dataset.s); LS('copen', [...cOpen]) }, true);
-document.addEventListener('input', e => { if (e.target.id == 'shq') { shQ = e.target.value; if (view == 'rplan') drawWeekAdd(); else drawShops() } else if (e.target.id == 'prq') { prQ = e.target.value; $('#prl').innerHTML = promoList() } });
+document.addEventListener('input', e => { if (e.target.id == 'rgq') { rgQ = e.target.value; const e2 = document.getElementById('rgl'); if (e2) { const d = rgD, wd = wdOfD(d), L = base.filter(b => b.id), own = L.filter(b => b.ow && norm(b.ow) == norm(rgAdd) && inWeek(b, wd)); e2.innerHTML = rgPick(rgAdd, { pts: own.filter(b => rgOn(rgAdd, d, b.id) !== false).concat(L.filter(b => !own.includes(b) && rgOn(rgAdd, d, b.id) === true)) }) } return } if (e.target.id == 'shq') { shQ = e.target.value; if (view == 'rplan') drawWeekAdd(); else drawShops() } else if (e.target.id == 'prq') { prQ = e.target.value; $('#prl').innerHTML = promoList() } });
 $('#q').oninput = e => { Q = e.target.value.toLowerCase(); drawList() };
-['d', 's', 'a'].forEach(k => $('#' + k).addEventListener('change', e => { H[k] = e.target.value;
-  if (k == 'd') { if (!H.d || H.d < today()) { H.dm = 0; fixDate(); $('#d').value = H.d; say('Прошедшую дату выбрать нельзя. Поставлена ближайшая пятница.') } else H.dm = 1 }
+['d', 's', 'a'].forEach(k => $('#' + k).addEventListener('change', e => { if (k == 'd') { pickD(e.target.value); $('#d').value = H.d; drawD(); drawHf(); return save() } H[k] = e.target.value;
   if (k == 's') { // название магазина приводим к записи из общей базы (сначала тот же город), подставляем город, адрес и ID
-    const v = H.s.trim().replace(/\s+/g, ' '), b = findBase(v, H.c) || base.find(x => norm(x.n) == norm(v)); H.s = b ? b.n : v; $('#s').value = H.s; H.sid = b ? b.id || '' : ''; if (P.length) { drawChips(); drawList() }
+    const v = H.s.trim().replace(/\s+/g, ' '), any = base.filter(x => norm(x.n) == norm(v)), b = findBase(v, H.c, H.a) || (any.length == 1 ? any[0] : null);   // v35: одноимённые — без угадывания; выбрать из списка H.s = b ? b.n : v; $('#s').value = H.s; H.sid = b ? b.id || '' : ''; if (P.length) { drawChips(); drawList() }
     if (b) { H.a = b.a || H.a; if (b.c) { H.c = b.c; H.r = ''; cities() } $('#a').value = H.a || '' } shopWarn() }
   save() }));
 $('#c').onchange = async e => { H.r = ''; if (e.target.value == '+') { const n = (await askText('Название нового города', 'Например: Кокшетау')).slice(0, 60); if (n) { S.cities.push(n); LS('set', S); H.c = n } cities() } else H.c = e.target.value; save() };

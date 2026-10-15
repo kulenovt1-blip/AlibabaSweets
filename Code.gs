@@ -27,7 +27,7 @@
  *  • Все операции идут по постоянному ID события и безопасны при повторной отправке.
  *  • Сводка магазина (посл. заказ / посл. визит) всегда ПЕРЕСЧИТЫВАЕТСЯ из записей (recalcShops), а не «двигается» инкрементом.
  *  • Сверка старых данных: reconcileDryRun() (ничего не меняет, пишет отчёт в лист «Сверка») и reconcileApply() (после просмотра отчёта). */
-const SRV = 33;           // версия серверной части (видна в «Настройки → Служебная информация»)
+const SRV = 34;           // версия серверной части (видна в «Настройки → Служебная информация»)
 const SHOP_HEAD = ['Магазин', 'Город', 'Адрес', 'ID', 'Статус', 'Заметка', 'Кем (статус)', 'Когда (статус, мс)', 'Контакт', 'Телефон', 'Район', 'Посл. заказ (мс)', 'Посл. визит (мс)', 'Итог визита', 'Кем (визит)', 'Тип', 'План визита (мс)', 'Открытый вопрос',
   'Дни маршрута', 'Ответственный', 'Цены (НДС)', 'Широта', 'Долгота', 'Точность места, м', 'Место: кем', 'Место: когда',   // v31: колонки S–Z
   'Юрлицо'];   // v33: колонка AA — ИП / ТОО точки (только название; в текст заявки не идёт)
@@ -109,7 +109,7 @@ function ordersIn(from, to, undo, now) { // заявки, созданные в 
   s.getRange(a + 2, 1, b - a + 1, 14).getValues().forEach(r => {
     const dl = (+r[13] || 0) || (isD(r[12]) ? r[12].getTime() : 0); if (dl && now - dl > undo) return;   // время удаления: число из колонки N (запасной вариант — дата из M)
     try { const o = JSON.parse(r[11]); if (!o || typeof o != 'object') return; const t = +o.ts || ms(r[0]); if (t < from || t >= to) return;
-      o.trader = T(r[2]); o.del = dl; o.rg = ms(r[0]); rows.push(o) } catch (_) {} });   // владелец — всегда из колонки «Торговый», а не из JSON
+      o.trader = T(r[2]); o.del = dl; o.rg = ms(r[0]); if (dl) { const m = /\s·\s(.+)$/.exec(isD(r[12]) ? '' : T(r[12])); o.dby = m ? m[1].trim() : '' } rows.push(o) } catch (_) {} });   // владелец — всегда из колонки «Торговый», а не из JSON
   return rows;
 }
 
@@ -181,6 +181,7 @@ function cleanOrder(o, now) {            // заявка: только разр�
   if (!validDate(d)) return { err: 'date' };
   if (!isNum(o.ts)) return { err: 'ts' }; let ts = +o.ts; if (ts > now + FUT) ts = now;   // часы телефона не должны ставить заказ «в будущее»
   if (!(ts > 0) || (ts < now - OLDV && !o.ed)) return { err: 'ts' };   // у правки дата оформления может быть давней: администратор исправляет старые записи
+  if (d < Utilities.formatDate(new Date(ts - 14 * 36e5), SpreadsheetApp.getActive().getSpreadsheetTimeZone(), 'yyyy-MM-dd')) return { err: 'dts' };   // v34: поставка раньше дня заявки — не принимаем (запас 14 ч — на разницу часовых поясов телефона и таблицы; точную проверку делает приложение)
   let ed = 0; if (o.ed != null && o.ed !== 0 && o.ed !== '') { if (!rng(o.ed, now - OLDV, now + FUT)) return { err: 'ed' }; ed = +o.ed }
   const disc = o.disc == null || o.disc === '' ? 0 : o.disc; if (!rng(disc, 0, 100)) return { err: 'disc' };
   if (!rng(o.sum, 0, 1e9)) return { err: 'sum' };
@@ -447,7 +448,7 @@ const shopIdAt = r => r ? T(shopSheet().getRange(r, 4).getValue()) : '';
 /* ---------- Журнал событий (лист «Визиты») ---------- */
 function jlog(e) {                       // добавляет событие; повтор того же ID игнорируется. Возвращает true, если запись создана
   if (hasLog(e.id)) return false;
-  ap(jSheet(), [new Date(), e.id, e.shop || '', e.sid || '', e.who || '', e.kind, e.val == null ? '' : e.val, e.nt || '', e.ts || Date.now(), '', '', '', e.hist ? JSON.stringify(e.hist) : '', e.oid || '']);
+  ap(jSheet(), [new Date(), e.id, e.shop || '', e.sid || '', e.who || '', e.kind, e.val == null ? '' : e.val, e.nt || '', e.ts || Date.now(), '', e.by || '', '', e.hist ? JSON.stringify(e.hist) : '', e.oid || '']);
   return true;
 }
 function hasLog(id) { const s = jSheet(), n = s.getLastRow(); return n > 1 && s.getRange(2, 2, n - 1, 1).getValues().flat().map(String).indexOf(String(id)) >= 0 }
@@ -459,10 +460,11 @@ function saveOrder(o0, ctx) {            // создание заявки (по�
   const w = adm && o0 && o0.ed ? { name: ctx.user } : who(ctx, o0 && o0.trader); if (w.reason) return no(w.reason);   // администратор правит и чужие заявки: имя владельца в запросе не его, владельцем остаётся прежний торговый
   const cl = cleanOrder(o0, now); if (cl.err) return no('invalid', cl.err);
   const o = cl.o; o.trader = w.name;
+  let bed = null; if (o0.bed != null && o0.bed !== '') { if (!isNum(o0.bed) || +o0.bed < 0) return no('invalid', 'bed'); bed = +o0.bed }   // v34: версия (ed), с которой начата правка; 0 — правок не было. Старые клиенты её не присылают
   const s = ordSheet(), n = s.getLastRow(), ids = n > 1 ? s.getRange(2, 2, n - 1, 1).getValues().flat().map(String) : [], ix = ids.indexOf(String(o.id));
   if (ix >= 0) { const owner = T(s.getRange(ix + 2, 3).getValue());
     if (!owner) return no('no_owner'); if (!same(owner, w.name) && !(adm && o.ed)) return no('not_owner');   // чужую заявку правит только администратор; заявку без владельца не меняет никто
-    return o.ed ? editOrder(s, ix + 2, o, adm, w.name) : healOrder(s, ix + 2) }
+    return o.ed ? editOrder(s, ix + 2, o, adm, w.name, bed) : healOrder(s, ix + 2) }
   const r = upShop(o.h.s, o.h.c, o.h.a, o.h.sid), sid = shopIdAt(r), ts = o.ts;
   o.h.sid = sid;
   ap(s, [new Date(), o.id, o.trader, o.h.d, o.h.c, o.h.s, o.h.a, vat(o), o.disc, o.sum, o.text, JSON.stringify(o), '', '', sid, ts]);
@@ -481,13 +483,17 @@ function healOrder(s, row) {             // повторный запрос со
   return { ok: 1, applied: true, dup: true, sid };
 }
 function setLogTs(id, ts) { const s = jSheet(), n = s.getLastRow(); if (n < 2) return; const i = s.getRange(2, 2, n - 1, 1).getValues().flat().map(String).indexOf(String(id)); if (i >= 0) s.getRange(i + 2, 9).setValue(ts) }   // время события в журнале
-function editOrder(s, row, o, adm, by) { // заменяет содержимое заявки. Владелец — не позже EDIT_H часов после записи на сервере; администратор — любую заявку с владельцем и без срока
+function editOrder(s, row, o, adm, by, bed) { // заменяет содержимое заявки. Владелец — не позже EDIT_H часов после записи на сервере; администратор — любую заявку с владельцем и без срока
   const v = s.getRange(row, 1, 1, 16).getValues()[0], owner = T(v[2]); let old = {}; try { old = JSON.parse(v[11]) || {} } catch (_) {}
   if (!owner) return no('no_owner'); if (!same(owner, o.trader) && !adm) return no('not_owner');
   o.trader = owner;
   const created = +v[15] || +old.ts || ms(v[0]), reg = ms(v[0]) || created;         // срок правки считается от времени записи на сервере: дату оформления можно менять, и сдвигать ею срок нельзя
   if (!adm && ((+o.ed || 0) - reg > EDIT_H * 36e5 + 5 * 6e4 || Date.now() - (+o.ed || 0) > QUEUE_MAX)) return no('too_late');   // ed — время нажатия на устройстве: правка из очереди старше QUEUE_MAX не принимается, так что задним числом срок не обойти
-  if ((+old.ed || 0) > +o.ed) return no('stale');                                    // более новая правка уже записана
+  const curEd = +old.ed || 0;
+  if (bed != null && curEd != +o.ed && curEd != bed) {                              // v34: с начала правки заявку уже изменил кто-то другой — не затираем; повтор той же правки (curEd == o.ed) проходит
+    const je = curEd ? readJournal().find(j => j.id == 'oe:' + T(v[1]) + ':' + curEd) : null;
+    return Object.assign(no('changed'), { by: je ? je.who : '', at: curEd }) }
+  if (curEd > +o.ed) return no('stale');                                    // более новая правка уже записана
   let oldSid = T(v[14]) || (() => { const st = loadState(true), x = st.orders.find(y => y.id == T(v[1])); return x ? x.link : '' })();
   const same_ = (+old.ed || 0) == +o.ed;                                            // та же правка пришла повторно — только долечиваем хвосты
   const r = upShop(o.h.s, o.h.c, o.h.a, o.h.sid), sid = shopIdAt(r), ts = +o.ts > 0 ? +o.ts : created; o.h.sid = sid; o.ts = ts;   // ts — когда заявка сделана; её можно исправить
@@ -507,21 +513,21 @@ function orderOp(x, ctx) {               // удаление / возврат з
   let del = 0, at = 0;
   if (x.del != null && x.del !== '' && x.del !== 0 && x.del !== '0') { if (!isNum(x.del) || +x.del < 0) return no('invalid', 'del'); del = +x.del; if (del > now + FUT) return no('future'); if (del < now - OLDV) del = now }
   if (x.at != null && x.at !== '') { if (!isNum(x.at) || !(+x.at > 0)) return no('invalid', 'at'); at = +x.at; if (at > now + FUT) return no('future') }
-  return Object.assign({ ok: 1 }, setDeleted(id, del, w.name, at, now));
+  return Object.assign({ ok: 1 }, setDeleted(id, del, w.name, at, now, ctx.role == 'admin' && !ctx.legacy));
 }
-function setDeleted(id, ts, trader, at, now) { // помечает заявку удалённой (строка остаётся) или снимает пометку; честно возвращает результат; повтор безопасен
+function setDeleted(id, ts, trader, at, now, adm) { // помечает заявку удалённой (строка остаётся) или снимает пометку; честно возвращает результат; повтор безопасен. v34: администратор — любую заявку с торговым
   const s = ordSheet(), n = s.getLastRow(); if (n < 2) return { applied: false, reason: 'not_found' };
   const i = s.getRange(2, 2, n - 1, 1).getValues().flat().map(String).indexOf(String(id)); if (i < 0) return { applied: false, reason: 'not_found' };
   const row = i + 2, v = s.getRange(row, 1, 1, 16).getValues()[0], owner = T(v[2]);
   const cur = (+v[13] || 0) || (isD(v[12]) ? v[12].getTime() : 0);
   if (!owner) return { applied: false, reason: 'no_owner', del: cur };                // у заявки нет владельца: менять её может только администратор отдельным инструментом
-  if (!trader || !same(owner, trader)) return { applied: false, reason: 'not_owner', owner, del: cur };   // чужую заявку удалить или вернуть нельзя
+  if (!trader || (!same(owner, trader) && !adm)) return { applied: false, reason: 'not_owner', owner, del: cur };   // чужую заявку удалить или вернуть может только администратор; владелец при этом не меняется
   let sid = T(v[14]); if (!sid) { const st = loadState(true), x = st.orders.find(y => y.id == T(v[1])); sid = x ? x.link : '' }
-  const shop = T(v[5]), ev = { shop, sid, who: owner, oid: T(v[1]), val: +v[9] || 0 };
+  const shop = T(v[5]), ev = { shop, sid, who: owner, by: trader, oid: T(v[1]), val: +v[9] || 0 };   // who — владелец заявки, by — кто удалил или вернул (колонка «Изменил»)
   if (ts) {                                                                          // удаление
     const dts = cur || +ts;                                                         // уже удалена — оставляем первое время удаления
     jlog(Object.assign({ id: 'od:' + v[1] + ':' + dts, kind: 'order_cancel', ts: dts }, ev));
-    if (!cur) { s.getRange(row, 13).setValue(Utilities.formatDate(new Date(ts), SpreadsheetApp.getActive().getSpreadsheetTimeZone(), 'yyyy-MM-dd HH:mm'));   // для людей
+    if (!cur) { s.getRange(row, 13).setValue(Utilities.formatDate(new Date(ts), SpreadsheetApp.getActive().getSpreadsheetTimeZone(), 'yyyy-MM-dd HH:mm') + ' · ' + trader);   // для людей; v34: и кто удалил — по нему администратор видит в «Недавно удалённых» чужие заявки, удалённые им
       s.getRange(row, 14).setValue(+ts) }                                           // для приложения (число, без часовых поясов)
     recalcShops([sid]); return { applied: true, dup: !!cur, del: dts };
   }

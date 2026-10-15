@@ -43,7 +43,11 @@ button:disabled{background:var(--bg);color:var(--disabled);border:1px solid var(
 .hdrform{margin:8px 16px 4px;padding:12px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:8px;position:relative}.full{grid-column:1/-1}
 .hft{font-weight:800;font-size:calc(12px*var(--fz));letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding:2px 2px 0}
 /* v33: магазин выбран — вместо полей карточка «Магазин · адрес · поставка» и «Сменить» (макет «Каталог») */
-.hdrform.cmp{padding:8px 8px 8px 14px}.hdrform.cmp>#d,.hdrform.cmp>#c,.hdrform.cmp>.cb,.hdrform.cmp>#a,.hdrform.cmp>.hft,.hdrform.cmp>.hfok{display:none}
+.hdv{position:relative;display:flex;align-items:center;min-height:52px;padding:0 12px;border:1px solid var(--line-strong);border-radius:12px;background:var(--surface);color:var(--ink);font-weight:600;font-size:calc(16px*var(--fz));min-width:0}
+.hdv:focus-within{border-color:var(--ink);box-shadow:0 0 0 1px var(--ink)}.hdvt{display:flex;align-items:center;justify-content:space-between;gap:6px;width:100%;min-width:0}.hdvt>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.hdvt svg{flex:none;color:var(--muted)}
+.hdv input{position:absolute;inset:0;width:100%;height:100%;min-height:0;margin:0;padding:0;border:0;opacity:0;cursor:pointer}   /* v34: дата подписью «пт, 16.10» и значок; прозрачное поле поверх открывает календарь телефона (как .ckdv в оформлении) */
+.ckdh{margin:6px 2px 0}
+.hdrform.cmp{padding:8px 8px 8px 14px}.hdrform.cmp>.hdv,.hdrform.cmp>#c,.hdrform.cmp>.cb,.hdrform.cmp>#a,.hdrform.cmp>.hft,.hdrform.cmp>.hfok{display:none}
 .ocs{display:flex;align-items:center;gap:10px;min-width:0}.ocs[hidden]{display:none}
 .ocst{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}.ocst b{font-weight:700;font-size:calc(17px*var(--fz));overflow-wrap:anywhere}
 .ocb{flex:none;min-height:44px;padding:0 12px;background:var(--surface);color:var(--ink);border:1px solid var(--line-strong);border-radius:10px;font-weight:600;font-size:calc(15px*var(--fz))}
@@ -166,7 +170,9 @@ details.ck{background:var(--surface);border:1px solid var(--line);border-radius:
 .sw{padding:10px 12px;border-radius:12px;font-weight:600;font-size:calc(14px*var(--fz))}.sw.bad{background:var(--surface);color:var(--danger);border:1px solid var(--danger-line)}.sw.ok{background:var(--surface-sunken);color:var(--ink)}.sw.q{background:var(--accent-tint);color:var(--ink)}   /* открытый вопрос — жёлтая плашка, не ошибка */.sw[hidden]{display:none}
 .pl{display:inline-flex;align-items:center;gap:6px;color:var(--ink-2);background:var(--surface-sunken);font-size:calc(14px*var(--fz));font-weight:700;padding:4px 11px;border-radius:999px;white-space:nowrap}
 .pl.ok{background:var(--success-tint);color:var(--on-success-tint)}.pl.wait{background:var(--accent-tint);color:var(--on-accent-tint)}
-.pl.ok::before,.pl.wait::before{content:'';width:8px;height:8px;border-radius:50%;background:currentColor}
+.pl.bad{background:var(--surface);color:var(--danger);box-shadow:inset 0 0 0 1px var(--danger-line)}   /* v34: «Приглашение истекло» в «Доступ и профили» */
+.pl.ok::before,.pl.wait::before,.pl.bad::before{content:'';width:8px;height:8px;border-radius:50%;background:currentColor}
+.acs{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;margin-top:4px}
 .pl.add{background:var(--primary);color:var(--on-primary);width:auto;height:auto;flex:none;font-size:calc(14px*var(--fz));font-weight:700}   /* «+ добавить»: не путать с кнопкой каталога .add (во всю ширину, 56 px) — иначе пилюля съедала строку */
 .shi{display:flex;align-items:center;gap:8px;width:100%;min-height:64px;text-align:left;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:16px;padding:11px 14px;margin-bottom:8px;font-weight:500}
 .shi b{font-weight:700}.sfl{display:flex;gap:8px;margin-bottom:10px}.sfl select{min-width:0}
@@ -453,6 +459,7 @@ body.sh #toast{bottom:calc(var(--bnh) + 12px + env(safe-area-inset-bottom,0px))}
 .auc .send{margin-top:2px}.aum{align-self:center}
 .auhint{margin:14px 0 0;text-align:center;line-height:1.4}
 .sfl select{height:52px;min-height:52px;padding-top:0;padding-bottom:0}   /* выборы города и типа — одной высоты */
+.sfl{flex-wrap:wrap}.sfl select{flex:1 1 0}.sfl #shr{flex-basis:100%}   /* v34: район — отдельной строкой во всю ширину: три выбора в ряд на 360 px обрезались («Все рай…»)*/
 @media(max-width:380px){.auh{margin:0 -12px}}   /* на узком экране поля страницы 12 px — шапка входа по краю, без прокрутки вбок */
 
 /* ===== 31. v33 · ОФОРМЛЕНИЕ ЗАЯВКИ (макет «Оформление заявки») И «ЗАЯВКА ОТПРАВЛЕНА?» ===== */

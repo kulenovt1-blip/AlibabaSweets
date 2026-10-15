@@ -611,8 +611,12 @@ button.pfc:active{transform:none;opacity:.92}
 .hmr span{font-weight:700;font-size:calc(17px*var(--fz))}.hmr small{grid-column:1;grid-row:2}.hmr b{grid-column:2;grid-row:1/3;font-size:calc(17px*var(--fz))}
 /* v35: «Общий маршрут» — блоки торговых; кнопка во всю ширину под «Все магазины · Маршрут по дням» */
 .rnav .rnw{grid-column:1/-1}
-.rgh{display:flex;flex-direction:column;gap:2px;padding:14px 14px 10px}.rgh b{font-size:calc(18px*var(--fz));font-weight:800}
-.rgb .wkn .pl{margin-top:4px}.rgn{margin:10px 2px 0}.rgb{margin-top:10px}
+.rgs{margin-top:18px;padding-top:16px;border-top:1px solid var(--line)}.rgs:first-of-type{border-top:0;padding-top:4px}   /* v35: «Общий маршрут» — блок торгового в стиле личного маршрута: имя и «2/6 пройдено», полоса, линия точек */
+.rgh{display:flex;justify-content:space-between;align-items:flex-end;gap:12px}.rgw{min-width:0;display:flex;flex-direction:column;gap:2px}.rgw b{font-weight:800;font-size:calc(24px*var(--fz));line-height:1.1;letter-spacing:-.01em;overflow-wrap:anywhere}.rgw b small{font-size:calc(15px*var(--fz));font-weight:600;color:var(--muted)}
+.rgs .rcn b{font-size:calc(26px*var(--fz))}.rgs .pbar{margin:10px 0 12px}
+.rgx{flex:none;width:44px;height:44px;margin:-6px -4px -6px 0;border-radius:12px;display:inline-flex;align-items:center;justify-content:center;color:var(--danger);border:1px solid var(--danger-line);background:var(--surface)}
+.rgo2{cursor:default}.rgo2 .wkx{min-height:44px}.rga{display:flex;flex-direction:column;gap:8px;margin-top:4px}.rgs .radd{margin-top:2px}
+.rgn{margin:10px 2px 0}
 /* v35: «Все магазины» — два одинаковых ряда кнопок с подписями: «Что с точкой» и «Статус» */
 .shfg{display:flex;flex-direction:column;gap:0;margin:0 0 2px}.shfl{display:block;font-weight:800;font-size:calc(12px*var(--fz));letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:6px 2px 0}
 .shfg .shfc{padding:6px 0 4px}.chip .sdot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:7px;vertical-align:1px;font-style:normal}

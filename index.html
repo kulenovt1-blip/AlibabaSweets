@@ -2,7 +2,7 @@
 <html lang="ru"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="ver" content="33">
+<meta name="ver" content="35">
 <meta name="theme-color" content="#F3F3EE">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="favicon.ico" sizes="any">
@@ -50,9 +50,9 @@ window.addEventListener('error', function (e) {
 <section class="card hdrform" id="hf">
   <div id="ocs" class="ocs full" hidden></div>
   <b class="hft full">Магазин и дата поставки</b>
-  <input type="date" id="d" aria-label="Дата поставки"><select id="c" aria-label="Город"></select>
+  <label class="hdv"><span id="dv" class="hdvt"></span><input type="date" id="d" aria-label="Дата поставки"></label><select id="c" aria-label="Город"></select>
   <div class="cb"><input id="s" maxlength="120" autocomplete="off" placeholder="Магазин: выберите или впишите"><div id="sl" class="dd" hidden></div></div>
-  <input class="full" id="a" maxlength="300" placeholder="Адрес">
+  <input class="full" id="a" maxlength="300" list="stl" autocomplete="off" placeholder="Адрес"><datalist id="stl"></datalist>
   <button class="send full hfok" id="hfok" data-a="hfok" hidden>Готово</button>
   <select class="full" id="rch" hidden aria-label="Кому отправить заявку"></select>
   <div id="sw" class="sw full" hidden></div>

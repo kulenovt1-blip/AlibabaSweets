@@ -43,7 +43,11 @@ button:disabled{background:var(--bg);color:var(--disabled);border:1px solid var(
 .hdrform{margin:8px 16px 4px;padding:12px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:8px;position:relative}.full{grid-column:1/-1}
 .hft{font-weight:800;font-size:calc(12px*var(--fz));letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding:2px 2px 0}
 /* v33: магазин выбран — вместо полей карточка «Магазин · адрес · поставка» и «Сменить» (макет «Каталог») */
-.hdrform.cmp{padding:8px 8px 8px 14px}.hdrform.cmp>#d,.hdrform.cmp>#c,.hdrform.cmp>.cb,.hdrform.cmp>#a,.hdrform.cmp>.hft,.hdrform.cmp>.hfok{display:none}
+.hdv{position:relative;display:flex;align-items:center;min-height:52px;padding:0 12px;border:1px solid var(--line-strong);border-radius:12px;background:var(--surface);color:var(--ink);font-weight:600;font-size:calc(16px*var(--fz));min-width:0}
+.hdv:focus-within{border-color:var(--ink);box-shadow:0 0 0 1px var(--ink)}.hdvt{display:flex;align-items:center;justify-content:space-between;gap:6px;width:100%;min-width:0}.hdvt>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.hdvt svg{flex:none;color:var(--muted)}
+.hdv input{position:absolute;inset:0;width:100%;height:100%;min-height:0;margin:0;padding:0;border:0;opacity:0;cursor:pointer}   /* v34: дата подписью «пт, 16.10» и значок; прозрачное поле поверх открывает календарь телефона (как .ckdv в оформлении) */
+.ckdh{margin:6px 2px 0}
+.hdrform.cmp{padding:8px 8px 8px 14px}.hdrform.cmp>.hdv,.hdrform.cmp>#c,.hdrform.cmp>.cb,.hdrform.cmp>#a,.hdrform.cmp>.hft,.hdrform.cmp>.hfok{display:none}
 .ocs{display:flex;align-items:center;gap:10px;min-width:0}.ocs[hidden]{display:none}
 .ocst{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}.ocst b{font-weight:700;font-size:calc(17px*var(--fz));overflow-wrap:anywhere}
 .ocb{flex:none;min-height:44px;padding:0 12px;background:var(--surface);color:var(--ink);border:1px solid var(--line-strong);border-radius:10px;font-weight:600;font-size:calc(15px*var(--fz))}
@@ -166,7 +170,9 @@ details.ck{background:var(--surface);border:1px solid var(--line);border-radius:
 .sw{padding:10px 12px;border-radius:12px;font-weight:600;font-size:calc(14px*var(--fz))}.sw.bad{background:var(--surface);color:var(--danger);border:1px solid var(--danger-line)}.sw.ok{background:var(--surface-sunken);color:var(--ink)}.sw.q{background:var(--accent-tint);color:var(--ink)}   /* открытый вопрос — жёлтая плашка, не ошибка */.sw[hidden]{display:none}
 .pl{display:inline-flex;align-items:center;gap:6px;color:var(--ink-2);background:var(--surface-sunken);font-size:calc(14px*var(--fz));font-weight:700;padding:4px 11px;border-radius:999px;white-space:nowrap}
 .pl.ok{background:var(--success-tint);color:var(--on-success-tint)}.pl.wait{background:var(--accent-tint);color:var(--on-accent-tint)}
-.pl.ok::before,.pl.wait::before{content:'';width:8px;height:8px;border-radius:50%;background:currentColor}
+.pl.bad{background:var(--surface);color:var(--danger);box-shadow:inset 0 0 0 1px var(--danger-line)}   /* v34: «Приглашение истекло» в «Доступ и профили» */
+.pl.ok::before,.pl.wait::before,.pl.bad::before{content:'';width:8px;height:8px;border-radius:50%;background:currentColor}
+.acs{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;margin-top:4px}
 .pl.add{background:var(--primary);color:var(--on-primary);width:auto;height:auto;flex:none;font-size:calc(14px*var(--fz));font-weight:700}   /* «+ добавить»: не путать с кнопкой каталога .add (во всю ширину, 56 px) — иначе пилюля съедала строку */
 .shi{display:flex;align-items:center;gap:8px;width:100%;min-height:64px;text-align:left;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:16px;padding:11px 14px;margin-bottom:8px;font-weight:500}
 .shi b{font-weight:700}.sfl{display:flex;gap:8px;margin-bottom:10px}.sfl select{min-width:0}
@@ -453,6 +459,7 @@ body.sh #toast{bottom:calc(var(--bnh) + 12px + env(safe-area-inset-bottom,0px))}
 .auc .send{margin-top:2px}.aum{align-self:center}
 .auhint{margin:14px 0 0;text-align:center;line-height:1.4}
 .sfl select{height:52px;min-height:52px;padding-top:0;padding-bottom:0}   /* выборы города и типа — одной высоты */
+.sfl{flex-wrap:wrap}.sfl select{flex:1 1 calc(50% - 4px)}   /* v34–v35: выпадающие — город · тип в строку, район во всю ширину (три в ряд на 360 px обрезались) */
 @media(max-width:380px){.auh{margin:0 -12px}}   /* на узком экране поля страницы 12 px — шапка входа по краю, без прокрутки вбок */
 
 /* ===== 31. v33 · ОФОРМЛЕНИЕ ЗАЯВКИ (макет «Оформление заявки») И «ЗАЯВКА ОТПРАВЛЕНА?» ===== */
@@ -592,3 +599,24 @@ button.pfc:active{transform:none;opacity:.92}
 .rtip>summary::after{content:'';position:absolute;right:6px;top:50%;width:9px;height:9px;border:solid var(--muted);border-width:0 2.4px 2.4px 0;transform:translateY(-70%) rotate(45deg)}.rtip[open]>summary::after{transform:translateY(-20%) rotate(-135deg)}
 .rnav .ghost{white-space:nowrap;padding:0 8px}
 :root[data-fs="1"] .rnav .ghost,:root[data-fs="2"] .rnav .ghost{white-space:normal}
+
+/* v35: заметки о точке в карточке магазина */
+.shnb{margin:10px 0 0;padding:12px 14px;border-radius:14px;background:var(--surface-sunken);color:var(--ink)}.shnb small{display:block;font-weight:800;font-size:calc(12px*var(--fz));letter-spacing:.08em;color:var(--muted);margin-bottom:4px}.shnb div{white-space:pre-wrap;overflow-wrap:anywhere}
+#inb{min-height:96px;resize:vertical}
+/* v35: «История» — период (день / неделя / месяц / год), год — по месяцам, неделя и месяц — заголовки дней */
+.hps{margin:0 0 10px}.hps button{padding-left:4px;padding-right:4px}
+.hdd{margin:14px 2px 6px}
+.hmy{display:flex;flex-direction:column;gap:8px}
+.hmr{display:grid;grid-template-columns:1fr auto;grid-template-rows:auto auto;align-items:center;gap:0 12px;width:100%;text-align:left;padding:12px 16px;border:1px solid var(--line);border-radius:14px;background:var(--surface);color:var(--ink);min-height:56px}
+.hmr span{font-weight:700;font-size:calc(17px*var(--fz))}.hmr small{grid-column:1;grid-row:2}.hmr b{grid-column:2;grid-row:1/3;font-size:calc(17px*var(--fz))}
+/* v35: «Общий маршрут» — блоки торговых; кнопка во всю ширину под «Все магазины · Маршрут по дням» */
+.rnav .rnw{grid-column:1/-1}
+.rgs{margin-top:18px;padding-top:16px;border-top:1px solid var(--line)}.rgs:first-of-type{border-top:0;padding-top:4px}   /* v35: «Общий маршрут» — блок торгового в стиле личного маршрута: имя и «2/6 пройдено», полоса, линия точек */
+.rgh{display:flex;justify-content:space-between;align-items:flex-end;gap:12px}.rgw{min-width:0;display:flex;flex-direction:column;gap:2px}.rgw b{font-weight:800;font-size:calc(24px*var(--fz));line-height:1.1;letter-spacing:-.01em;overflow-wrap:anywhere}.rgw b small{font-size:calc(15px*var(--fz));font-weight:600;color:var(--muted)}
+.rgs .rcn b{font-size:calc(26px*var(--fz))}.rgs .pbar{margin:10px 0 12px}
+.rgx{flex:none;width:44px;height:44px;margin:-6px -4px -6px 0;border-radius:12px;display:inline-flex;align-items:center;justify-content:center;color:var(--danger);border:1px solid var(--danger-line);background:var(--surface)}
+.rgo2{cursor:default}.rgo2 .wkx{min-height:44px}.rga{display:flex;flex-direction:column;gap:8px;margin-top:4px}.rgs .radd{margin-top:2px}
+.rgn{margin:10px 2px 0}
+/* v35: «Все магазины» — два одинаковых ряда кнопок с подписями: «Что с точкой» и «Статус» */
+.shfg{display:flex;flex-direction:column;gap:0;margin:0 0 2px}.shfl{display:block;font-weight:800;font-size:calc(12px*var(--fz));letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:6px 2px 0}
+.shfg .shfc{padding:6px 0 4px}.chip .sdot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:7px;vertical-align:1px;font-style:normal}

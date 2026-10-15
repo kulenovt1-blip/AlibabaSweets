@@ -263,8 +263,8 @@ function unsnap(z) { cart = JSON.parse(z.cart); disc = z.disc; eo = z.eo; eob = 
 
 /* ============ 6. ШТОРКА: корзина, история, настройки ============ */
 /* Разделы (нижняя панель): Маршрут / Заявка / История / Профиль (v33: бывшее «Ещё»). Страница раздела открывается поверх каталога; кнопка «Назад» ведёт на уровень выше */
-const TAB = { shops: 'route', rplan: 'route', rtr: 'route', shopc: 'route', shop: 'route', shopn: 'route', hist: 'hist', hd: 'hist', more: 'more', set: 'more', who: 'more', adm: 'more', dr: 'more', cart: 'main', promo: 'more' };
-const BACK = { shopc: () => shopsView(), shop: () => shopCard(skey(eSh)), shopn: () => shopsView(), rplan: () => { rtAdd = false; shopsView() }, rtr: () => shopsView(), hd: () => histView(),
+const TAB = { shops: 'route', rplan: 'route', rall: 'route', shopc: 'route', shop: 'route', shopn: 'route', hist: 'hist', hd: 'hist', more: 'more', set: 'more', who: 'more', adm: 'more', dr: 'more', cart: 'main', promo: 'more' };
+const BACK = { shopc: () => shopsView(), shop: () => shopCard(skey(eSh)), shopn: () => shopsView(), rplan: () => { rtAdd = false; shopsView() }, rall: () => shopsView(), hd: () => histView(),
   set: () => moreView(), who: () => moreView(), promo: () => moreView(), dr: () => moreView(), adm: () => moreView(), cart: () => { closeSheet(); drawList() } };
 function navSync() { const t = view ? TAB[view] || '' : 'main';
   document.querySelectorAll('.bn button').forEach(b => b.classList.toggle('on', b.dataset.t == t));
@@ -437,6 +437,7 @@ function setView() {
   const rl = rcp.length ? rcp.map(r => esc(r.n) + (r.c.length ? ' (' + esc(r.c.join(', ')) + ')' : '') + (r.d ? ' ★' : '') + ' · ' + esc(r.p)).join('<br>') + '<br><span class="m">Список ведётся на листе «Получатели» таблицы и общий для всех. Выбирается получатель на главном экране.</span>' : CFG.API_URL ? 'Список пуст: заполните лист «Получатели» (имя, телефон, города, по умолчанию). Пока заявки уходят на запасной номер.' : 'Общая база не подключена — заявки уходят на запасной номер.';
   $('#sb').innerHTML = `
   <details class="sc" open><summary>Вид</summary>${uiBlock()}</details>
+  ${role == 'admin' && rdSrv() ? `<details class="sc" open><summary>Общий маршрут</summary><p class="m" style="margin:0 0 8px">Маршруты всех торговых на любой день: «Маршрут» → «Общий маршрут». Вам он виден всегда.</p><div class="seg">${[[1, 'Виден торговым'], [0, 'Только администраторам']].map(([k, t]) => `<button data-a="shrt" data-v="${k}" class="${+cfgShare == k ? 'on' : ''}">${t}</button>`).join('')}</div></details>` : ''}
   <details class="sc"><summary>Города и прайс</summary><b>Города (через запятую)</b><input id="ct" value="${esc(S.cities.join(', '))}"><button class="ghost" data-a="rl">Обновить прайс</button>${standalone ? '' : `<button class="ghost" data-a="inst">${ico('plus', 18)} Установить на главный экран</button>`}</details>
   <details class="sc"><summary>Заявки</summary><p class="m" style="margin:0 0 4px">Свою заявку можно изменить в течение ${CFG.EDIT_HOURS} ч (администратор — любую и без срока) и удалить с возможностью вернуть в течение ${CFG.UNDO_HOURS} ч — в «Истории».</p><button class="ghost" data-a="csv">${ico('save', 18)} Экспорт истории (CSV)</button></details>
   <details class="sc"><summary>Получатели</summary><p class="m" style="margin:0 0 8px;line-height:1.5">${rl}</p>
@@ -505,7 +506,7 @@ function lostAuth() { // сервер не принял токен (истёк �
   if (view != 'auth' && !LS('pending')) authView('login');
 }
 function logout() { // выход возможен только при пустых очередях (проверяется там, где вызывается)
-  tok = ''; me = ''; role = 'trader'; LS('tok', ''); LS('me', ''); LS('role', ''); trs = []; LS('trs', trs); shist = []; LS('shist', shist); RDS = []; LS('rds', RDS); dayC = {}; adm = null; admCode = null; admOw = null;
+  tok = ''; me = ''; role = 'trader'; LS('tok', ''); LS('me', ''); LS('role', ''); trs = []; LS('trs', trs); shist = []; LS('shist', shist); RDS = []; LS('rds', RDS); rgC = {}; dayC = {}; adm = null; admCode = null; admOw = null;
   authNeed = true; syncStatus(); authView('login');
 }
 function syncStatus() { // строка статуса под названием в шапке
@@ -569,7 +570,8 @@ async function sync() { // отправляет накопленные заяв�
     if (srvV >= NEED && (shopq.some(new23) || visq.length)) again = true;   // версия сервера стала известна — досылаем отметки
     if (srvV >= 31 && bf && migrate31()) again = true;
     if (Array.isArray(d.rd)) { RDS = d.rd.filter(r => r && typeof r.d == 'string' && typeof r.sid == 'string' && typeof r.tr == 'string').map(r => ({ d: r.d, tr: r.tr, sid: r.sid, on: !!r.on, at: nz(r.at), by: String(r.by || '') })); LS('rds', RDS) }   // v35: маршрут на день
-    if (srvV >= 35 && migRd()) again = true;                                // v31: дни маршрута и режимы цен, заданные на телефоне, — один раз на сервер
+    if (srvV >= 35 && migRd()) again = true;
+    if (d.cfg && typeof d.cfg.share == 'boolean') { cfgShare = d.cfg.share; LS('cfgsh', cfgShare) } rgC = {};   // v35: «Общий маршрут» открыт торговым; данные дней — заново                                // v31: дни маршрута и режимы цен, заданные на телефоне, — один раз на сервер
     syncWarn = false; delok = delok.filter(o => { const sv = sh.find(x => x.id == o.id); if (!sv) return false;   // подтверждение удаления / возврата выгрузкой
       if (!!sv.del == !!o.del) return false; syncWarn = true; return Date.now() - o.t < 6e5 });                      // не совпало: сервер не применил — предупреждаем, пока не истёк срок
     LS('delok', delok); shist = sh; LS('trs', trs); LS('base', base); LS('shist', shist); shops();
@@ -794,22 +796,49 @@ function shopsView() { // раздел «Маршрут»: лист на сег�
   $('#sb').innerHTML = `<div class="seg" style="margin-bottom:12px">${[['route', 'На сегодня'], ['all', 'Все магазины']].map(([k, t]) => `<button data-a="shm" data-v="${k}" class="${shMode == k ? 'on' : ''}">${t}</button>`).join('')}</div>
   <div class="shsr"><div class="sf"><span class="si">${ico('search', 18)}</span><input id="shq" type="search" placeholder="Найти магазин" value="${esc(shQ)}"></div><button class="ghost shnew" data-a="shn">${ico('plus', 18)} Новый</button></div>
   <div id="shf"></div>
-  <div class="sfl">${cityF}<select id="sht" aria-label="Тип точки"><option value="">Любой тип</option>${TY.map(t => `<option ${t == shT ? 'selected' : ''}>${t}</option>`).join('')}</select><select id="shs" aria-label="Статус"><option value="">Любой статус</option><option value="-" ${shSt == '-' ? 'selected' : ''}>Без статуса</option>${Object.keys(ST).map(k => `<option value="${k}" ${shSt == k ? 'selected' : ''}>${ST[k][0]}</option>`).join('')}</select>${(() => { const r = rgList(shCity); if (shRg && !r.some(x => norm(x) == norm(shRg))) shRg = ''; return r.length ? `<select id="shr" aria-label="Район"><option value="">Все районы</option>${r.map(x => `<option ${norm(x) == norm(shRg) ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select>` : '' })()}</div>
+  <div class="sfl">${cityF}<select id="sht" aria-label="Тип точки"><option value="">Любой тип</option>${TY.map(t => `<option ${t == shT ? 'selected' : ''}>${t}</option>`).join('')}</select>${(() => { const r = rgList(shCity); if (shRg && !r.some(x => norm(x) == norm(shRg))) shRg = ''; return r.length ? `<select id="shr" aria-label="Район"><option value="">Все районы</option>${r.map(x => `<option ${norm(x) == norm(shRg) ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select>` : '' })()}</div>
   <div id="shl"></div>`;
   drawShops();
 }
-function rtrView() { // v35: администратор — маршрут торгового на выбранный день: точки по дням маршрута, добавленные и убранные на этот день
-  openSheet('rtr', 'Маршрут торгового'); const T = trs.length ? trs : [me]; if (!rtT || !T.some(n => norm(n) == norm(rtT))) rtT = T.find(n => norm(n) != norm(me)) || T[0]; if (!rtD || rtD < today()) rtD = today();
-  const wd = wdOfD(rtD), L = base.filter(b => b.id), on = L.filter(b => inPlan(b, rtT, rtD)).sort((p, q) => p.n.localeCompare(q.n, 'ru')), off = L.filter(b => autoIn(b, rtT, rtD) && !on.includes(b));
-  const pend = b => shopq.some(q => q.op == 'rday' && q.id == b.id && q.d == rtD && norm(q.tr) == norm(rtT)) ? ' · ждёт отправки' : '';
-  const row = (b, act) => `<div class="wkr"><div class="wkn"><b>${esc(b.n)}</b><span class="m">${esc(b.a || b.c || 'без адреса')} · ${autoIn(b, rtT, rtD) ? 'по дням маршрута' : 'на этот день'}${pend(b)}</span></div>${act}</div>`;
-  $('#sb').innerHTML = `<p class="m" style="margin:0 2px 10px">Точки на выбранный день появятся у торгового в маршруте «На сегодня» после синхронизации его телефона. Постоянные дни — в карточке точки.</p>
-  <div class="sfl"><select id="rtt" aria-label="Торговый">${T.map(n => `<option ${norm(n) == norm(rtT) ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select><input type="date" id="rtd" min="${today()}" value="${esc(rtD)}" aria-label="День"></div>
-  <h3 class="sub">${WDF[wd][0].toUpperCase() + WDF[wd].slice(1)}, ${fd(rtD)} · ${on.length} ${pl3(on.length, 'точка', 'точки', 'точек')}</h3><div class="wkd2 on">${on.map(b => row(b, `<button class="ghost wkx" data-a="rtrm" data-v="${esc(b.id)}">${ico('x', 16)}<span>Убрать</span></button>`)).join('') || '<p class="m wke">В этот день точек нет.</p>'}</div>
-  ${off.length ? `<h3 class="sub">Убраны на этот день · ${off.length}</h3><div class="wkd2 on">${off.map(b => row(b, `<button class="ghost wkx" data-a="rtadd" data-v="${esc(b.id)}">${ico('plus', 16)}<span>Вернуть</span></button>`)).join('')}</div>` : ''}
-  <h3 class="sub">Добавить точку на этот день</h3><input id="rtq" type="search" placeholder="Найти магазин: название или район" value="${esc(rtQ)}"><div id="rtl">${rtList()}</div>` }
-function rtList() { const q = norm(rtQ); if (!q) return '<p class="m wke">Начните вводить название.</p>'; const L = base.filter(b => b.id && !inPlan(b, rtT, rtD) && shMatch(b, q)).sort((p, r) => p.n.localeCompare(r.n, 'ru'));
-  return L.slice(0, 30).map(b => `<button class="shi" data-a="rtadd" data-v="${esc(b.id)}"><div style="flex:1;min-width:0"><b>${esc(b.n)}</b><div class="m">${esc([b.a, b.c].filter(Boolean).join(' · ') || 'без адреса')}${b.ow ? ' · ' + esc(b.ow) : ''}</div></div><span class="pl add">+ добавить</span></button>`).join('') || '<p class="m wke">Не найдено.</p>' }
+/* v35. «Общий маршрут» — маршруты всех торговых на любой день (и прошлые): по блокам торговых + «Свободные точки» (без ответственного — в маршруте у всех).
+   Точки дня — по дням маршрута и ответственному (b.rw, b.ow) плюс правки дня (лист «Маршрут дня»); «пройдено» — визиты и заявки этого дня с сервера (q: 'route').
+   Для прошлых дней точки считаются по ТЕКУЩИМ дням маршрута (истории дней нет). Администратор добавляет и убирает точки торговым на сегодня и вперёд. Торговым раздел виден, если администратор не выключил его в настройках */
+let rgD = '', rgC = {}, rgBusy = '', rgAdd = '', rgQ = '', cfgShare = LS('cfgsh') !== false;   // rgD — выбранный день; rgC — данные дня с сервера; rgAdd — у какого торгового открыт поиск «+ Добавить точку»
+const rgOk = () => rdSrv() && (role == 'admin' || cfgShare);
+const dayB = d => { const [y, m, dd] = d.split('-').map(Number); const a = new Date(y, m - 1, dd).getTime(); return [a, new Date(y, m - 1, dd + 1).getTime()] };
+async function loadRg(d, force) { if (rgBusy || !rgOk() || !tok) return; const c = rgC[d]; if (!force && c && Date.now() - c.at < (c.err ? 15e3 : 6e4)) return;
+  if (!navigator.onLine) { rgC[d] = { at: Date.now(), err: 'нет связи' }; return }
+  rgBusy = d; const [from, to] = dayB(d); try { const r = await call({ q: 'route', d, from, to }); rgC[d] = r && r.ok ? { at: Date.now(), rd: safeA(r.rd), ev: safeA(r.ev) } : { at: Date.now(), err: 'сервер не отдал маршрут' } }
+  catch (e) { rgC[d] = { at: Date.now(), err: e && e.message || 'ошибка' } } finally { rgBusy = '' } if (view == 'rall') rgView() }
+const safeA = a => Array.isArray(a) ? a.filter(x => x && typeof x == 'object') : [];
+function rgOn(tr, d, id) { const c = rgC[d]; let v; (c && c.rd ? c.rd : RDS.filter(r => r.d == d)).forEach(r => { if (r.sid == id && norm(r.tr) == norm(tr)) v = !!r.on });
+  shopq.forEach(q => { if (q.op == 'rday' && q.d == d && q.id == id && norm(q.tr) == norm(tr)) v = !!q.on }); return v }   // правка дня: true / false / undefined (нет)
+function rgView() {
+  openSheet('rall', 'Общий маршрут'); const t0 = today(); if (!rgD) rgD = t0; const d = rgD, wd = wdOfD(d), c = rgC[d]; loadRg(d);
+  const adm = role == 'admin', edit = adm && d >= t0, T = [...new Set([...trs, me].filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ru')), L = base.filter(b => b.id);
+  const ev = c && c.ev ? c.ev : [], evOf = (id, tr) => ev.filter(x => x.sid == id && (!tr || norm(x.who) == norm(tr))).sort((p, q) => p.ts - q.ts);
+  const plan = tr => { const own = L.filter(b => b.ow && norm(b.ow) == norm(tr) && inWeek(b, wd)), add = L.filter(b => !own.includes(b) && rgOn(tr, d, b.id) === true);
+    return { pts: own.filter(b => rgOn(tr, d, b.id) !== false).concat(add).sort((p, q) => p.n.localeCompare(q.n, 'ru')), add, out: own.filter(b => rgOn(tr, d, b.id) === false) } };
+  const P = {}; T.forEach(t => { P[t] = plan(t) });
+  const taken = new Set(T.flatMap(t => P[t].add.map(b => b.id))), free = L.filter(b => !b.ow && inWeek(b, wd) && !taken.has(b.id)).sort((p, q) => p.n.localeCompare(q.n, 'ru'));
+  const mark = (b, tr) => { const e = evOf(b.id, tr), x = e.length ? e[e.length - 1] : null; return x ? `<span class="pl ${x.k == 'v' && DEFER.includes(x.val) ? 'wait' : 'ok'}">${x.k == 'o' ? 'Заявка' : esc(x.val || 'Визит')} ${hhmm(x.ts)}${tr ? '' : ' · ' + esc(x.who)}</span>` : '' };   // «Никого не было» / «Зайти позже» — жёлтым: точка не закрыта
+  const pend = (b, tr) => shopq.some(q => q.op == 'rday' && q.id == b.id && q.d == d && norm(q.tr) == norm(tr)) ? ' · ждёт отправки' : '';
+  const row = (b, tr, extra, act) => `<div class="wkr"><button class="wkn" data-a="scard" data-v="${esc(skey(b))}"><b>${esc(b.n)}</b><span class="m">${esc(b.a || b.c || 'без адреса')}${extra || ''}${tr ? pend(b, tr) : ''}</span>${mark(b, tr)}</button>${act || ''}</div>`;
+  const blk = (tr, p) => { const done = p.pts.filter(b => evOf(b.id, tr).some(x => x.k == 'o' || !DEFER.includes(x.val))).length,   // пройдено — как в личном маршруте: заявка или закрывающий визит
+       inP = new Set(p.pts.map(b => b.id)), ext = [...new Set(ev.filter(x => norm(x.who) == norm(tr) && !inP.has(x.sid) && !free.some(b => b.id == x.sid)).map(x => x.sid))].map(byId).filter(Boolean);
+    return `<div class="wkd2 rgb"><div class="rgh"><b>${esc(tr)}${norm(tr) == norm(me) ? ' (вы)' : ''}</b><span class="m">${p.pts.length} ${pl3(p.pts.length, 'точка', 'точки', 'точек')}${c && c.ev ? ' · пройдено ' + done : ''}</span></div>`
+      + (p.pts.map(b => row(b, tr, p.add.includes(b) ? ' · на этот день' : '', edit ? `<button class="ghost wkx" data-a="rgrm" data-v="${esc(b.id)}" data-t="${esc(tr)}">${ico('x', 16)}<span>Убрать</span></button>` : '')).join('') || '<p class="m wke">Точек нет.</p>')
+      + ext.map(b => row(b, tr, ' · вне маршрута')).join('')
+      + (edit && p.out.length ? p.out.map(b => row(b, tr, ' · убрана на этот день', `<button class="ghost wkx" data-a="rgadd" data-v="${esc(b.id)}" data-t="${esc(tr)}">${ico('plus', 16)}<span>Вернуть</span></button>`)).join('') : '')
+      + (edit ? `<div class="wka">${rgAdd == tr ? `<input id="rgq" type="search" placeholder="Найти магазин: название или район" value="${esc(rgQ)}"><div id="rgl">${rgPick(tr, p)}</div><button class="ghost radd" data-a="rgopen" data-t="">${ico('x', 18)} Скрыть</button>` : `<button class="ghost radd" data-a="rgopen" data-t="${esc(tr)}">${ico('plus', 18)} Добавить точку</button>`}</div>` : '') + '</div>' };
+  const head = `<div class="day"><button class="dnb" data-a="rgprev" aria-label="Предыдущий день">${ico('back', 22)}</button><label class="dl"><span>${esc(d == t0 ? 'Сегодня · ' + fd(d) : WDF[wd][0].toUpperCase() + WDF[wd].slice(1) + ', ' + fd(d))}</span><small>${c && c.err ? 'не загрузилось: ' + esc(c.err) : !c && rgBusy ? 'загружаю…' : WD[wd] + ' · ' + T.length + ' ' + pl3(T.length, 'торговый', 'торговых', 'торговых')}</small><input type="date" id="rgdp" value="${esc(d)}" aria-label="Выбрать день"></label><button class="dnb" data-a="rgnext" aria-label="Следующий день">${ico('chev', 22)}</button></div>`
+    + `<div class="dsw">${d != t0 ? '<button class="lnk dall dtd" data-a="rgtoday">К сегодняшнему дню</button>' : ''}${c && c.err ? '<button class="lnk dall" data-a="rgretry">Повторить</button>' : ''}</div>`;
+  $('#sb').innerHTML = head + (d < t0 ? '<p class="m rgn">Точки прошлого дня — по нынешним дням маршрута; отметки — визиты и заявки этого дня.</p>' : '')
+    + T.map(t => blk(t, P[t])).join('')
+    + `<div class="wkd2 rgb"><div class="rgh"><b>Свободные точки</b><span class="m">без ответственного — в маршруте у всех · ${free.length}</span></div>${free.map(b => row(b, '')).join('') || '<p class="m wke">Нет.</p>'}</div>` }
+function rgPick(tr, p) { const q = norm(rgQ); if (!q) return '<p class="m wke">Начните вводить название.</p>'; const has = new Set(p.pts.map(b => b.id));
+  const L = base.filter(b => b.id && !has.has(b.id) && shMatch(b, q)).sort((x, y) => x.n.localeCompare(y.n, 'ru'));
+  return L.slice(0, 30).map(b => `<button class="shi" data-a="rgadd" data-v="${esc(b.id)}" data-t="${esc(tr)}"><div style="flex:1;min-width:0"><b>${esc(b.n)}</b><div class="m">${esc([b.a, b.c].filter(Boolean).join(' · ') || 'без адреса')}${b.ow ? ' · ' + esc(b.ow) : ''}</div></div><span class="pl add">+ добавить</span></button>`).join('') || '<p class="m wke">Не найдено.</p>' }
 function planView() { // постоянный маршрут по дням недели и правила подсказок — отдельная страница, чтобы не мешать листу на сегодня
   if (rtDay < 0) rtDay = wdNow(); shMode = 'route'; openSheet('rplan', 'Маршрут по дням');   // v33: неделя целиком (DECISIONS п. 51)
   $('#sb').innerHTML = `<p class="m wkin" id="wki"></p><div id="shl"></div>
@@ -835,7 +864,7 @@ const myPt = b => !b.ow || norm(b.ow) == norm(me), canDays = b => role == 'admin
 const daysDeny = b => say('Точка «' + b.n + '» закреплена за «' + b.ow + '»: дни маршрута меняет он или администратор.\nДобавить её себе на сегодня можно кнопкой «В маршрут на сегодня».');
 /* v35. Маршрут на день — общий, в таблице (лист «Маршрут дня»): правки дня видны торговому на любом телефоне, администратор составляет маршрут за торговых.
    RDS — правки с сервера (последняя по дате, торговому и точке), поверх — неотправленные из очереди. Пока сервер старше 35 или у точки нет ID — как раньше, на телефоне (RD) */
-let RDS = Array.isArray(LS('rds')) ? LS('rds') : [], rtT = '', rtD = '', rtQ = '';   // rtT / rtD / rtQ — страница администратора «Маршрут торгового»: чей, на какой день, поиск
+let RDS = Array.isArray(LS('rds')) ? LS('rds') : [];
 const rdSrv = () => !!CFG.API_URL && srvV >= 35;
 const rdOn = (tr, d, id) => { let v; RDS.forEach(r => { if (r.d == d && r.sid == id && norm(r.tr) == norm(tr)) v = !!r.on }); shopq.forEach(q => { if (q.op == 'rday' && q.d == d && q.id == id && norm(q.tr) == norm(tr)) v = !!q.on }); return v };
 const wdOfD = d => (new Date(d + 'T12:00:00').getDay() + 6) % 7, autoIn = (b, tr, d) => inWeek(b, wdOfD(d)) && (!b.ow || norm(b.ow) == norm(tr));   // по дням маршрута: своя или свободная точка
@@ -917,14 +946,14 @@ function drawToday(L) {
     $('#sha').innerHTML = ad.slice(0, 40).map(b => pick(b)).join('') + (ad.length > 40 ? `<p class="m" style="margin:0 2px 8px">Показаны первые 40 из ${ad.length}. Уточните поиском.</p>` : '') || '<p class="empty">Подходящих магазинов нет: все уже в списке или не подходят под поиск.</p>' }
   const tips = L.filter(b => !inToday(b) && myPt(b)).map(b => ({ b, d: dueInfo(b) })).filter(x => x.d).sort((x, y) => y.d.sc - x.d.sc).slice(0, 20);
   $('#shx').innerHTML = (tips.length ? `<details class="rt rtip"><summary><span>Стоит заехать · ${tips.length}</span><small class="m">не в маршруте, но давно не были или есть вопрос</small></summary>${tips.map(({ b, d }) => pick(b, d.tags)).join('')}</details>` : '')
-    + `<div class="rnav"><button class="ghost" data-a="shm" data-v="all">Все магазины</button><button class="ghost" data-a="rplan">Маршрут по дням</button></div>${role == 'admin' && rdSrv() ? '<div class="rnav"><button class="ghost" data-a="rtr">Маршрут торгового на день</button></div>' : ''}`;   // v35: администратор составляет маршрут за торговых
+    + `<div class="rnav"><button class="ghost" data-a="shm" data-v="all">Все магазины</button><button class="ghost" data-a="rplan">Маршрут по дням</button>${rgOk() ? `<button class="ghost rnw" data-a="rgall">${ico('user', 18)} Общий маршрут — все торговые</button>` : ''}</div>`;   // v35: общий маршрутный лист (администратор там же ставит точки торговым)
   syncStatus();
 }
 function drawShops() {
   const route = shMode == 'route', q = norm(shQ);
   if (route && rtDay < 0) return drawToday(base);
   if (route) return drawWeek(base);   // v33: «Маршрут по дням» — вся неделя; лента на сегодня — все точки дня, поиск — только в списке для добавления
-  let L = base.filter(b => (!shCity || norm(b.c) == norm(shCity)) && (!shT || b.ty == shT) && (!shRg || norm(b.rg) == norm(shRg)) && (!shSt || (shSt == '-' ? !b.st : b.st == shSt)) && shMatch(b, q));   // v35: фильтр по статусу ('-' — без статуса)
+  let L = base.filter(b => (!shCity || norm(b.c) == norm(shCity)) && (!shT || b.ty == shT) && (!shRg || norm(b.rg) == norm(shRg)) && shMatch(b, q));   // v35: статус — рядом кнопок в drawAll (числа считаются с учётом обоих рядов)
   return drawAll(L);
 }
 /* v33. «Маршрут по дням» — неделя целиком: полоса нагрузки и карточка на каждый день; выбранный день раскрыт (DECISIONS п. 51) */
@@ -959,10 +988,14 @@ function shRow(b) { const k = shClass(b), urg = k.dc === null || k.dc >= RT.vd;
   const sub = !b.lv && !b.lo ? 'Ни визитов, ни заказов' : [b.lv ? 'Визит ' + ago(b.lv) : '', b.lo ? 'заказ ' + ago(b.lo) : 'заказов не было'].filter(Boolean).join(' · ');
   const tile = k.dc === null ? '<b>нет</b><small>визитов</small>' : k.dc == 0 ? '<b class="sm">сегодня</b>' : `<b>${k.dc}</b><small>дн.</small>`;
   return `<button class="shrow" data-a="scard" data-v="${esc(skey(b))}"><span class="srt"><b>${esc(b.n)}</b><span class="srp">${pillOf(b) || '<span class="pl nt">Без статуса</span>'}${own ? `<span class="m">· ${own}</span>` : ''}</span><span class="m">${[b.ty, b.a, b.rg].filter(Boolean).map(esc).join(' · ') || esc(b.c || '')}</span><span class="m">${sub}</span></span><span class="sdt${urg ? ' urg' : ''}" aria-label="${k.dc === null ? 'контактов не было' : 'дней с последнего контакта: ' + k.dc}">${tile}</span></button>` }
-function drawAll(L) {
-  const cnt = {}; SHF.forEach(([f]) => { cnt[f] = f == 'all' ? L.length : L.filter(b => shClass(b)[f]).length });
+const STS = { reg: 'Постоянный', good: 'Хороший', prom: 'Перспективный', neu: 'Нейтральный', hard: 'Сложный', no: 'Не заходить', closed: 'Закрыт', ref: 'Отказались' };   // v35: короткие названия статусов для ряда кнопок
+function drawAll(L0) { // v35: два ряда кнопок — «что с точкой» и статус; числа в каждом ряду — с учётом выбора в другом
+  const stOk = b => !shSt || (shSt == '-' ? !b.st : b.st == shSt), fOk = b => shF == 'all' || shClass(b)[shF], L = L0.filter(stOk), cnt = {};
+  SHF.forEach(([f]) => { cnt[f] = f == 'all' ? L.length : L.filter(b => shClass(b)[f]).length });
   if (shF != 'all' && !SHF.some(([f]) => f == shF)) shF = 'all'; if (shF == 'mine' && !cnt.mine) shF = 'all';
-  $('#shf').innerHTML = `<div class="chips shfc">${SHF.filter(([f]) => f != 'mine' || cnt.mine).map(([f, t]) => `<button class="chip${shF == f ? ' on' : ''}" data-a="shf" data-v="${f}" aria-pressed="${shF == f}">${t} <em>${cnt[f]}</em></button>`).join('')}</div>
+  const Lf = L0.filter(fOk), sc = k => Lf.filter(b => k == '-' ? !b.st : b.st == k).length, sts = [['', 'Любой', Lf.length], ...Object.keys(ST).map(k => [k, STS[k] || ST[k][0], sc(k)]).filter(x => x[2] || x[0] == shSt), ...(sc('-') || shSt == '-' ? [['-', 'Без статуса', sc('-')]] : [])];
+  $('#shf').innerHTML = `<div class="shfg"><small class="shfl">Что с точкой</small><div class="chips shfc">${SHF.filter(([f]) => f != 'mine' || cnt.mine).map(([f, t]) => `<button class="chip${shF == f ? ' on' : ''}" data-a="shf" data-v="${f}" aria-pressed="${shF == f}">${t} <em>${cnt[f]}</em></button>`).join('')}</div></div>
+    <div class="shfg"><small class="shfl">Статус</small><div class="chips shfc">${sts.map(([k, t, n]) => `<button class="chip${shSt == k ? ' on' : ''}" data-a="shst" data-v="${k}" aria-pressed="${shSt == k}">${k && k != '-' ? `<span class="sdot" style="background:${ST[k][1]}"></span>` : ''}${t} <em>${n}</em></button>`).join('')}</div></div>
     <div class="shsort m">${ico('down', 16)} ${shF == 'took' ? 'Заявки с ' + fd(locIso(Date.now() - 4 * 864e5)) + ' по ' + fd(locIso(Date.now())) + ' (5 дней), сначала свежие' : 'По срочности: сначала те, где давно не были'}</div>`;
   const grp = (t, list) => list.length ? `<h3 class="sub">${t} · ${list.length}</h3><div class="shls">${list.map(shRow).join('')}</div>` : '';
   let h;
@@ -1152,9 +1185,14 @@ document.addEventListener('click', async e => {   // async: вопросы (ask)
   if (a == 'nroute') return goHome(); if (a == 'nmain') { closeSheet(); drawList(); return } if (a == 'nmore') return moreView();
   if (a == 'back') { const f = BACK[view]; if (f) f(); else { closeSheet(); drawList() } return }
   if (a == 'rplan') { rtDay = -1; rtAdd = false; rvK = ''; return planView() }
-  if (a == 'rtr') return rtrView();
-  if (a == 'rtrm' || a == 'rtadd') { const b = byId(v); if (!b || role != 'admin') return; const on = a == 'rtadd', tr = rtT, d = rtD; rdSet(b, tr, d, on); rtrView();
-    return cSaved((on ? 'Добавлена' : 'Убрана') + ': «' + b.n + '» · ' + tr + ', ' + fd(d), () => { rdSet(b, tr, d, !on); if (view == 'rtr') rtrView() }) }
+  if (a == 'shrt') { const on = v == '1'; if (on == cfgShare) return; const r = await admDo({ op: 'cfg', share: on }); if (r) { cfgShare = on; LS('cfgsh', on); toast(on ? 'Общий маршрут виден торговым' : 'Общий маршрут — только администраторам') } if (view == 'set') setView(); return }   // v35: сразу на сервер (нужна связь)
+  if (a == 'shst') { shSt = v || ''; return drawShops() }   // v35: статус — кнопкой
+  if (a == 'rgall') { rgD = today(); rgAdd = ''; rgQ = ''; return rgView() }
+  if (a == 'rgprev' || a == 'rgnext') { const [y, m, d] = rgD.split('-').map(Number); rgD = locIso(new Date(y, m - 1, d + (a == 'rgnext' ? 1 : -1), 12).getTime()); rgAdd = ''; return rgView() }
+  if (a == 'rgtoday') { rgD = today(); return rgView() } if (a == 'rgretry') { delete rgC[rgD]; return rgView() }
+  if (a == 'rgopen') { rgAdd = b.dataset.t || ''; rgQ = ''; rgView(); const q = document.getElementById('rgq'); if (q && q.focus) try { q.focus() } catch (_) {} return }
+  if (a == 'rgrm' || a == 'rgadd') { const x = byId(v), tr = b.dataset.t || '', d = rgD; if (!x || !tr || role != 'admin' || d < today()) return; const on = a == 'rgadd'; rdSet(x, tr, d, on); rgQ = ''; rgView();   // v35: администратор ставит маршрут торговому
+    return cSaved((on ? 'Добавлена' : 'Убрана') + ': «' + x.n + '» · ' + tr + ', ' + fd(d), () => { rdSet(x, tr, d, !on); if (view == 'rall') rgView() }) }
   if (a == 'cvis') { cVO = !cVO; return shopCard(skey(cSh)) }
   if (a == 'cat') { cat = v; drawChips(); drawList() }
   else if (a == 'fav') { fav = isFav(p) ? fav.filter(k => k != id) : [...fav, id]; LS('fav', fav); drawChips(); if (cat == FAV) drawList(); else b.classList.toggle('on', isFav(p)) }
@@ -1358,11 +1396,11 @@ document.addEventListener('change', e => { const t = e.target;
   else if (t.id == 'tys') { cSh.ty = t.value; saveMeta(cSh); cSaved('Тип точки сохранён') }
   else if (t.id == 'sht') { shT = t.value; shopsView() }
   else if (/^rt(p|v|o|q|vd|od)$/.test(t.id)) { const k = { rtp: 'plan', rtv: 'visit', rto: 'order', rtq: 'q', rtvd: 'vd', rtod: 'od' }[t.id]; RT[k] = t.type == 'checkbox' ? t.checked : Math.max(1, Math.min(365, +t.value || RT0[k])); LS('rt', RT); drawShops() }
-  else if (t.id == 'shc') { shCity = t.value; shopsView() } else if (t.id == 'shr') { shRg = t.value; drawShops() } else if (t.id == 'rtt') { rtT = t.value; rtrView() } else if (t.id == 'rtd') { rtD = t.value && t.value >= today() ? t.value : today(); rtrView() } else if (t.id == 'shs') { shSt = t.value; drawShops() }
+  else if (t.id == 'shc') { shCity = t.value; shopsView() } else if (t.id == 'shr') { shRg = t.value; drawShops() } else if (t.id == 'rgdp') { if (/^\d{4}-\d\d-\d\d$/.test(t.value)) { rgD = t.value; rgAdd = ''; rgView() } }
   else if (t.id == 'impf') importBackup(t.files[0]); });
 document.addEventListener('toggle', e => { const d = e.target; if (!d || !d.matches || !d.matches('details.cs') || !d.dataset || !d.dataset.s) return;   // v30: раскрытые разделы карточки запоминаются (раньше сворачивались при любом нажатии внутри)
   if (d.open) cOpen.add(d.dataset.s); else cOpen.delete(d.dataset.s); LS('copen', [...cOpen]) }, true);
-document.addEventListener('input', e => { if (e.target.id == 'rtq') { rtQ = e.target.value; $('#rtl').innerHTML = rtList(); return } if (e.target.id == 'shq') { shQ = e.target.value; if (view == 'rplan') drawWeekAdd(); else drawShops() } else if (e.target.id == 'prq') { prQ = e.target.value; $('#prl').innerHTML = promoList() } });
+document.addEventListener('input', e => { if (e.target.id == 'rgq') { rgQ = e.target.value; const e2 = document.getElementById('rgl'); if (e2) { const d = rgD, wd = wdOfD(d), L = base.filter(b => b.id), own = L.filter(b => b.ow && norm(b.ow) == norm(rgAdd) && inWeek(b, wd)); e2.innerHTML = rgPick(rgAdd, { pts: own.filter(b => rgOn(rgAdd, d, b.id) !== false).concat(L.filter(b => !own.includes(b) && rgOn(rgAdd, d, b.id) === true)) }) } return } if (e.target.id == 'shq') { shQ = e.target.value; if (view == 'rplan') drawWeekAdd(); else drawShops() } else if (e.target.id == 'prq') { prQ = e.target.value; $('#prl').innerHTML = promoList() } });
 $('#q').oninput = e => { Q = e.target.value.toLowerCase(); drawList() };
 ['d', 's', 'a'].forEach(k => $('#' + k).addEventListener('change', e => { if (k == 'd') { pickD(e.target.value); $('#d').value = H.d; drawD(); drawHf(); return save() } H[k] = e.target.value;
   if (k == 's') { // название магазина приводим к записи из общей базы (сначала тот же город), подставляем город, адрес и ID

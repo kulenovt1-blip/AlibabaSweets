@@ -81,10 +81,10 @@ function writeOp(d, ctx) {                // записывает заявку, 
   return { error: 'action' };
 }
 const rdSheet = () => ensureHead(sh('Маршрут дня'), RD_HEAD);   // дату «2026-10-16» таблица может превратить в дату — читаем через dstr (в часовом поясе таблицы)
-function routeDays(ctx, now) {         // v35: правки маршрута на день начиная со вчерашнего: торговому — свои, администратору — все. Последняя правка по (дата, торговый, точка) побеждает
+function routeDays(ctx, now, d1, d2) {   // v35: правки маршрута на день: по умолчанию со вчерашнего (или за даты d1..d2); торговому — свои (все — если «Общий маршрут» открыт), администратору — все. Последняя правка по (дата, торговый, точка) побеждает
   const s = rdSheet(), n = s.getLastRow(); if (n < 2) return [];
-  const from = Utilities.formatDate(new Date(now - 36 * 36e5), SpreadsheetApp.getActive().getSpreadsheetTimeZone(), 'yyyy-MM-dd'), adm = ctx.role == 'admin', m = {};
-  s.getRange(2, 1, n - 1, 7).getValues().forEach(r => { const d = dstr(r[0]), tr = T(r[1]), sid = T(r[2]); if (!d || d < from || !tr || !sid || (!adm && !same(tr, ctx.user))) return;
+  const from = d1 || Utilities.formatDate(new Date(now - 36 * 36e5), SpreadsheetApp.getActive().getSpreadsheetTimeZone(), 'yyyy-MM-dd'), all = ctx.role == 'admin' || shareRoute(), m = {};
+  s.getRange(2, 1, n - 1, 7).getValues().forEach(r => { const d = dstr(r[0]), tr = T(r[1]), sid = T(r[2]); if (!d || d < from || (d2 && d > d2) || !tr || !sid || (!all && !same(tr, ctx.user))) return;
     const k = d + '|' + tr + '|' + sid, at = +r[6] || 0; if (!m[k] || at >= m[k].at) m[k] = { d, tr, sid, on: T(r[4]) == '+', at, by: T(r[5]) } });
   return Object.keys(m).map(k => m[k]);
 }
@@ -101,13 +101,19 @@ function readOp(d, ctx) {                 // торговые, магазины,
     return timeline(sid, name, user, Math.min(Math.max(+d.limit || 60, 1), 200));
   }
   if (d.q == 'stats') return statsOp(d.b, ctx);
-  if (d.q == 'per') return perOp(d, ctx);                                          // v35: итоги за период «Истории» (день / неделя / месяц / год), прошлый такой же и по месяцам                                    // v31: итоги за периоды (границы присылает приложение — в местном времени торгового)
+  if (d.q == 'per') return perOp(d, ctx);
+  if (d.q == 'route') {                  // v35: «Общий маршрут» за день: правки дня (rd) и что было в этот день — визиты (не отменённые) и заявки по точкам. from/to — границы дня в местном времени телефона
+    const day = T(d.d), from = +d.from, to = +d.to; if (!validDate(day) || !(from > 0) || !(to > from) || to - from > 26 * 36e5) return { error: 'range' };
+    const all = ctx.role == 'admin' || shareRoute(), mine = x => all || same(x, ctx.user), st = loadState(), ev = [];
+    st.jr.forEach(j => { if (j.kind == 'visit' && !j.state && j.link && j.ts >= from && j.ts < to && mine(j.who)) ev.push({ k: 'v', sid: j.link, who: j.who, ts: j.ts, val: T(j.val) }) });
+    st.orders.forEach(o => { if (!o.del && o.link && o.ts >= from && o.ts < to && mine(o.tr)) ev.push({ k: 'o', sid: o.link, who: o.tr, ts: o.ts, val: o.sum }) });
+    return { ok: 1, d: day, share: all, rd: routeDays(ctx, Date.now(), day, day).filter(r => r.d == day), ev } }                                          // v35: итоги за период «Истории» (день / неделя / месяц / год), прошлый такой же и по месяцам                                    // v31: итоги за периоды (границы присылает приложение — в местном времени торгового)
   if (d.q == 'prev') { const sid = str(d.sid, 64); if (!sid || !ID_RE.test(sid)) return { error: 'range' }; return { ok: 1, sid, items: prevItems(sid) } }   // v31: «Брал раньше»
   if (d.q != 'init') return { error: 'action' };
   const traders = readTraders().map(x => x.n), ag = agg(), shops = ensureIds().map(x => { const o = pub(x), l = ag.lm[x.id]; if (l) { o.lm = l[0]; o.lmt = l[1] } return o });   // lm — режим цен последней заявки в точку (по всем торговым)
   // окно: заявки всех торговых за 7 дней + свои (и заявки без торгового — только для просмотра) за 30 дней; остальное приложение запрашивает по дню (q=range)
   const hist = ordersIn(now - 30 * D, now + D, undo, now).filter(o => (+o.ts || 0) >= now - 7 * D || !o.trader || same(o.trader, user));
-  return { srv: SRV, me: meOut, traders, shops, rcp: recipients(), hist: hist.reverse(), hot: ag.hot, reasons: ag.reasons, promo: readPromo().map(x => x.k), rd: routeDays(ctx, now) };   // v35: rd — маршрут на день
+  return { srv: SRV, me: meOut, traders, shops, rcp: recipients(), hist: hist.reverse(), hot: ag.hot, reasons: ag.reasons, promo: readPromo().map(x => x.k), rd: routeDays(ctx, now), cfg: { share: shareRoute() } };   // v35: rd — маршрут на день; cfg.share — «Общий маршрут» открыт торговым   // v35: rd — маршрут на день
 }
 const isD = v => Object.prototype.toString.call(v) === '[object Date]', ms = v => isD(v) ? v.getTime() : (+v || 0);
 function ordersIn(from, to, undo, now) { // заявки, созданные в [from, to). Читаем только нужный участок листа, а не всё подряд
@@ -233,6 +239,7 @@ function secret(name) {                  // секрет создаётся пр
   return withLock(() => { let x = props().getProperty(name); if (!x) { x = rndHex(32); props().setProperty(name, x) } return x });
 }
 const authOn = () => props().getProperty('AUTH_REQUIRED') == '1';
+const shareRoute = () => props().getProperty('SHARE_ROUTE') != '0';   // v35: «Общий маршрут» виден торговым (по умолчанию да; администратор выключает в настройках)
 const iterCfg = () => { const n = Math.round(+props().getProperty('PBKDF2_ITER') || ITER_DEF); return Math.min(Math.max(n, ITER_MIN), ITER_MAX) };
 function pbkdf2(pw, salt, iter) {        // PBKDF2-HMAC-SHA256, один блок (32 байта)
   const key = utf8(pw); let u = hmac(salt.concat([0, 0, 0, 1]), key); const t = u.slice();
@@ -344,6 +351,8 @@ function adminOp(a, ctx) {                // всё административн
   if (!a || typeof a != 'object') return { error: 'request' };
   const now = Date.now(), me = ctx.user;
   if (a.op == 'list') return { ok: 1, profiles: readTraders().map(x => pubT(x, now)), required: authOn() };
+  if (a.op == 'cfg') { if (a.share !== true && a.share !== false) return no('invalid', 'share');   // v35: видимость «Общего маршрута» для торговых
+    if (a.share) props().deleteProperty('SHARE_ROUTE'); else props().setProperty('SHARE_ROUTE', '0'); audit(me, 'admin_cfg', 'share_route', a.share ? 'вкл' : 'выкл'); return yes({ share: a.share }) }
   if (a.op == 'promo') { const k = str(a.key, 250); if (!k || dng(k) || (k.match(/\|/g) || []).length != 2) return no('invalid', 'key');   // v31: «Продвигать» — отметить товар (on) или снять отметку
     return withLock(() => { const s = promoSheet(), L = readPromo(), has = L.filter(x => x.k == k);
       if (a.on) { if (!has.length) ap(s, [k, me, new Date(now)]) } else has.map(x => x.r).sort((p, q) => q - p).forEach(r => s.deleteRow(r));

@@ -459,7 +459,7 @@ body.sh #toast{bottom:calc(var(--bnh) + 12px + env(safe-area-inset-bottom,0px))}
 .auc .send{margin-top:2px}.aum{align-self:center}
 .auhint{margin:14px 0 0;text-align:center;line-height:1.4}
 .sfl select{height:52px;min-height:52px;padding-top:0;padding-bottom:0}   /* выборы города и типа — одной высоты */
-.sfl{flex-wrap:wrap}.sfl select{flex:1 1 0}.sfl #shr{flex-basis:100%}   /* v34: район — отдельной строкой во всю ширину: три выбора в ряд на 360 px обрезались («Все рай…»)*/
+.sfl{flex-wrap:wrap}.sfl select{flex:1 1 calc(50% - 4px)}   /* v34–v35: фильтры по два в строке (город · тип, статус · район): три-четыре в ряд на 360 px обрезались */
 @media(max-width:380px){.auh{margin:0 -12px}}   /* на узком экране поля страницы 12 px — шапка входа по краю, без прокрутки вбок */
 
 /* ===== 31. v33 · ОФОРМЛЕНИЕ ЗАЯВКИ (макет «Оформление заявки») И «ЗАЯВКА ОТПРАВЛЕНА?» ===== */
@@ -599,3 +599,13 @@ button.pfc:active{transform:none;opacity:.92}
 .rtip>summary::after{content:'';position:absolute;right:6px;top:50%;width:9px;height:9px;border:solid var(--muted);border-width:0 2.4px 2.4px 0;transform:translateY(-70%) rotate(45deg)}.rtip[open]>summary::after{transform:translateY(-20%) rotate(-135deg)}
 .rnav .ghost{white-space:nowrap;padding:0 8px}
 :root[data-fs="1"] .rnav .ghost,:root[data-fs="2"] .rnav .ghost{white-space:normal}
+
+/* v35: заметки о точке в карточке магазина */
+.shnb{margin:10px 0 0;padding:12px 14px;border-radius:14px;background:var(--surface-sunken);color:var(--ink)}.shnb small{display:block;font-weight:800;font-size:calc(12px*var(--fz));letter-spacing:.08em;color:var(--muted);margin-bottom:4px}.shnb div{white-space:pre-wrap;overflow-wrap:anywhere}
+#inb{min-height:96px;resize:vertical}
+/* v35: «История» — период (день / неделя / месяц / год), год — по месяцам, неделя и месяц — заголовки дней */
+.hps{margin:0 0 10px}.hps button{padding-left:4px;padding-right:4px}
+.hdd{margin:14px 2px 6px}
+.hmy{display:flex;flex-direction:column;gap:8px}
+.hmr{display:grid;grid-template-columns:1fr auto;grid-template-rows:auto auto;align-items:center;gap:0 12px;width:100%;text-align:left;padding:12px 16px;border:1px solid var(--line);border-radius:14px;background:var(--surface);color:var(--ink);min-height:56px}
+.hmr span{font-weight:700;font-size:calc(17px*var(--fz))}.hmr small{grid-column:1;grid-row:2}.hmr b{grid-column:2;grid-row:1/3;font-size:calc(17px*var(--fz))}

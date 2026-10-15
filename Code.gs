@@ -27,13 +27,14 @@
  *  • Все операции идут по постоянному ID события и безопасны при повторной отправке.
  *  • Сводка магазина (посл. заказ / посл. визит) всегда ПЕРЕСЧИТЫВАЕТСЯ из записей (recalcShops), а не «двигается» инкрементом.
  *  • Сверка старых данных: reconcileDryRun() (ничего не меняет, пишет отчёт в лист «Сверка») и reconcileApply() (после просмотра отчёта). */
-const SRV = 34;           // версия серверной части (видна в «Настройки → Служебная информация»)
+const SRV = 35;           // версия серверной части (видна в «Настройки → Служебная информация»)
 const SHOP_HEAD = ['Магазин', 'Город', 'Адрес', 'ID', 'Статус', 'Заметка', 'Кем (статус)', 'Когда (статус, мс)', 'Контакт', 'Телефон', 'Район', 'Посл. заказ (мс)', 'Посл. визит (мс)', 'Итог визита', 'Кем (визит)', 'Тип', 'План визита (мс)', 'Открытый вопрос',
   'Дни маршрута', 'Ответственный', 'Цены (НДС)', 'Широта', 'Долгота', 'Точность места, м', 'Место: кем', 'Место: когда',   // v31: колонки S–Z
-  'Юрлицо'];   // v33: колонка AA — ИП / ТОО точки (только название; в текст заявки не идёт)
+  'Юрлицо', 'Заметки'];   // v35: AB — постоянные заметки о точке   // v33: колонка AA — ИП / ТОО точки (только название; в текст заявки не идёт)
 const SHOP_OLD = 18;                     // колонки A–R были до v31; S–Z сервер проверяет: если они заняты чем-то своим, останавливается, а не пишет поверх
 const PROMO_HEAD = ['Товар', 'Кто', 'Когда'];   // v31: лист «Продвигать» — товары, которые отметил администратор (ключ: название|граммовка|единица, как в приложении)
 const ORD_HEAD = ['Время', 'ID', 'Торговый', 'Дата', 'Город', 'Магазин', 'Адрес', 'Режим цен', 'Скидка %', 'Итого', 'Текст', 'JSON', 'Удалена', 'Удалена (мс)', 'ID магазина', 'Оформлена (мс)'];
+const RD_HEAD = ['Дата', 'Торговый', 'ID магазина', 'Магазин', 'Действие', 'Кто', 'Когда (мс)', 'ID операции'];   // v35: разовые правки маршрута на день (общие, видны торговому на любом телефоне; администратор составляет за торговых). Действие: + добавить, − убрать
 const JR_HEAD = ['Время', 'ID', 'Магазин', 'ID магазина', 'Торговый', 'Тип', 'Значение', 'Заметка', 'Время (мс)', 'Состояние', 'Изменил', 'Изменено (мс)', 'История изменений (JSON)', 'ID заявки'];
 const TR_HEAD = ['Имя', 'Роль', 'Версия доступа', 'Пароль (хеш)', 'Приглашение (хеш)', 'Приглашение до (мс)', 'Доступ', 'Последний вход (мс)'];
 const FUT = 10 * 6e4, OLDV = 400 * 864e5;   // событие из будущего (> 10 мин) и старше ~400 дней сервер не принимает
@@ -79,6 +80,14 @@ function writeOp(d, ctx) {                // записывает заявку, 
   if (d.order) return saveOrder(d.order, ctx);
   return { error: 'action' };
 }
+const rdSheet = () => ensureHead(sh('Маршрут дня'), RD_HEAD);   // дату «2026-10-16» таблица может превратить в дату — читаем через dstr (в часовом поясе таблицы)
+function routeDays(ctx, now) {         // v35: правки маршрута на день начиная со вчерашнего: торговому — свои, администратору — все. Последняя правка по (дата, торговый, точка) побеждает
+  const s = rdSheet(), n = s.getLastRow(); if (n < 2) return [];
+  const from = Utilities.formatDate(new Date(now - 36 * 36e5), SpreadsheetApp.getActive().getSpreadsheetTimeZone(), 'yyyy-MM-dd'), adm = ctx.role == 'admin', m = {};
+  s.getRange(2, 1, n - 1, 7).getValues().forEach(r => { const d = dstr(r[0]), tr = T(r[1]), sid = T(r[2]); if (!d || d < from || !tr || !sid || (!adm && !same(tr, ctx.user))) return;
+    const k = d + '|' + tr + '|' + sid, at = +r[6] || 0; if (!m[k] || at >= m[k].at) m[k] = { d, tr, sid, on: T(r[4]) == '+', at, by: T(r[5]) } });
+  return Object.keys(m).map(k => m[k]);
+}
 function readOp(d, ctx) {                 // торговые, магазины, получатели и история: окно «7 дней у всех / 30 дней свои» или заявки за выбранный день
   const now = Date.now(), D = 864e5, undo = Math.min(Math.max(+d.undo || UNDO_H, 1), 72) * 36e5;
   const user = ctx.user, meOut = { n: ctx.user, role: ctx.role };
@@ -91,13 +100,14 @@ function readOp(d, ctx) {                 // торговые, магазины,
     const sid = str(d.sid, 64), name = str(d.name, 120); if (sid === null || name === null) return { error: 'range' };
     return timeline(sid, name, user, Math.min(Math.max(+d.limit || 60, 1), 200));
   }
-  if (d.q == 'stats') return statsOp(d.b, ctx);                                    // v31: итоги за периоды (границы присылает приложение — в местном времени торгового)
+  if (d.q == 'stats') return statsOp(d.b, ctx);
+  if (d.q == 'per') return perOp(d, ctx);                                          // v35: итоги за период «Истории» (день / неделя / месяц / год), прошлый такой же и по месяцам                                    // v31: итоги за периоды (границы присылает приложение — в местном времени торгового)
   if (d.q == 'prev') { const sid = str(d.sid, 64); if (!sid || !ID_RE.test(sid)) return { error: 'range' }; return { ok: 1, sid, items: prevItems(sid) } }   // v31: «Брал раньше»
   if (d.q != 'init') return { error: 'action' };
   const traders = readTraders().map(x => x.n), ag = agg(), shops = ensureIds().map(x => { const o = pub(x), l = ag.lm[x.id]; if (l) { o.lm = l[0]; o.lmt = l[1] } return o });   // lm — режим цен последней заявки в точку (по всем торговым)
   // окно: заявки всех торговых за 7 дней + свои (и заявки без торгового — только для просмотра) за 30 дней; остальное приложение запрашивает по дню (q=range)
   const hist = ordersIn(now - 30 * D, now + D, undo, now).filter(o => (+o.ts || 0) >= now - 7 * D || !o.trader || same(o.trader, user));
-  return { srv: SRV, me: meOut, traders, shops, rcp: recipients(), hist: hist.reverse(), hot: ag.hot, reasons: ag.reasons, promo: readPromo().map(x => x.k) };
+  return { srv: SRV, me: meOut, traders, shops, rcp: recipients(), hist: hist.reverse(), hot: ag.hot, reasons: ag.reasons, promo: readPromo().map(x => x.k), rd: routeDays(ctx, now) };   // v35: rd — маршрут на день
 }
 const isD = v => Object.prototype.toString.call(v) === '[object Date]', ms = v => isD(v) ? v.getTime() : (+v || 0);
 function ordersIn(from, to, undo, now) { // заявки, созданные в [from, to). Читаем только нужный участок листа, а не всё подряд
@@ -545,7 +555,7 @@ const same = (a, b) => String(a).trim().toLowerCase().replace(/ё/g, 'е') == St
 const newId = () => 's' + Date.now().toString(36).slice(-4) + Math.random().toString(36).slice(2, 7);
 function shopSheet() {                   // при необходимости достраиваем колонки и заголовки. Колонки S–Z (v31) должны быть нашими: чужие данные не перезаписываем
   const s0 = sh('Магазины'), k = Math.min(s0.getMaxColumns(), SHOP_HEAD.length) - SHOP_OLD, n0 = s0.getLastRow();
-  if (k > 0) { const h0 = s0.getRange(1, SHOP_OLD + 1, 1, k).getValues()[0], col = i => { const k = SHOP_OLD + i; return k < 26 ? String.fromCharCode(65 + k) : 'A' + String.fromCharCode(39 + k) }, tail = ' Колонки S–AA нужны для маршрута, режима цен, места точки и юрлица — перенесите свои данные правее';   // проверяем ДО любой записи
+  if (k > 0) { const h0 = s0.getRange(1, SHOP_OLD + 1, 1, k).getValues()[0], col = i => { const k = SHOP_OLD + i; return k < 26 ? String.fromCharCode(65 + k) : 'A' + String.fromCharCode(39 + k) }, tail = ' Колонки S–AB нужны для маршрута, режима цен, места точки, юрлица и заметок — перенесите свои данные правее';   // проверяем ДО любой записи
     h0.forEach((t, i) => { const v = T(t);
       if (v && v !== SHOP_HEAD[SHOP_OLD + i]) throw new Error('лист «Магазины»: колонка ' + col(i) + ' занята («' + v + '»).' + tail);
       if (!v && n0 > 1 && s0.getRange(2, SHOP_OLD + 1 + i, n0 - 1, 1).getValues().some(r => T(r[0]) !== '')) throw new Error('лист «Магазины»: в колонке ' + col(i) + ' есть данные без заголовка.' + tail) }) }
@@ -560,18 +570,21 @@ function readShops() {
   const L = x => +x || 0;
   return s.getRange(2, 1, n - 1, SHOP_HEAD.length).getValues().map((r, i) => ({ r: i + 2, n: T(r[0]), c: T(r[1]), a: T(r[2]), id: T(r[3]), st: T(r[4]), nt: T(r[5]), sb: T(r[6]), sa: L(r[7]),
     ct: T(r[8]), tl: T(r[9]), rg: T(r[10]), lo: L(r[11]), lv: L(r[12]), lb: T(r[13]), lw: T(r[14]), ty: T(r[15]), pl: L(r[16]), fq: T(r[17]),
-    rw: daysOf(r[18]), ow: T(r[19]), vm: vmOf(r[20]), la: r[21] === '' ? null : +r[21], ln: r[22] === '' ? null : +r[22], ac: L(r[23]), gb: T(r[24]), ga: ms(r[25]), ul: T(r[26]) })).filter(x => x.n);
+    rw: daysOf(r[18]), ow: T(r[19]), vm: vmOf(r[20]), la: r[21] === '' ? null : +r[21], ln: r[22] === '' ? null : +r[22], ac: L(r[23]), gb: T(r[24]), ga: ms(r[25]), ul: T(r[26]), nb: T(r[27]) })).filter(x => x.n);
 }
 const pub = x => ({ id: x.id, n: x.n, c: x.c, a: x.a, st: x.st, nt: x.nt, sb: x.sb, sa: x.sa, ct: x.ct, tl: x.tl, rg: x.rg, lo: x.lo, lv: x.lv, lb: x.lb, lw: x.lw, ty: x.ty, pl: x.pl, fq: x.fq,
-  rw: x.rw, ow: x.ow, vm: x.vm, la: isFinite(x.la) && x.la !== null ? x.la : null, ln: isFinite(x.ln) && x.ln !== null ? x.ln : null, ac: x.ac, gb: x.gb, ga: x.ga, ul: x.ul });
+  rw: x.rw, ow: x.ow, vm: x.vm, la: isFinite(x.la) && x.la !== null ? x.la : null, ln: isFinite(x.ln) && x.ln !== null ? x.ln : null, ac: x.ac, gb: x.gb, ga: x.ga, ul: x.ul, nb: x.nb });
 function ensureIds() {                   // каждому магазину без ID присваиваем его (один раз; под блокировкой — через withLock, вложенной блокировки не бывает)
   let list = readShops(); if (!list.some(x => !x.id)) return list;
   return withLock(() => { const l = readShops(), s = shopSheet(); l.forEach(x => { if (!x.id) { x.id = newId(); s.getRange(x.r, 4).setValue(x.id) } }); return l });
 }
-const findShop = (list, id, name, city) => (id && list.find(x => x.id == id)) || (name && list.find(x => same(x.n, name) && (!city || !x.c || same(x.c, city)))) || null;   // одинаковое название в разных городах — разные магазины
-function upShop(n, c, a, id, ty) {           // находит магазин (по ID, затем по названию) или создаёт; возвращает номер строки
+function findShop(list, id, name, city, addr) { // v35: магазин с ID — только по ID (одинаковые названия — разные магазины, «Продукты» не склеиваются). Без ID (старые записи, вписанное от руки) — по названию + городу; несколько — по адресу, иначе первый
+  if (id) return list.find(x => x.id == id) || null;
+  if (!name) return null; const c = list.filter(x => same(x.n, name) && (!city || !x.c || same(x.c, city))); if (c.length < 2) return c[0] || null;
+  return (addr && c.find(x => same(x.a, addr))) || c[0] }
+function upShop(n, c, a, id, ty) {           // находит магазин (по ID; без ID — по названию) или создаёт; возвращает номер строки. v35: незнакомый ID — новый магазин с этим ID, а не «похожий по названию»
   n = String(n || '').trim(); if (!n) return 0;
-  const s = shopSheet(), list = readShops(), x = findShop(list, id, n, c);
+  const s = shopSheet(), list = readShops(), x = findShop(list, id, n, c, a);
   if (x) { if (!x.c && c) wr(s, x.r, 2, [[c]]); if (!x.a && a) wr(s, x.r, 3, [[a]]);
     if (!x.id) s.getRange(x.r, 4).setValue(id && !list.some(y => y.id == id) ? String(id) : newId());
     return x.r }
@@ -582,7 +595,7 @@ function upShop(n, c, a, id, ty) {           // находит магазин (�
 function shopOp(x, ctx) {                // правки магазинов: каждое поле проверяется; статус записывается от имени проверенного профиля
   if (!x || typeof x != 'object') return no('invalid', 'shop');
   const now = Date.now(), op = T(x.op), id = str(x.id, 64); if (id === null || (id && !ID_RE.test(id))) return no('invalid', 'id');
-  if (op == 'days' || op == 'owner' || op == 'vat' || op == 'geo' || op == 'geodel') return shopFieldOp(op, id, x, ctx, now);   // v31: поля маршрута, режима цен и места — каждое отдельной операцией; v32: geodel — удалить место (администратор)
+  if (op == 'days' || op == 'owner' || op == 'vat' || op == 'geo' || op == 'geodel' || op == 'rday') return shopFieldOp(op, id, x, ctx, now);   // v35: rday — маршрут на день   // v31: поля маршрута, режима цен и места — каждое отдельной операцией; v32: geodel — удалить место (администратор)
   if (op == 'del') { if (!id) return no('invalid', 'id'); delShop(id); return yes() }
   const n = str(x.n, 120), c = str(x.c, 60), a = str(x.a, 300); if (!n) return no('invalid', 'name'); if (c === null || a === null) return no('invalid', 'address');
   const ty = str(x.ty, 30); if (ty === null || (ty && TYPES.indexOf(ty) < 0)) return no('invalid', 'ty');
@@ -596,6 +609,8 @@ function shopOp(x, ctx) {                // правки магазинов: к�
   if (op == 'info') { const ct = str(x.ct, 100), tl = str(x.tl, 40), rg = str(x.rg, 100); if (ct === null || tl === null || rg === null) return no('invalid', 'info');
     const ul = x.ul === undefined ? undefined : str(x.ul, 120); if (ul === null) return no('invalid', 'ul');   // v33: юрлицо; старый клиент его не присылает — колонка не трогается
     setInfo({ n, c, a, id, ct, tl, rg, ul }); return yes() }
+  if (op == 'note') { const nb = str(x.nb, 2000, true); if (nb === null) return no('invalid', 'nb'); if (!id) return no('invalid', 'id');   // v35: заметки о точке (колонка AB) — только у существующего магазина по ID
+    const sp = readShops().find(y => y.id == id); if (!sp) return no('not_found'); wr(shopSheet(), sp.r, 28, [[nb]]); return yes({ nb }) }
   if (op == 'meta') { const fq = str(x.fq, 500); if (fq === null) return no('invalid', 'fq');
     let pl = 0; if (x.pl != null && x.pl !== '' && +x.pl !== 0) { if (!rng(x.pl, 946684800000, now + 5 * 365 * 864e5)) return no('invalid', 'pl'); pl = +x.pl }   // от 2000 года до +5 лет: старый невыполненный план — не ошибка
     setMeta({ n, c, a, id, ty, pl, fq }); return yes() }
@@ -627,6 +642,13 @@ function shopFieldOp(op, id, x, ctx, now) {
     jlog({ id: rid || 'own:' + now.toString(36) + rndHex(3), shop: sp.n, sid: sp.id, who: ctx.user, kind: 'shop_owner', val: to, nt: sp.ow ? 'было: ' + sp.ow : '', ts: now });   // кто и когда взял / отдал точку
     return yes({ ow: to });
   }
+  if (op == 'rday') {                   // v35: точка в маршруте торгового на дату (+) или убрана из него (−). Свой маршрут — сам, любой — администратор. Повтор той же операции (rid) ничего не дублирует
+    const d = T(x.d), rid = str(x.rid, 64); if (!validDate(d)) return no('invalid', 'd'); if (!rid || !ID_RE.test(rid)) return no('invalid', 'rid');
+    if (x.on !== true && x.on !== false) return no('invalid', 'on');
+    const tr = str(x.tr, 40); if (!tr) return no('invalid', 'tr'); const t = findTrader(tr); if (!t) return no('unknown_trader');
+    if (!same(t.n, ctx.user) && !adm) return no('forbidden');
+    const rs = rdSheet(), n = rs.getLastRow(); if (n > 1 && rs.getRange(2, 8, n - 1, 1).getValues().some(r => T(r[0]) == rid)) return yes({ dup: true });
+    ap(rs, [d, t.n, sp.id, sp.n, x.on ? '+' : '−', ctx.user, now, rid]); return yes() }
   if (op == 'vat') { const m = T(x.m); if (m != 'vat' && m != 'net' && m !== '') return no('invalid', 'm'); wr(s, sp.r, 21, [[VM_TXT[m]]]); return yes({ vm: m }) }
   if (op == 'geo') {
     if (!rng(x.la, -90, 90) || !rng(x.ln, -180, 180) || (+x.la === 0 && +x.ln === 0)) return no('invalid', 'geo');   // 0,0 — признак «место не определилось», а не точка
@@ -771,6 +793,20 @@ function agg() {                          // для init: режим после�
     Object.keys(m).filter(t => m[t].n >= REASON_MIN).sort((p, q) => m[q].n - m[p].n || (p < q ? -1 : 1)).slice(0, REASON_TOP)
       .forEach(t => { const f = m[t].f; reasons.push(Object.keys(f).sort((p, q) => f[q] - f[p])[0]) }) }   // показываем самое частое написание
   const r = { lm, hot, reasons }; cPut(key, r); return r;
+}
+function perOp(d, ctx) {                 // v35: итоги за любой период: cur и prev — [от, до) в мс (границы считает приложение в местном времени), bk — до 32 отрезков (месяцы года). who: торговый — всегда свои; администратор — 'me', '*' (все, с разбивкой) или имя
+  const now = Date.now(), ok = p => Array.isArray(p) && p.length == 2 && rng(p[0], 946684800000, now + 400 * 864e5) && rng(p[1], 946684800000, now + 400 * 864e5) && +p[1] > +p[0] && +p[1] - +p[0] <= 367 * 864e5;
+  const bk = d.bk == null ? [] : d.bk; if (!ok(d.cur) || !ok(d.prev) || !Array.isArray(bk) || bk.length > 32 || bk.some(p => !ok(p))) return { error: 'range' };
+  const adm = ctx.role == 'admin' && !ctx.legacy, w = str(d.who, 40); if (w === null) return { error: 'range' };
+  const who = !adm || w == 'me' ? ctx.user : w == '*' || !w ? '' : w;   // '' — все торговые
+  const key = 'per:' + aggVer() + ':' + (who || '*') + ':' + [d.cur, d.prev].concat(bk).map(p => (+p[0]) + '-' + (+p[1])).join(','), c = cGet(key); if (c) return c;
+  const z = () => ({ sum: 0, n: 0 }), out = { ok: 1, all: !who, cur: Object.assign(z(), { by: {} }), prev: z(), bk: bk.map(z) }, inP = (o, p) => o.ts >= +p[0] && o.ts < +p[1];
+  ordNarrow().forEach(o => { if (o.del || !o.tr || (who && !same(o.tr, who))) return;
+    if (inP(o, d.cur)) { out.cur.sum += o.sum; out.cur.n++; if (!who) { const t = out.cur.by[o.tr] || (out.cur.by[o.tr] = z()); t.sum += o.sum; t.n++ } }
+    if (inP(o, d.prev)) { out.prev.sum += o.sum; out.prev.n++ }
+    bk.forEach((p, i) => { if (inP(o, p)) { out.bk[i].sum += o.sum; out.bk[i].n++ } }) });
+  const r = x => { x.sum = Math.round(x.sum) }; r(out.cur); r(out.prev); out.bk.forEach(r); Object.keys(out.cur.by).forEach(n => r(out.cur.by[n])); if (who) delete out.cur.by;
+  cPut(key, out); return out;
 }
 function statsOp(b, ctx) {               // итоги: торговый — свои, администратор — все с разбивкой. b = { w: [от, до], pw: [...], m, pm, y, py } в мс
   const P = ['w', 'pw', 'm', 'pm', 'y', 'py'], now = Date.now();
@@ -933,7 +969,7 @@ function recipients() {
 function sh(n) {                         // лист создаётся автоматически с заголовками
   const ss = SpreadsheetApp.getActive(); let s = ss.getSheetByName(n);
   if (!s) { s = ss.insertSheet(n); s.appendRow({ 'Торговые': TR_HEAD, 'Магазины': SHOP_HEAD, 'Заявки': ORD_HEAD, 'Визиты': JR_HEAD,
-    'Получатели': ['Имя', 'Телефон', 'Города (через запятую; пусто = все)', 'По умолчанию (да)'], 'Продвигать': PROMO_HEAD }[n]) }
+    'Получатели': ['Имя', 'Телефон', 'Города (через запятую; пусто = все)', 'По умолчанию (да)'], 'Продвигать': PROMO_HEAD, 'Маршрут дня': RD_HEAD }[n]) }
   return s;
 }
 const out = o => ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON);

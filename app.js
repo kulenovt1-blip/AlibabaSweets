@@ -19,7 +19,7 @@ const DEMO = [['Финики','Финики FINDI caramel','150г','1704','1976'
 
 /* ============ 2. ХЕЛПЕРЫ И СОСТОЯНИЕ ============ */
 /* Версия сборки: должна совпадать с <meta name="ver"> в index.html. Если файлы на хостинге разных версий — покажем красную плашку. */
-const VER = '36.1';
+const VER = '36.2';
 const NEED = 36;   // нужная версия Code.gs на сервере
 { const m = document.querySelector('meta[name=ver]');
   if (!m || m.content != VER) document.body.insertAdjacentHTML('afterbegin', '<div style="background:#C82B27;color:#fff;padding:12px;font-weight:800">Файлы сайта разных версий. Загрузите ВСЕ файлы из архива заново (index.html, styles.css, app.js, sw.js) и обновите страницу дважды.</div>') }
@@ -264,9 +264,9 @@ function unsnap(z) { cart = JSON.parse(z.cart); disc = z.disc; eo = z.eo; eob = 
 
 /* ============ 6. ШТОРКА: корзина, история, настройки ============ */
 /* Разделы (нижняя панель): Маршрут / Заявка / История / Профиль (v33: бывшее «Ещё»). Страница раздела открывается поверх каталога; кнопка «Назад» ведёт на уровень выше */
-const TAB = { shops: 'route', rplan: 'route', rall: 'route', shopc: 'route', shop: 'route', shopn: 'route', hist: 'hist', hd: 'hist', more: 'more', set: 'more', who: 'more', adm: 'more', dr: 'more', cart: 'main', promo: 'more' };
+const TAB = { shops: 'route', rplan: 'route', rall: 'route', shopc: 'route', shop: 'route', shopn: 'route', hist: 'hist', hd: 'hist', more: 'more', set: 'more', adm: 'more', dr: 'more', cart: 'main', promo: 'more' };
 const BACK = { shopc: () => shopsView(), shop: () => shopCard(skey(eSh)), shopn: () => shopsView(), rplan: () => { rtAdd = false; shopsView() }, rall: () => shopsView(), hd: () => histView(),
-  set: () => moreView(), who: () => moreView(), promo: () => moreView(), dr: () => moreView(), adm: () => moreView(), cart: () => { closeSheet(); drawList() } };
+  set: () => moreView(), promo: () => moreView(), dr: () => moreView(), adm: () => moreView(), cart: () => { closeSheet(); drawList() } };
 function navSync() { const t = view ? TAB[view] || '' : 'main';
   document.querySelectorAll('.bn button').forEach(b => b.classList.toggle('on', b.dataset.t == t));
   document.body.classList.toggle('lock', (view == 'auth' && needLogin()) || view == 'pend') }   // вход и вопрос «Отправлено?» — без панели разделов
@@ -304,6 +304,7 @@ const rcBlock = () => rcp.length < 2 ? '' : `<p class="m rcb">Получател
 let npAt = 0;   // v34: когда цену сохранили по касанию «Готово» / Enter
 document.addEventListener('pointerdown', e => { const b = e.target && e.target.closest ? e.target.closest('[data-a="pdone"]') : null, t = b && document.querySelector('[data-np]'); if (!t || !editId) return;
   e.preventDefault(); npAt = Date.now(); commitNp(t) });   // касание «Готово»: сохраняем сразу, поле не теряет фокус — нет «change» с перерисовкой, из-за которой нажатие попадало в новую разметку («Цена») и поле открывалось снова
+document.addEventListener('click', e => { if (!editId) return; const t = document.querySelector('[data-np]'), x = e.target; if (!t || (x && x.closest && x.closest('.npr'))) return; commitNp(t) }, true);   // v36.2: касание мимо поля цены — сохранить (если меняли) и закрыть. На click, а не pointerdown: перерисовка до click уводила нажатие на другую кнопку (v34)
 document.addEventListener('keydown', e => { const t = e.target; if (e.key == 'Enter' && t && t.dataset && t.dataset.np !== undefined) { e.preventDefault(); npAt = Date.now(); commitNp(t) } });
 function commitNp(t) { // новая цена позиции: из поля ввода (по «Готово» или при уходе из поля)
   const n = num(t.value), id = t.dataset.np; if (editId != id) return; if (n > 0 && cart[id] && find(id)) { n == find(id).pr ? delete cart[id].p : cart[id].p = n; save() } editId = ''; bar(); cartView() }
@@ -322,20 +323,23 @@ function cartView() { // v30: оформление по порядку — ре�
     : `<div class="ckt"><small>МАГАЗИН</small><div class="sw bad">Магазин не указан</div><button class="ghost" data-a="ochg">Указать магазин</button></div>`;
   const dBlock = `<div class="sum ck">${who}<label class="ckd"><b class="ckl">Дата поставки</b><span class="ckdv"><span>${esc(fdw(H.d))}</span>${ico('cal', 20)}<input type="date" id="cd" min="${eo ? '' : minD()}" value="${esc(H.d || '')}" aria-label="Дата поставки"></span></label>${!H.dm && H.t > 0 ? '<p class="m ckdh">Поставка пересчитана от даты заявки</p>' : ''}</div>`;
   const items = L.map(p => { const id = esc(pid(p)), n = price(p), ch = n != p.pr, ed = editId == pid(p);
-    const pr = ed ? `<div class="npr"><input class="np" data-np="${id}" inputmode="decimal" value="${n}" aria-label="Новая цена"><button class="ib2 ok" data-a="pdone" data-id="${id}">Готово</button></div>`
+    const npr = ed ? `<div class="npr"><input class="np" data-np="${id}" inputmode="decimal" value="${n}" aria-label="Новая цена"><button class="ib2 ok" data-a="pdone" data-id="${id}">Готово</button></div>` : '';   // v36.2: поле цены — отдельной строкой во всю ширину (в колонке с названием на 320 px оставалось 32 px)
+    const pr = ed ? `<span class="m">${p.g ? esc(p.g) + ' · ' : ''}новая цена за ${esc(p.u)}:</span>`
       : ch ? `<span class="ipc"><s>${fm(p.pr)}</s><b>${tg(n)} / ${esc(p.u)}</b></span><small class="m">цена изменена</small>`
       : `<span class="m">${p.g ? esc(p.g) + ' · ' : ''}${tg(n)} / ${esc(p.u)}</span>`;
-    return `<div class="it"><div class="ckr"><img src="${esc(p.f || 'logo.jpg')}" onerror="this.src='logo.jpg'" alt=""><div class="in"><b>${esc(p.n)}</b>${pr}</div><b class="ls">${tg(Math.round(n * qty(p)))}</b></div>
+    return `<div class="it"><div class="ckr"><img src="${esc(p.f || 'logo.jpg')}" onerror="this.src='logo.jpg'" alt=""><div class="in"><b>${esc(p.n)}</b>${pr}</div><b class="ls">${tg(Math.round(n * qty(p)))}</b></div>${npr}
     <div class="cka"><div class="st"><button data-a="m" data-id="${id}" aria-label="Меньше">−</button><input data-q="${id}" inputmode="decimal" value="${qf(qty(p))}" aria-label="Количество"><button data-a="p" data-id="${id}" aria-label="Больше">+</button></div><span class="sp"></span>${ed ? '' : `<button class="lnk" data-a="edit" data-id="${id}" aria-label="Изменить цену">Цена</button>`}${ch && !ed ? `<button class="lnk" data-a="reset" data-id="${id}">Вернуть цену</button>` : ''}<button class="lnk bad" data-a="rm" data-id="${id}">Убрать</button></div></div>`; }).join('');
   const sum = `<div class="sum cks"><b>Скидка на весь чек</b><div class="dc">${[0, 3, 5, 10].map(x => `<button data-a="disc" data-v="${x}" class="${disc == x ? 'on' : ''}">${x ? x + '%' : 'Нет'}</button>`).join('')}<input id="dc" inputmode="decimal" placeholder="свой" value="${[0, 3, 5, 10].includes(disc) ? '' : disc}" aria-label="Своя скидка, %"></div>
   <div class="ckt2"><div class="r"><span class="m">Сумма</span><b>${tg(total())}</b></div>${disc > 0 ? `<div class="r"><span class="m">Скидка ${disc}%</span><b>−${tg(total() - final())}</b></div>` : ''}</div><div class="r t"><span>Итого</span><span>${tg(final())}</span></div><div class="m ckm">цены ${ML[S.mode]}</div></div>`;
   const asB = asOn() ? (() => { const cur = asSel(eo && histById(eo)), names = [...new Set([me, ...trs, cur].filter(Boolean))].sort((x, y) => x == me ? -1 : y == me ? 1 : x.localeCompare(y, 'ru'));   // v36: администратор оформляет или переназначает заявку от имени торгового
+    if (!asOpen && norm(cur) == norm(me)) return `<div class="asl"><span class="m">От имени: <b>${esc(cur)} (я)</b></span><button class="lnk" data-a="asop">изменить</button></div>`;
     return `<div class="sum ck cas"><label class="ckd"><b class="ckl">От имени</b><select id="cas" aria-label="От имени торгового">${names.map(n => `<option value="${esc(n)}" ${n == cur ? 'selected' : ''}>${esc(n)}${n == me ? ' (я)' : ''}</option>`).join('')}</select></label>${norm(cur) != norm(me) ? `<p class="m ckdh">Заявка засчитается торговому «${esc(cur)}»; в журнале будет видно, что оформили вы</p>` : ''}</div>` })() : '';
   const tBlock = `<details class="sc ck"${H.t > 0 || tOpen ? ' open' : ''}><summary>${ico('clock', 22)}<span class="cst">Время заявки<small class="m">${H.t > 0 ? 'указано вручную: ' + ft(H.t) : 'сейчас · менять, если приняли раньше'}</small></span></summary><input type="datetime-local" id="ots" max="${dtl(Date.now())}" value="${dtl(H.t > 0 ? H.t : Date.now())}"><p class="m" style="margin:6px 0 10px">Меняйте, только если заявку приняли раньше, а вносите сейчас.</p></details>`;
   $('#sb').innerHTML = `<h3 class="ckhd">Ваша заявка</h3><p class="m ckc">${L.length} ${pl3(L.length, 'позиция', 'позиции', 'позиций')}</p>` + vatBar() + banner + dBlock + asB + tBlock + `<div class="cki">${items}</div>` + sum +
     `${rcBlock()}${eo ? `<button class="send" data-a="esave">${ico('check', 20)} Сохранить изменение</button>` : `<button class="send" data-a="send">${ico('send', 22)} Отправить в WhatsApp</button>`}<button class="ghost" data-a="dsave">Сохранить как черновик</button>${eo ? '<button class="lnk clr2" data-a="eoc">Отменить правку</button>' : `<button class="lnk bad clr2" data-a="new">${ico('trash', 18)} Очистить заявку</button>`}`;   // v34: в правке «Очистить» только выходила из правки — путали с удалением
   tOpen = false; const np = document.querySelector('[data-np]'); if (np) np.select();
 }
+let asOpen = false;
 const asOn = () => !!(CFG.API_URL && tok && role == 'admin' && srvV >= 36);   // v36: выбор «От имени» — только администратору и только при Code.gs 36
 const asSel = old => asOn() ? (H.as || (eo && old ? trOf(old) || me : me)) : '';
 const dtl = t => { const d = new Date(t); return new Date(t - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 16) };   // местное время в формате поля datetime-local
@@ -585,13 +589,13 @@ async function sync() { // отправляет накопленные заяв�
     if (n0 && !qN() && !vfail.length && !toastFn) toast('Сохранено на сервере');   // не перебиваем кнопку «Отменить»   // «Сохранено» — только после ответа сервера
   } catch (e) { if (e && e.auth) lastErr = 'нужен вход'; else { syncErr = true; lastErr = e && e.message || 'неизвестная ошибка'; errL = { m: String(lastErr).slice(0, 300), t: Date.now(), q: qN() }; LS('lerr', errL) } }
   if (vfail.length) { const m = vfail.splice(0).join('\n'); setTimeout(() => say(m), 0) }
-  syncing = false; syncStatus(); if (view == 'who') whoView(); if (view == 'hist') histView(); if ((view == 'shops' || view == 'rplan') && !rvK) drawShops();   // маршрут перерисовывается, когда пришли магазины (кроме момента, когда открыта отметка визита)
+  syncing = false; syncStatus(); if (view == 'hist') histView(); if ((view == 'shops' || view == 'rplan') && !rvK) drawShops();   // маршрут перерисовывается, когда пришли магазины (кроме момента, когда открыта отметка визита)
   if (view == 'shopc' && cSh) { drawFeed(cSh); loadLog(cSh); drawMarks(cSh) }   // открытая карточка магазина подтягивает ленту с сервера (v30: раньше эта строка была внутри комментария и не выполнялась)
   if (again) { again = false; if (tok) return sync() }
 }
 
 function commitOrder(o) { // заявка или правка подтверждена: в историю устройства и в очередь на сервер
-  H.as = '';   // v36: «от имени» — только для этой заявки
+  H.as = ''; asOpen = false;   // v36: «от имени» — только для этой заявки
   if (o.h && o.h.sid) delete prevC[o.h.sid];   // v31: «Брал раньше» для этой точки устарело
   const h = (LS('hist') || []).filter(x => x.id != o.id); h.unshift(o); LS('hist', h.slice(0, 50)); outbox = outbox.filter(x => x.id != o.id); outbox.push(o); LS('outbox', outbox);
   const sh = upShop(o.h.s, o.h.c, o.h.a, o.h.sid); if (sh && !o.ed) { sh.lo = Math.max(sh.lo || 0, o.ts); planAfter(sh, '', o.ts); LS('base', base) }   // заявка сегодня закрывает точку и её план на сегодня   // новый магазин сразу попадает в список; «посл. заказ» обновляется
@@ -625,13 +629,6 @@ function draftView() {
   openSheet('dr', 'Черновики');
   $('#sb').innerHTML = drafts.length ? `<p class="m ckc">Черновик хранится только на этом телефоне. «Открыть» — заявка вернётся в корзину.</p><div class="hcl">${drafts.map((x, i) => `<div class="hc"><div class="hch"><span class="hct"><b>${esc(x.H.s || 'Без названия')}</b><span class="m">${nz(x.n)} ${pl3(nz(x.n), 'позиция', 'позиции', 'позиций')} · сохранён ${new Date(nz(x.t)).toLocaleString('ru', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })}</span></span><b class="amt">${tg(x.sum)}</b></div><div class="hcb"><button class="hrep" data-a="dopen" data-v="${i}">Открыть</button><button class="x" data-a="ddel" data-v="${i}" aria-label="Удалить черновик">${ico('trash', 18)}</button></div></div>`).join('')}</div>`
     : `<div class="empt">${ico('folder', 40)}<b>Черновиков нет</b><p class="m">В оформлении заявки — «Сохранить как черновик».</p></div>`;
-}
-function whoView() { // профиль: кто вошёл, выход; администратору — управление доступом
-  openSheet('who', 'Профиль'); const n = qN();
-  $('#sb').innerHTML = tok ? `<div class="pfc"><span class="pfh"><span class="pfa">${esc(me.slice(0, 1).toUpperCase())}</span><span class="pft"><b>${esc(me)}</b><span>${role == 'admin' ? 'Администратор' : 'Торговый'}</span></span></span></div>
-    ${n ? `<div class="sw q whq">Ждут отправки: ${n}. Пока они не ушли на сервер, выйти или сменить профиль нельзя: эти операции записаны от имени «${esc(me)}», и под другим профилем сервер их не примет.</div>` : ''}
-    <button class="ghost pfo2" data-a="out">Выйти из профиля</button>`
-    : `<div class="empt">${ico('user', 40)}<b>Вход не выполнен</b>${n ? '<p class="m">Ждут отправки: ' + n + '.</p>' : ''}</div><button class="send" data-a="auth">Войти</button>`;
 }
 function authView(mode) { // вход по профилю и паролю или первое задание пароля по приглашению. Списка профилей здесь нет: имя вводится вручную
   auMode = mode || auMode; const inv = auMode == 'invite', n = qN(), lock = !!(n && me); openSheet('auth', inv ? 'Приглашение' : 'Вход');
@@ -839,7 +836,7 @@ function rgView() {
   const rm = (b, tr) => `<span class="rgx" data-a="rgrm" data-v="${esc(b.id)}" data-t="${esc(tr)}" role="button" aria-label="Убрать «${esc(b.n)}» у ${esc(tr)}">${ico('x', 18)}</span>`;
   const blk = (tr, p) => { const inP = new Set(p.pts.map(b => b.id)), ext = [...new Set(ev.filter(x => norm(x.who) == norm(tr) && !inP.has(x.sid) && !free.some(b => b.id == x.sid)).map(x => x.sid))].map(byId).filter(Boolean);
     const done = p.pts.filter(b => (st(b, tr) || {}).done), todo = p.pts.filter(b => !done.includes(b)), pct = p.pts.length ? Math.round(done.length / p.pts.length * 100) : 0;
-    return `<section class="rgs"><div class="rgh"><div class="rgw"><b>${esc(tr)}${norm(tr) == norm(me) ? ' <small>(вы)</small>' : ''}</b><span class="m">${p.pts.length ? p.pts.length + ' ' + pl3(p.pts.length, 'точка', 'точки', 'точек') : 'точек нет'}</span></div>${p.pts.length ? `<div class="rcn"><b>${done.length}<span>/${p.pts.length}</span></b><small>пройдено${ext.length ? ' · +' + ext.length + ' вне' : ''}</small></div>` : ''}</div>${p.pts.length ? `<div class="pbar"><span style="width:${pct}%"></span></div>` : ''}
+    return `<section class="rgs"><div class="rgh"><div class="rgw"><b>${esc(tr)}${norm(tr) == norm(me) ? ' <small>(вы)</small>' : ''}</b><span class="m">${p.pts.length ? p.pts.length + ' ' + pl3(p.pts.length, 'точка', 'точки', 'точек') : 'своих точек нет · свободные — внизу'}</span></div>${p.pts.length ? `<div class="rcn"><b>${done.length}<span>/${p.pts.length}</span></b><small>пройдено${ext.length ? ' · +' + ext.length + ' вне' : ''}</small></div>` : ''}</div>${p.pts.length ? `<div class="pbar"><span style="width:${pct}%"></span></div>` : ''}
       <div class="tline">${done.map(b => pt(b, tr, p.add.includes(b) ? ' · на этот день' : '')).join('')}${ext.map(b => pt(b, tr, ' · вне маршрута')).join('')}${todo.map(b => pt(b, tr, p.add.includes(b) ? ' · на этот день' : '', edit ? rm(b, tr) : '')).join('')}
       ${edit ? p.out.map(b => tl('<span class="tn nx"></span>', `<div class="tlb rgr"><div class="rrow rgo2"><span class="rrt"><b>${esc(b.n)}</b><span class="m">убрана на этот день</span></span><button class="ghost wkx" data-a="rgadd" data-v="${esc(b.id)}" data-t="${esc(tr)}">${ico('plus', 16)}<span>Вернуть</span></button></div></div>`)).join('') : ''}</div>
       ${edit ? (rgAdd == tr ? `<div class="rga"><input id="rgq" type="search" placeholder="Название, адрес или район" value="${esc(rgQ)}"><div id="rgl">${rgPick(tr, p)}</div><button class="ghost radd" data-a="rgopen" data-t="">${ico('x', 18)} Скрыть</button></div>` : `<button class="ghost radd" data-a="rgopen" data-t="${esc(tr)}">${ico('plus', 18)} Добавить точку · ${esc(tr)}</button>`) : ''}</section>` };
@@ -929,7 +926,7 @@ function drawToday(L) {
   const last = GO.d == today() && GO.k ? L.find(b => skey(b) == GO.k) : null, lastDone = last && !gb && (doneToday(last) || (GO.df && deferred(last))) ? last : null;
   const rest = todo.filter(b => b !== gb), live = rest.filter(b => !deferred(b)), pct = cur.length ? Math.round(done.length / cur.length * 100) : 0;
   const addr = b => esc([b.a, b.c].filter(Boolean).join(' · ') || 'без адреса'), who = b => b.lw && norm(b.lw) != norm(me) ? ' · ' + esc(b.lw) : '';
-  const lc = t => t ? t[0].toLowerCase() + t.slice(1) : '', psub = b => visDone(b) ? 'Визит ' + hhmm(b.lv) + ' · ' + esc(lc(b.lb)) + who(b) : 'Заявка ' + hhmm(b.lo);   // v33: как в макете — «Заявка 11:40», «Визит 10:20 · взяли заказ»
+  const lc = t => t ? t[0].toLowerCase() + t.slice(1) : '', oBy = b => { const o = allHist().find(x => !x.del && isToday(x.ts) && x.h && (b.id ? x.h.sid == b.id : norm(x.h.s) == norm(b.n))); const t = o ? trOf(o) : ''; return t && norm(t) != norm(me) ? ' · ' + esc(t) : '' }, psub = b => visDone(b) && !(isToday(b.lo) && b.lo > b.lv) ? 'Визит ' + hhmm(b.lv) + ' · ' + esc(lc(b.lb)) + who(b) : 'Заявка ' + hhmm(b.lo) + oBy(b);   // v33: как в макете — «Заявка 11:40», «Визит 10:20 · взяли заказ»
   const dfs = b => `Отложено в ${hhmm(b.lv)} · ${esc(lc(b.lb))}${b.lw && b.lw != me ? ' (' + esc(b.lw) + ')' : ''}`;
   const tl = (node, body, cls = '') => `<div class="tl${cls}">${node}${body}</div>`;
   const dl = new Date().toLocaleDateString('ru', { weekday: 'long', day: 'numeric', month: 'long' }).toUpperCase();
@@ -1247,7 +1244,7 @@ document.addEventListener('click', async e => {   // async: вопросы (ask)
     { const as = asSel(old); if (as && norm(as) != norm(eo ? old.trader || '' : me)) o.as = as }   // v36: администратор — «от имени» торгового (сервер проверяет права и имя)   // rg — когда заявка записана: от него считается срок правки (сервер это поле не принимает и считает сам)
     if (eo) { commitOrder(o); return toast('Изменение сохранено') }
     LS('pending', o); waOpen(num2, o.text); }
-  else if (a == 'eoc') { const z = snap(); eo = ''; H.as = ''; cart = {}; disc = 0; clrShop(); save(); fill(); closeSheet(); drawList(); toast('Правка отменена, заявка осталась как была', () => unsnap(z)) }
+  else if (a == 'eoc') { const z = snap(); eo = ''; H.as = ''; asOpen = false; cart = {}; disc = 0; clrShop(); save(); fill(); closeSheet(); drawList(); toast('Правка отменена, заявка осталась как была', () => unsnap(z)) }
   else if (a == 'hedit') { const x = histById(v); if (!x || !canEdit(x)) return say('Изменить можно свою заявку в течение ' + CFG.EDIT_HOURS + ' ч после создания. Более старые и чужие заявки правит администратор.');
     if (lines().length && !await ask('Текущая заявка в корзине будет заменена. Продолжить?', 'Заменить')) return;
     if (x.m && x.m != S.mode) { S.mode = x.m; LS('set', S); applyMode(); drawSeg() }
@@ -1261,7 +1258,7 @@ document.addEventListener('click', async e => {   // async: вопросы (ask)
   else if (a == 'hopen') { histDay = 0; histView() }
   else if (a == 'dprev') { histDay = pShift(hP, histDay || Date.now(), -1); histView() }
   else if (a == 'dnext') { histDay = Math.min(pShift(hP, histDay || Date.now(), 1), pRange(hP, Date.now())[0]); histView() }
-  else if (a == 'dtoday' || a == 'dall') { histDay = 0; histView() }
+  else if (a == 'dtoday') { histDay = 0; histView() }
   else if (a == 'hp') { if (HP.some(x => x[0] == v)) { const cur = !histDay || histDay == pRange(hP, Date.now())[0]; hP = v; LS('hp', v); histDay = cur ? 0 : pRange(v, histDay)[0]; histView() } }   // был текущий период — остаёмся в текущем (неделя → сегодня), иначе — период с той же даты   // v35: период истории
   else if (a == 'hpm') { hP = 'm'; LS('hp', 'm'); histDay = +v; histView() }   // год → месяц
   else if (a == 'dretry') { dayErr = 0; histView() }
@@ -1356,6 +1353,7 @@ document.addEventListener('click', async e => {   // async: вопросы (ask)
   else if (a == 'pick') { selShop(ddL[v]); $('#sl').hidden = true }
   else if (a == 'hfch' || a == 'ochg') { if (view) { closeSheet(); drawList() } hfC = false; drawHf(); if (typeof scrollTo == 'function') scrollTo(0, 0); const s = document.getElementById('s'); if (s && s.focus) try { s.focus() } catch (_) {} }   // v33: «Сменить» — на главном экране и в оформлении
   else if (a == 'hfund') shopBack()
+  else if (a == 'asop') { asOpen = true; cartView() }
   else if (a == 'hfok') { hfC = true; $('#sl').hidden = true; drawHf() }
   else if (a == 'padd') { const n = $('#s').value.trim().replace(/\s+/g, ' '); if (!n) return; H.a = ($('#a').value || '').trim(); const r = await dupAsk(n, H.c, H.a); if (!r) return; $('#sl').hidden = true; if (r !== 'new') return selShop(r);   // v35: «Продукты» уже есть — спрашиваем
     H.s = n; $('#s').value = n; addShop(n); save(); shopWarn() }
@@ -1366,9 +1364,9 @@ document.addEventListener('click', async e => {   // async: вопросы (ask)
     const x = drafts.splice(v, 1)[0]; LS('drafts', drafts); if (x.m != S.mode) { S.mode = x.m; LS('set', S); applyMode(); drawSeg() }
     cart = cleanCart(x.cart); disc = Math.min(100, Math.max(0, nz(x.disc))); eo = ''; msw = ''; H = { ...x.H }; save(); fill(); closeSheet(); drawList(); bar(); draftBadge() }
   else if (a == 'ddel') { drafts.splice(v, 1); LS('drafts', drafts); draftBadge(); draftView() }
-  else if (a == 'who') whoView(); else if (a == 'auth') authView('login'); else if (a == 'amode') authView(v == 'invite' ? 'invite' : 'login'); else if (a == 'lgn' || a == 'rdm') doAuth()
+  else if (a == 'auth') authView('login'); else if (a == 'amode') authView(v == 'invite' ? 'invite' : 'login'); else if (a == 'lgn' || a == 'rdm') doAuth()
   else if (a == 'pwsee') { const show = $('#aup').type == 'password'; ['#aup', '#aup2'].forEach(q => { const el = $(q); if (el) el.type = show ? 'text' : 'password' }); b.innerHTML = ico(show ? 'eyeoff' : 'eye', 22); if (b.setAttribute) b.setAttribute('aria-label', show ? 'Скрыть пароль' : 'Показать пароль') }
-  else if (a == 'out') { const n = qN(); if (LS('pending')) return say('Сначала ответьте, отправлена ли последняя заявка: она записана от имени «' + me + '».'); if (n) return say('Выйти пока нельзя: ждут отправки ' + n + ' операц. Они записаны от имени «' + me + '», и под другим профилем сервер их не примет.\nПодключитесь к интернету и дождитесь строки «Синхронизировано» вверху экрана.');
+  else if (a == 'out') { const n = qN(); if (LS('pending')) return say('Сначала ответьте, отправлена ли последняя заявка: она записана от имени «' + me + '».'); if (n) return say('Выйти пока нельзя: ждут отправки ' + n + ' операц. Они записаны от имени «' + me + '», и под другим профилем сервер их не примет.\nПодключитесь к интернету и подождите: когда всё уйдёт, в «Служебной информации» будет «Ждут отправки: 0», и выйти можно.');
     if (await ask('Выйти из профиля «' + me + '»? Черновики и корзина останутся на устройстве.', 'Выйти')) logout() }
   else if (a == 'adm') { admOw = null; admView(true) }
   else if (a == 'ainv') { if (!await ask('Выдать приглашение для «' + v + '»?' + (b.dataset.s == 'active' ? '\nНынешний пароль этого профиля и все его входы перестанут действовать.' : ''))) return;
@@ -1377,7 +1375,7 @@ document.addEventListener('click', async e => {   // async: вопросы (ask)
   else if (a == 'arole') { const r = b.dataset.r == 'admin' ? 'admin' : 'trader'; if (await ask((r == 'admin' ? 'Сделать администратором' : 'Сделать торговым') + ' профиль «' + v + '»? Ему придётся войти заново.')) admDo({ op: 'role', profile: v, role: r }).then(() => { if (view == 'adm') admView(true) }) }
   else if (a == 'aadd') { const n = $('#adn').value.trim().replace(/\s+/g, ' '); if (!n) return; admDo({ op: 'add', name: n }).then(() => { if (view == 'adm') admView(true) }) }
   else if (a == 'adel') { if (await ask('Удалить профиль «' + v + '»?\nВойти под ним больше будет нельзя. Его заявки останутся в таблице под этим именем.', 'Удалить', '', true)) admDo({ op: 'delete', profile: v }).then(() => { if (view == 'adm') admView(true) }) }
-  else if (a == 'afix' || a == 'aodry' || a == 'arec') { if (admBusy) return; admBusy = true; if (view == 'adm') admView(false); (async () => { let r = null, w = null;   // одна проверка: связи с магазинами, сводки и заявки без торгового. v36: пока идёт — «Проверяю…», повторное нажатие не запускает вторую
+  else if (a == 'afix') { if (admBusy) return; admBusy = true; if (view == 'adm') admView(false); (async () => { let r = null, w = null;   // одна проверка: связи с магазинами, сводки и заявки без торгового. v36: пока идёт — «Проверяю…», повторное нажатие не запускает вторую
     try { r = await admDo({ op: 'recDry' }); w = r && await admDo({ op: 'ownersDry' }) } finally { admBusy = false }
     if (r) admRec = { apply: false, changes: r.changes, counts: r.counts }; if (w) admOw = w; if (view == 'adm') admView(false); if (r && w) toast('Проверка закончена: ' + (nz(r.changes) ? 'можно исправить записей — ' + nz(r.changes) : 'исправлять нечего') + (nz(w.count) ? ' · заявок без торгового — ' + nz(w.count) : '')) })() }
   else if (a == 'arecapply') { if (!await ask('Исправить данные?\nИзменятся листы «Заявки», «Визиты» и «Магазины». Записи, с которыми не всё однозначно, останутся как есть. Отчёт — на листе «Сверка».')) return;

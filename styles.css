@@ -132,7 +132,7 @@ h3.sub{margin:18px 2px 8px;font-size:calc(12px*var(--fz));font-weight:800;color:
 .dc button,.dc input{min-height:52px}
 .ck input{margin:6px 0 0;min-height:56px}
 details.ck{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:0 14px;margin-top:10px}
-.npr{display:flex;gap:8px;margin-top:6px}.npr .np{flex:1;width:auto;min-height:56px}
+.npr{display:flex;gap:8px;margin-top:6px}.npr .np{flex:1;width:auto;min-width:0;min-height:56px}.npr .ib2{flex:none}
 .ib2{flex:1 1 auto;min-height:56px;padding:8px 12px;display:inline-flex;align-items:center;justify-content:center;gap:6px;background:var(--surface);color:var(--ink);border:1px solid var(--line-strong);font-size:calc(15px*var(--fz))}
 .ib2.bad{color:var(--danger);border-color:var(--danger-line)}.ib2.ok{flex:none;background:var(--primary);color:var(--on-primary);border-color:var(--primary)}
 
@@ -486,7 +486,7 @@ body.sh #toast{bottom:calc(var(--bnh) + 12px + env(safe-area-inset-bottom,0px))}
 .cka .st input{width:64px;min-height:48px;height:48px;border:1px solid var(--line-strong);background:var(--surface)}
 .cka .lnk{min-height:44px;padding:0 8px;font-size:calc(15px*var(--fz))}
 .lnk.bad{color:var(--danger)}
-.ckr .npr{width:100%}
+.it>.npr{margin:10px 0 2px}.it>.npr .ib2{min-width:96px}
 .sum.cks{display:flex;flex-direction:column;gap:12px;margin-bottom:14px;padding:14px}.cks>b{font-size:calc(16px*var(--fz))}
 .cks .dc{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;margin:0}.cks .dc button,.cks .dc input{min-height:48px;margin:0;padding:0 2px;font-size:calc(15px*var(--fz));border-radius:12px}
 .ckt2{border-top:1px solid var(--divider);padding-top:12px;display:flex;flex-direction:column;gap:6px}.ckt2 .r{padding:0}
@@ -577,9 +577,6 @@ button.pfc:active{transform:none;opacity:.92}
 .pfi:active{transform:none;background:var(--surface-sunken)}
 .pff{display:flex;align-items:center;gap:10px;margin-top:4px}.pff .m{flex:1}
 .pfl{width:40px;height:40px;flex:none;border-radius:50%;overflow:hidden;background:#FDDD61;position:relative}.pfl img{position:absolute;left:-3.7px;top:-1.2px;width:48.1px;height:auto}
-.pfo{flex:none;min-height:48px;padding:0 14px;background:var(--surface);color:var(--danger);border:1px solid var(--danger-line);font-size:calc(15px*var(--fz))}
-.pfo2{color:var(--danger);border-color:var(--danger-line)}
-.whq{margin-top:12px}
 .acd{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:14px;margin-bottom:10px;display:flex;flex-direction:column;gap:10px}
 .act{display:flex;flex-direction:column;gap:2px}.act b{font-weight:800;font-size:calc(19px*var(--fz));overflow-wrap:anywhere}
 .acb{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
@@ -627,3 +624,4 @@ button.pfc:active{transform:none;opacity:.92}
 .nbb .bad{color:var(--danger);border-color:var(--danger-line)}   /* v36: «Очистить» заметку */
 .sum.ck.cas{gap:6px}.cas .ckd{border-top:0;padding-top:0}.cas select{margin:0;min-height:56px;font-weight:600;font-size:calc(17px*var(--fz))}.cas .ckdh{margin:0 2px}   /* v36: «От имени» — как поле даты, без верхней черты */
 .shsr input::placeholder{font-size:calc(15px*var(--fz))}   /* v36: подсказка «Имя, адрес, район» помещается рядом с «Новый» */
+.asl{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:-4px 2px 10px}.asl .lnk{min-height:44px}

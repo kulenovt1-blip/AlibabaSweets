@@ -27,7 +27,7 @@
  *  • Все операции идут по постоянному ID события и безопасны при повторной отправке.
  *  • Сводка магазина (посл. заказ / посл. визит) всегда ПЕРЕСЧИТЫВАЕТСЯ из записей (recalcShops), а не «двигается» инкрементом.
  *  • Сверка старых данных: reconcileDryRun() (ничего не меняет, пишет отчёт в лист «Сверка») и reconcileApply() (после просмотра отчёта). */
-const SRV = 35;           // версия серверной части (видна в «Настройки → Служебная информация»)
+const SRV = 36;           // версия серверной части (видна в «Настройки → Служебная информация»)
 const SHOP_HEAD = ['Магазин', 'Город', 'Адрес', 'ID', 'Статус', 'Заметка', 'Кем (статус)', 'Когда (статус, мс)', 'Контакт', 'Телефон', 'Район', 'Посл. заказ (мс)', 'Посл. визит (мс)', 'Итог визита', 'Кем (визит)', 'Тип', 'План визита (мс)', 'Открытый вопрос',
   'Дни маршрута', 'Ответственный', 'Цены (НДС)', 'Широта', 'Долгота', 'Точность места, м', 'Место: кем', 'Место: когда',   // v31: колонки S–Z
   'Юрлицо', 'Заметки'];   // v35: AB — постоянные заметки о точке   // v33: колонка AA — ИП / ТОО точки (только название; в текст заявки не идёт)
@@ -479,17 +479,21 @@ function saveOrder(o0, ctx) {            // создание заявки (по�
   const w = adm && o0 && o0.ed ? { name: ctx.user } : who(ctx, o0 && o0.trader); if (w.reason) return no(w.reason);   // администратор правит и чужие заявки: имя владельца в запросе не его, владельцем остаётся прежний торговый
   const cl = cleanOrder(o0, now); if (cl.err) return no('invalid', cl.err);
   const o = cl.o; o.trader = w.name;
+  let as = '';                                                                      // v36: администратор оформляет или переназначает заявку от имени торгового (as — имя профиля)
+  if (o0.as != null && o0.as !== '') { const a = str(o0.as, 40); if (!a) return no('invalid', 'as'); if (!adm) return no('not_owner');
+    const t = findTrader(a); if (!t) return no('invalid', 'as'); as = t.n }
   let bed = null; if (o0.bed != null && o0.bed !== '') { if (!isNum(o0.bed) || +o0.bed < 0) return no('invalid', 'bed'); bed = +o0.bed }   // v34: версия (ed), с которой начата правка; 0 — правок не было. Старые клиенты её не присылают
   const s = ordSheet(), n = s.getLastRow(), ids = n > 1 ? s.getRange(2, 2, n - 1, 1).getValues().flat().map(String) : [], ix = ids.indexOf(String(o.id));
   if (ix >= 0) { const owner = T(s.getRange(ix + 2, 3).getValue());
-    if (!owner) return no('no_owner'); if (!same(owner, w.name) && !(adm && o.ed)) return no('not_owner');   // чужую заявку правит только администратор; заявку без владельца не меняет никто
-    return o.ed ? editOrder(s, ix + 2, o, adm, w.name, bed) : healOrder(s, ix + 2) }
+    if (!owner) return no('no_owner'); if (!same(owner, w.name) && !(adm && (o.ed || (as && same(owner, as))))) return no('not_owner');   // чужую заявку правит только администратор; заявку без владельца не меняет никто. Повтор создания «от имени» — лечим
+    return o.ed ? editOrder(s, ix + 2, o, adm, w.name, bed, as) : healOrder(s, ix + 2) }
+  if (as && !same(as, w.name)) { o.trader = as; o.by = w.name }                    // v36: владелец — выбранный торговый; кто оформил на самом деле — в JSON (by) и в журнале («Изменил»)
   const r = upShop(o.h.s, o.h.c, o.h.a, o.h.sid), sid = shopIdAt(r), ts = o.ts;
   o.h.sid = sid;
   ap(s, [new Date(), o.id, o.trader, o.h.d, o.h.c, o.h.s, o.h.a, vat(o), o.disc, o.sum, o.text, JSON.stringify(o), '', '', sid, ts]);
-  jlog({ id: 'oc:' + o.id, shop: o.h.s, sid, who: o.trader, kind: 'order_create', val: o.sum, nt: 'на ' + o.h.d, ts, oid: o.id });
+  jlog({ id: 'oc:' + o.id, shop: o.h.s, sid, who: o.trader, by: o.by || '', kind: 'order_create', val: o.sum, nt: 'на ' + o.h.d, ts, oid: o.id });
   recalcShops([sid]);
-  return { ok: 1, applied: true, sid };
+  return { ok: 1, applied: true, sid, tr: o.trader };
 }
 function healOrder(s, row) {             // повторный запрос создания: ничего не дублируем, дописываем недостающее и пересчитываем
   const v = s.getRange(row, 1, 1, 16).getValues()[0]; let o = {}; try { o = JSON.parse(v[11]) || {} } catch (_) {}
@@ -502,10 +506,11 @@ function healOrder(s, row) {             // повторный запрос со
   return { ok: 1, applied: true, dup: true, sid };
 }
 function setLogTs(id, ts) { const s = jSheet(), n = s.getLastRow(); if (n < 2) return; const i = s.getRange(2, 2, n - 1, 1).getValues().flat().map(String).indexOf(String(id)); if (i >= 0) s.getRange(i + 2, 9).setValue(ts) }   // время события в журнале
-function editOrder(s, row, o, adm, by, bed) { // заменяет содержимое заявки. Владелец — не позже EDIT_H часов после записи на сервере; администратор — любую заявку с владельцем и без срока
+function editOrder(s, row, o, adm, by, bed, as) { // заменяет содержимое заявки. Владелец — не позже EDIT_H часов после записи на сервере; администратор — любую заявку с владельцем и без срока
   const v = s.getRange(row, 1, 1, 16).getValues()[0], owner = T(v[2]); let old = {}; try { old = JSON.parse(v[11]) || {} } catch (_) {}
   if (!owner) return no('no_owner'); if (!same(owner, o.trader) && !adm) return no('not_owner');
-  o.trader = owner;
+  const nOwn = as && adm && !same(as, owner) ? as : owner;                        // v36: администратор может переназначить владельца (в т. ч. старой заявки — итоги пересчитаются по колонке «Торговый»)
+  o.trader = nOwn; if (old.by) o.by = old.by; if (nOwn != owner) o.by = by;
   const created = +v[15] || +old.ts || ms(v[0]), reg = ms(v[0]) || created;         // срок правки считается от времени записи на сервере: дату оформления можно менять, и сдвигать ею срок нельзя
   if (!adm && ((+o.ed || 0) - reg > EDIT_H * 36e5 + 5 * 6e4 || Date.now() - (+o.ed || 0) > QUEUE_MAX)) return no('too_late');   // ed — время нажатия на устройстве: правка из очереди старше QUEUE_MAX не принимается, так что задним числом срок не обойти
   const curEd = +old.ed || 0;
@@ -519,11 +524,12 @@ function editOrder(s, row, o, adm, by, bed) { // заменяет содержи
   const evId = 'oe:' + v[1] + ':' + o.ed;
   if (same_) { const je = readJournal().find(j => j.id == evId), pv = je && prevOf(je); if (pv && pv.sid) oldSid = pv.sid }   // повтор после сбоя: «старый» магазин берём из журнала, а не из уже обновлённой строки
   if (!same_ || !hasLog(evId)) jlog({ id: evId, shop: o.h.s, sid, who: by || o.trader, kind: 'order_edit', val: o.sum, nt: 'на ' + o.h.d, ts: +o.ed, oid: T(v[1]),
-    hist: { prev: { sum: +v[9] || 0, d: dstr(v[3]), sid: oldSid, s: T(v[5]), c: T(v[4]), a: T(v[6]), ts: created } } });   // что было до правки — структурно
+    hist: { prev: Object.assign({ sum: +v[9] || 0, d: dstr(v[3]), sid: oldSid, s: T(v[5]), c: T(v[4]), a: T(v[6]), ts: created }, nOwn != owner ? { tr: owner } : {}) } });   // что было до правки — структурно (tr — прежний владелец, если сменился)
+  if (nOwn != owner) wr(s, row, 3, [[nOwn]]);
   wr(s, row, 4, [[o.h.d, o.h.c, o.h.s, o.h.a, vat(o), o.disc, o.sum, o.text, JSON.stringify(o)]]);
   s.getRange(row, 15, 1, 2).setValues([[sid, ts]]); if (ts != created) setLogTs('oc:' + v[1], ts);   // событие «заявка создана» в ленте магазина переезжает на новую дату
   recalcShops([sid, oldSid]);                                                       // при переносе A→B пересчитываются оба магазина
-  return same_ ? { ok: 1, applied: true, dup: true, sid } : { ok: 1, applied: true, sid };
+  return same_ ? { ok: 1, applied: true, dup: true, sid, tr: nOwn } : { ok: 1, applied: true, sid, tr: nOwn };
 }
 function orderOp(x, ctx) {               // удаление / возврат заявки: {id, del (мс; 0 — вернуть), trader, at (когда пользователь нажал)}
   if (!x || typeof x != 'object') return no('invalid', 'op');
@@ -806,8 +812,8 @@ function agg() {                          // для init: режим после�
 function perOp(d, ctx) {                 // v35: итоги за любой период: cur и prev — [от, до) в мс (границы считает приложение в местном времени), bk — до 32 отрезков (месяцы года). who: торговый — всегда свои; администратор — 'me', '*' (все, с разбивкой) или имя
   const now = Date.now(), ok = p => Array.isArray(p) && p.length == 2 && rng(p[0], 946684800000, now + 400 * 864e5) && rng(p[1], 946684800000, now + 400 * 864e5) && +p[1] > +p[0] && +p[1] - +p[0] <= 367 * 864e5;
   const bk = d.bk == null ? [] : d.bk; if (!ok(d.cur) || !ok(d.prev) || !Array.isArray(bk) || bk.length > 32 || bk.some(p => !ok(p))) return { error: 'range' };
-  const adm = ctx.role == 'admin' && !ctx.legacy, w = str(d.who, 40); if (w === null) return { error: 'range' };
-  const who = !adm || w == 'me' ? ctx.user : w == '*' || !w ? '' : w;   // '' — все торговые
+  const w = str(d.who, 40); if (w === null) return { error: 'range' };
+  const who = w == 'me' ? ctx.user : w == '*' || !w ? '' : w;   // '' — все торговые. v36: итоги всех видны всем (владелец: список «Все заявки» и так открыт каждому)
   const key = 'per:' + aggVer() + ':' + (who || '*') + ':' + [d.cur, d.prev].concat(bk).map(p => (+p[0]) + '-' + (+p[1])).join(','), c = cGet(key); if (c) return c;
   const z = () => ({ sum: 0, n: 0 }), out = { ok: 1, all: !who, cur: Object.assign(z(), { by: {} }), prev: z(), bk: bk.map(z) }, inP = (o, p) => o.ts >= +p[0] && o.ts < +p[1];
   ordNarrow().forEach(o => { if (o.del || !o.tr || (who && !same(o.tr, who))) return;
@@ -817,7 +823,7 @@ function perOp(d, ctx) {                 // v35: итоги за любой пе
   const r = x => { x.sum = Math.round(x.sum) }; r(out.cur); r(out.prev); out.bk.forEach(r); Object.keys(out.cur.by).forEach(n => r(out.cur.by[n])); if (who) delete out.cur.by;
   cPut(key, out); return out;
 }
-function statsOp(b, ctx) {               // итоги: торговый — свои, администратор — все с разбивкой. b = { w: [от, до], pw: [...], m, pm, y, py } в мс
+function statsOp(b, ctx) {               // итоги (старый запрос v31–v34; с v35 приложение спрашивает q:'per'): торговый — свои, администратор — все с разбивкой. b = { w: [от, до], pw: [...], m, pm, y, py } в мс
   const P = ['w', 'pw', 'm', 'pm', 'y', 'py'], now = Date.now();
   if (!b || typeof b != 'object' || P.some(p => !Array.isArray(b[p]) || b[p].length != 2 || !rng(b[p][0], 946684800000, now + 400 * 864e5) || !rng(b[p][1], 946684800000, now + 400 * 864e5) || +b[p][1] <= +b[p][0] || +b[p][1] - +b[p][0] > 367 * 864e5)) return { error: 'range' };
   const adm = ctx.role == 'admin' && !ctx.legacy, key = 'st:' + aggVer() + ':' + (adm ? '*' : ctx.user) + ':' + P.map(p => b[p].join('-')).join(','), c = cGet(key); if (c) return c;

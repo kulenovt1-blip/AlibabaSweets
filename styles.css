@@ -560,6 +560,8 @@ button.pfc:active{transform:none;opacity:.92}
 .pft{flex:1;min-width:0;display:flex;flex-direction:column}.pft b{font-weight:800;font-size:calc(20px*var(--fz));line-height:1.15;overflow-wrap:anywhere}.pft span{font-size:calc(14px*var(--fz));color:var(--on-inverse-muted)}
 .pfd{width:100%;padding-top:10px;border-top:1px solid var(--inv-line);font-size:calc(15px*var(--fz));color:var(--on-inverse-muted);line-height:1.45}.pfd b{color:var(--on-inverse);font-weight:800}.pfd em{font-style:normal;font-weight:800;color:var(--accent);white-space:nowrap}
 .pfc .send{margin:0}
+.pfx{flex:none;min-height:44px;padding:0 14px;background:transparent;color:var(--on-inverse);border:1px solid var(--inv-line);border-radius:12px;font-weight:700;font-size:calc(15px*var(--fz))}.pfx:active{opacity:.8}   /* v36: «Выйти» в карточке профиля */
+.pfq{color:var(--on-inverse)}
 .mtg{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:14px}
 .mtl{min-height:120px;padding:14px;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:18px;display:flex;flex-direction:column;align-items:flex-start;justify-content:space-between;gap:10px;text-align:left;font-weight:400}
 .mtl:active{transform:none;background:var(--surface-sunken)}
@@ -567,6 +569,7 @@ button.pfc:active{transform:none;opacity:.92}
 .mtl.acc .mti{background:var(--accent);color:var(--on-accent)}
 .mtl.adm{border:2px solid var(--ink)}.mtl.adm .mti{background:#121512;color:var(--accent)}
 .mtt{min-width:0;display:flex;flex-direction:column}.mtt b{font-weight:800;font-size:calc(17px*var(--fz));line-height:1.15;overflow-wrap:anywhere}.mtt .m{font-size:calc(14px*var(--fz))}
+.pfv .thh{margin:-6px 0 2px;font-size:calc(13px*var(--fz))}
 .pfv{display:flex;flex-direction:column;gap:10px;margin-bottom:14px;padding:14px}.pfv>b{font-weight:800;font-size:calc(16px*var(--fz))}.pfv>b+.seg{margin-top:-4px}.pfv .seg{border-radius:12px}.pfv .seg button{min-height:48px;border-radius:9px}
 .pfs{display:flex;align-items:center;gap:8px;margin:4px 2px 10px}.pfs span{font-weight:800;font-size:calc(13px*var(--fz));letter-spacing:.08em;color:var(--ink)}.pfs::after{content:'';flex:1;height:2px;background:var(--ink)}
 .pfi{width:100%;min-height:60px;padding:10px 14px;margin-bottom:14px;background:transparent;color:var(--ink);border:1px dashed var(--faint);border-radius:16px;display:flex;align-items:center;gap:12px;text-align:left;font-weight:400}
@@ -620,3 +623,6 @@ button.pfc:active{transform:none;opacity:.92}
 /* v35: «Все магазины» — два одинаковых ряда кнопок с подписями: «Что с точкой» и «Статус» */
 .shfg{display:flex;flex-direction:column;gap:0;margin:0 0 2px}.shfl{display:block;font-weight:800;font-size:calc(12px*var(--fz));letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:6px 2px 0}
 .shfg .shfc{padding:6px 0 4px}.chip .sdot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:7px;vertical-align:1px;font-style:normal}
+.nbb .bad{color:var(--danger);border-color:var(--danger-line)}   /* v36: «Очистить» заметку */
+.sum.ck.cas{gap:6px}.cas .ckd{border-top:0;padding-top:0}.cas select{margin:0;min-height:56px;font-weight:600;font-size:calc(17px*var(--fz))}.cas .ckdh{margin:0 2px}   /* v36: «От имени» — как поле даты, без верхней черты */
+.shsr input::placeholder{font-size:calc(15px*var(--fz))}   /* v36: подсказка «Имя, адрес, район» помещается рядом с «Новый» */

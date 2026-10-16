@@ -19,7 +19,7 @@ const DEMO = [['Финики','Финики FINDI caramel','150г','1704','1976'
 
 /* ============ 2. ХЕЛПЕРЫ И СОСТОЯНИЕ ============ */
 /* Версия сборки: должна совпадать с <meta name="ver"> в index.html. Если файлы на хостинге разных версий — покажем красную плашку. */
-const VER = '36';
+const VER = '36.1';
 const NEED = 36;   // нужная версия Code.gs на сервере
 { const m = document.querySelector('meta[name=ver]');
   if (!m || m.content != VER) document.body.insertAdjacentHTML('afterbegin', '<div style="background:#C82B27;color:#fff;padding:12px;font-weight:800">Файлы сайта разных версий. Загрузите ВСЕ файлы из архива заново (index.html, styles.css, app.js, sw.js) и обновите страницу дважды.</div>') }
@@ -473,7 +473,7 @@ function cities() {
 const shops = () => { if (!$('#sl').hidden) drawDD() };   // обновить открытый список магазинов
 function drawD() { const e = document.getElementById('dv'); if (e) e.innerHTML = `<span>${esc(H.d ? wdOf(H.d) + ', ' + fd(H.d) : 'Дата поставки')}</span>${ico('cal', 18)}` }   // v34: дата в шапке — подписью со значком (как в оформлении), поле даты прозрачное поверх: раньше дата наезжала на значок календаря
 function fill() { fixDate(); $('#d').min = eo ? '' : minD(); $('#d').value = H.d; drawD(); $('#s').value = H.s || ''; $('#a').value = H.a || ''; cities(); shopWarn(); if (H.s) hfC = true; drawHf(); if (P.length) { drawChips(); drawList() } }
-function drawHf() { const c = !!(H.s && hfC), f = $('#hf'); f.classList.toggle('cmp', c); $('#ocs').hidden = !c; $('#hfok').hidden = c || !H.s;   // v33: свёрнутая шапка — карточка магазина; развёрнутая — поля и «Готово»
+function drawHf() { const c = !!(H.s && hfC), f = $('#hf'); f.classList.toggle('cmp', c); $('#ocs').hidden = !c; $('#hfok').hidden = c || !H.s; { const u = document.getElementById('hfun'); if (u) u.hidden = c || !shUndo }   // v36: «Отменить» остаётся и после «Сменить» (развёрнутая шапка) — до выбора другого магазина или отправки. v33: свёрнутая шапка — карточка магазина; развёрнутая — поля и «Готово»
   $('#ocs').innerHTML = c ? `<div class="ocst"><b>${esc(H.s)}</b><span class="m">${esc([H.a || H.c, H.d ? 'поставка ' + fd(H.d) : ''].filter(Boolean).join(' · '))}</span></div>${shUndo ? '<button class="ocb" data-a="hfund">Отменить</button>' : ''}<button class="ocb" data-a="hfch">Сменить</button>` : '' }   // v31: сменился магазин — вкладка «Брал раньше» и подписи «в прошлый раз»
 const clrShop = () => { H.s = ''; H.a = ''; H.sid = ''; H.r = ''; H.t = 0; hfC = false; shUndo = null };   // после заявки/черновика: магазин и получатель выбираются заново
 const curShop = () => (H.sid && base.find(b => b.id == H.sid)) || (H.s && findBase(H.s, H.c, H.a)) || null;   // v35: без ID — только однозначное совпадение
@@ -1354,7 +1354,7 @@ document.addEventListener('click', async e => {   // async: вопросы (ask)
     if (H.sid && H.sid == x.id || norm(H.s) == norm(x.n)) { clrShop(); $('#s').value = ''; $('#a').value = ''; save(); shopWarn() }
     if (CFG.API_URL) { shopq.push({ op: 'del', id: x.id || '', old: x.n }); LS('shopq', shopq); sync() } cSh = null; cKey = ''; shopsView() }
   else if (a == 'pick') { selShop(ddL[v]); $('#sl').hidden = true }
-  else if (a == 'hfch' || a == 'ochg') { shUndo = null; if (view) { closeSheet(); drawList() } hfC = false; drawHf(); if (typeof scrollTo == 'function') scrollTo(0, 0); const s = document.getElementById('s'); if (s && s.focus) try { s.focus() } catch (_) {} }   // v33: «Сменить» — на главном экране и в оформлении
+  else if (a == 'hfch' || a == 'ochg') { if (view) { closeSheet(); drawList() } hfC = false; drawHf(); if (typeof scrollTo == 'function') scrollTo(0, 0); const s = document.getElementById('s'); if (s && s.focus) try { s.focus() } catch (_) {} }   // v33: «Сменить» — на главном экране и в оформлении
   else if (a == 'hfund') shopBack()
   else if (a == 'hfok') { hfC = true; $('#sl').hidden = true; drawHf() }
   else if (a == 'padd') { const n = $('#s').value.trim().replace(/\s+/g, ' '); if (!n) return; H.a = ($('#a').value || '').trim(); const r = await dupAsk(n, H.c, H.a); if (!r) return; $('#sl').hidden = true; if (r !== 'new') return selShop(r);   // v35: «Продукты» уже есть — спрашиваем

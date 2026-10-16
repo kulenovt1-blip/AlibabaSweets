@@ -19,7 +19,7 @@ const DEMO = [['Финики','Финики FINDI caramel','150г','1704','1976'
 
 /* ============ 2. ХЕЛПЕРЫ И СОСТОЯНИЕ ============ */
 /* Версия сборки: должна совпадать с <meta name="ver"> в index.html. Если файлы на хостинге разных версий — покажем красную плашку. */
-const VER = '36.2';
+const VER = '36.3';
 const NEED = 36;   // нужная версия Code.gs на сервере
 { const m = document.querySelector('meta[name=ver]');
   if (!m || m.content != VER) document.body.insertAdjacentHTML('afterbegin', '<div style="background:#C82B27;color:#fff;padding:12px;font-weight:800">Файлы сайта разных версий. Загрузите ВСЕ файлы из архива заново (index.html, styles.css, app.js, sw.js) и обновите страницу дважды.</div>') }
@@ -124,6 +124,8 @@ function delOrder(id, ts) { // ts — время удаления; 0 — вер�
 // Позиция в корзине: cart[id] = { q: количество, p: ручная цена (необязательно) }
 const pid = p => p.n + '|' + p.g + '|' + p.u;
 const step = p => p.u == 'кг' ? .5 : 1;
+const frac = p => /^(кг|г|гр|л)$/i.test(String(p.u || '').trim());   // v36.3: дробное количество — только весовые единицы; «шт» и прочие — целые
+const QMAX = 1e5, DMAX = 50, DASK = 20;   // v36.3: границы как у сервера (количество ≤ 100 000); скидка до 50 %, выше 20 % — переспросить при отправке
 const qty = p => cart[pid(p)]?.q || 0;
 const price = p => cart[pid(p)]?.p ?? p.pr;
 const find = id => P.find(p => pid(p) == id);
@@ -229,7 +231,7 @@ function bar(bump) {
 
 /* ============ 5. ТЕКСТ ЗАЯВКИ (строгий формат) ============ */
 function text() {
-  let t = `Заявка на ${fd(H.d)} (${H.c || ''}) магазин ${H.s || ''}, ${H.a || ''}\n`;
+  let t = `Заявка на ${fd(H.d)}${H.c ? ` (${H.c})` : ''} магазин ${H.s || ''}${H.a ? `, ${H.a}` : ''}\n`;   // v36.3: без «()» и висящей запятой, когда города или адреса нет
   lines().forEach(p => { const n = price(p);
     t += `${p.n}${p.g ? `(${p.g})` : ''} - ${qf(qty(p))}${p.u}${n != p.pr ? ` по ${n} (было ${p.pr})` : ''};\n`; });
   const label = CFG.SHOW_VAT_LABEL ? (S.mode == 'vat' ? ' (с НДС)' : ' (без НДС)') : '';
@@ -307,7 +309,8 @@ document.addEventListener('pointerdown', e => { const b = e.target && e.target.c
 document.addEventListener('click', e => { if (!editId) return; const t = document.querySelector('[data-np]'), x = e.target; if (!t || (x && x.closest && x.closest('.npr'))) return; commitNp(t) }, true);   // v36.2: касание мимо поля цены — сохранить (если меняли) и закрыть. На click, а не pointerdown: перерисовка до click уводила нажатие на другую кнопку (v34)
 document.addEventListener('keydown', e => { const t = e.target; if (e.key == 'Enter' && t && t.dataset && t.dataset.np !== undefined) { e.preventDefault(); npAt = Date.now(); commitNp(t) } });
 function commitNp(t) { // новая цена позиции: из поля ввода (по «Готово» или при уходе из поля)
-  const n = num(t.value), id = t.dataset.np; if (editId != id) return; if (n > 0 && cart[id] && find(id)) { n == find(id).pr ? delete cart[id].p : cart[id].p = n; save() } editId = ''; bar(); cartView() }
+  const n = num(t.value), id = t.dataset.np; if (editId != id) return; if (!(n > 0) && String(t.value).trim() !== '') toast('Цена должна быть больше 0 — оставлена прежняя');   // v36.3: раньше молча
+  if (n > 0 && cart[id] && find(id)) { n == find(id).pr ? delete cart[id].p : cart[id].p = n; save() } editId = ''; bar(); cartView() }
 function vatBar() { // v33: режим цен — переключатель на всю ширину; под ним — откуда взята норма точки или предупреждение, что режим не совпадает
   const nm = vatNorm(curShop(), eo), m = S.mode;
   const hint = nm && nm.m != m ? `<div class="sw q">${nm.set ? 'В карточке магазина выбрано: ' + ML[nm.m] : 'Последняя заявка в этот магазин была ' + ML[nm.m]}</div>` : nm ? `<p class="m vth">${nm.set ? 'Как выбрано в карточке магазина' : 'Как в прошлой заявке в эту точку'}</p>` : '';
@@ -620,6 +623,8 @@ function checkPending() { // после возврата из WhatsApp спра�
   <div class="pdb"><button class="send" data-a="pyes">${ico('check', 22)} Да, отправил</button><p class="m">Заявка запишется в историю, откроется маршрут</p><button class="ghost pdno" data-a="pno">Нет, вернуться к заявке</button><p class="m">Заявка останется в корзине — можно отправить ещё раз</p></div></div>`;
 }
 const draftBadge = () => $('#drbi').innerHTML = ico('user', 24) + (drafts.length ? '<em class="bdg">' + drafts.length + '</em>' : '');
+const stash = () => { drafts.unshift({ H: { ...H }, cart: JSON.parse(JSON.stringify(cart)), disc, m: S.mode, n: lines().length, sum: final(), t: Date.now() }); LS('drafts', drafts); draftBadge() };   // v36.3: начатая заявка — в черновики, а не в никуда
+const stashAsk = what => ask(eo ? 'Сейчас открыта правка заявки — она закроется без сохранения. Открыть ' + what + '?' : 'Начатая заявка' + (H.s ? ' для «' + H.s + '»' : '') + ' (' + lines().length + ' ' + pl3(lines().length, 'позиция', 'позиции', 'позиций') + ') уйдёт в черновики. Открыть ' + what + '?', 'Открыть');
 function draftSave() { // черновик хранит всё состояние заявки; корзина очищается для следующего магазина
   if (!lines().length) return say('Заявка пуста');
   drafts.unshift({ H: { ...H }, cart: JSON.parse(JSON.stringify(cart)), disc, m: S.mode, n: lines().length, sum: final(), t: Date.now() }); LS('drafts', drafts);
@@ -1228,6 +1233,7 @@ document.addEventListener('click', async e => {   // async: вопросы (ask)
       if (!eo && !(H.t > 0) && H.d < od) { const y = await ask('Дата поставки ' + fd(H.d) + ' уже прошла, а время заявки — «сейчас».\nЕсли заявку приняли раньше — укажите «Время заявки», и эту дату поставки можно оставить.', 'Указать время заявки', 'Поставить ближайшую пятницу');
         if (y) tOpen = true; else { H.dm = 0; fixDate(); save(); fill() } return cartView() }
       if (H.d < od) return say('Дата поставки (' + fd(H.d) + ') раньше дня заявки (' + fd(od) + '). Исправьте дату поставки или «Время заявки».') }
+    if (disc > DASK && !await ask('Скидка ' + disc + '% — больше обычной. Всё верно?', 'Да, ' + disc + '%')) return;   // v36.3: защита от опечатки (50 вместо 5)
     const sh = curShop(); if (sh && sh.st == 'no' && !await ask('⚠ Магазин помечен «Не заходить»' + (sh.nt ? ': ' + sh.nt : '') + '.\nВсё равно отправить заявку?', 'Отправить')) return;
     { const nm = vatNorm(sh, eo), vd = !!nm && nm.m != S.mode, vs = !!msw && msw != S.mode;   // v30: режим цен не совпадает с нормой точки или его переключали во время заявки — один вопрос
       if (vd || vs) { const o = otherM(S.mode), r = await askVat(vatMsg(sh, nm, vd, vs), (a == 'esave' ? 'Сохранить ' : 'Отправить ') + ML[S.mode], 'Переключить на ' + ML[o]);
@@ -1246,7 +1252,7 @@ document.addEventListener('click', async e => {   // async: вопросы (ask)
     LS('pending', o); waOpen(num2, o.text); }
   else if (a == 'eoc') { const z = snap(); eo = ''; H.as = ''; asOpen = false; cart = {}; disc = 0; clrShop(); save(); fill(); closeSheet(); drawList(); toast('Правка отменена, заявка осталась как была', () => unsnap(z)) }
   else if (a == 'hedit') { const x = histById(v); if (!x || !canEdit(x)) return say('Изменить можно свою заявку в течение ' + CFG.EDIT_HOURS + ' ч после создания. Более старые и чужие заявки правит администратор.');
-    if (lines().length && !await ask('Текущая заявка в корзине будет заменена. Продолжить?', 'Заменить')) return;
+    if (lines().length) { if (!await stashAsk('правку')) return; if (!eo) stash() }
     if (x.m && x.m != S.mode) { S.mode = x.m; LS('set', S); applyMode(); drawSeg() }
     cart = JSON.parse(JSON.stringify(x.cart || {})); disc = x.disc || 0; H = { ...x.h, dm: 1, r: x.rc && x.rc.n || '', t: nz(x.ts), as: trOf(x) || '' }; eo = x.id; msw = ''; { const pe = outbox.find(y => y.id == x.id); eob = pe ? (typeof pe.bed == 'number' ? pe.bed : null) : nz(x.ed) } save(); fill(); closeSheet(); drawList(); cartView() }   // v34: eob — версия, с которой начата правка (у неотправленной правки — её исходная); сервер откажет, если заявку тем временем изменили
   else if (a == 'clr') { const z = snap(); cart = {}; disc = 0; eo = ''; save(); bar(); drawList(); toast('Изменено: корзина очищена', () => unsnap(z)) }
@@ -1360,8 +1366,8 @@ document.addEventListener('click', async e => {   // async: вопросы (ask)
   else if (a == 'pyes') { const o = LS('pending'); localStorage.removeItem('pending'); if (!o) return; commitOrder(o); goHome() }   // заявка ушла — обратно к маршруту, к следующей точке
   else if (a == 'pno') { localStorage.removeItem('pending'); closeSheet() }
   else if (a == 'drafts') draftView(); else if (a == 'dsave') draftSave();
-  else if (a == 'dopen') { if (lines().length && !await ask('Текущая заявка будет заменена. Продолжить?', 'Заменить')) return;
-    const x = drafts.splice(v, 1)[0]; LS('drafts', drafts); if (x.m != S.mode) { S.mode = x.m; LS('set', S); applyMode(); drawSeg() }
+  else if (a == 'dopen') { const st = lines().length; if (st && !await stashAsk('черновик')) return;
+    const x = drafts.splice(v, 1)[0]; LS('drafts', drafts); if (st && !eo) stash(); if (x.m != S.mode) { S.mode = x.m; LS('set', S); applyMode(); drawSeg() }
     cart = cleanCart(x.cart); disc = Math.min(100, Math.max(0, nz(x.disc))); eo = ''; msw = ''; H = { ...x.H }; save(); fill(); closeSheet(); drawList(); bar(); draftBadge() }
   else if (a == 'ddel') { drafts.splice(v, 1); LS('drafts', drafts); draftBadge(); draftView() }
   else if (a == 'auth') authView('login'); else if (a == 'amode') authView(v == 'invite' ? 'invite' : 'login'); else if (a == 'lgn' || a == 'rdm') doAuth()
@@ -1399,9 +1405,11 @@ document.addEventListener('click', async e => {   // async: вопросы (ask)
   else if (a == 'bak') exportBackup(); else if (a == 'imp') $('#impf').click()
 });
 document.addEventListener('change', e => { const t = e.target;
-  if (t.dataset.q !== undefined) setQ(find(t.dataset.q), num(t.value));
+  if (t.dataset.q !== undefined) { const p = find(t.dataset.q); if (!p) return; let v = num(t.value), m = '';   // v36.3: ввод количества — те же границы, что у сервера
+    if (v < 0) { v = 0 } if (v > QMAX) { v = QMAX; m = 'Не больше 100 000 ' + p.u } else if (!frac(p) && v != Math.round(v)) { v = Math.max(1, Math.round(v)); m = 'В «' + p.u + '» — только целые: ' + v + ' ' + p.u }
+    setQ(p, v); if (m) toast(m) }
   else if (t.dataset.np !== undefined) commitNp(t)
-  else if (t.id == 'dc') { disc = Math.min(100, num(t.value)); save(); bar(); cartView() }
+  else if (t.id == 'dc') { const v0 = num(t.value), v = Math.min(DMAX, Math.max(0, Math.round(v0 * 10) / 10)); disc = v; save(); bar(); cartView(); if (v != v0) toast(v0 < 0 ? 'Скидка не может быть меньше 0' : 'Скидка — не больше ' + DMAX + '%') }   // v36.3: было без нижней границы (−5 % увеличивало итог)
   else if (t.id == 'rch') { H.r = t.value; save() }
   else if (t.id == 'ots') { const v = t.value ? new Date(t.value).getTime() : 0, o = eo && histById(eo);   // когда заявка сделана: не в будущем и не старше года
     if (!v) H.t = o ? nz(o.ts) : 0; else if (v > Date.now() + 6e4) say('Дату заявки нельзя поставить в будущее.'); else if (v < Date.now() - 365 * 864e5) say('Слишком давняя дата.'); else { H.t = v; if (H.dm && H.d < locIso(ordT())) { H.dm = 0; toast('Поставка была раньше дня заявки — поставлена ' + fd(nextFri(ordT()))) } } fixDate(); save(); fill(); cartView() }   // v34: поставка не раньше дня заявки   // v34: автоматическая поставка пересчитывается от времени заявки

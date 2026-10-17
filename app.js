@@ -19,7 +19,7 @@ const DEMO = [['Финики','Финики FINDI caramel','150г','1704','1976'
 
 /* ============ 2. ХЕЛПЕРЫ И СОСТОЯНИЕ ============ */
 /* Версия сборки: должна совпадать с <meta name="ver"> в index.html. Если файлы на хостинге разных версий — покажем красную плашку. */
-const VER = '36.5';
+const VER = '36.6';
 const NEED = 36;   // нужная версия Code.gs на сервере
 { const m = document.querySelector('meta[name=ver]');
   if (!m || m.content != VER) document.body.insertAdjacentHTML('afterbegin', '<div style="background:#C82B27;color:#fff;padding:12px;font-weight:800">Файлы сайта разных версий. Загрузите ВСЕ файлы из архива заново (index.html, styles.css, app.js, sw.js) и обновите страницу дважды.</div>') }
@@ -168,6 +168,8 @@ const toProducts = rows => { const m = colMap(rows), v = (r, i) => i >= 0 ? Stri
 const applyMode = () => P.forEach(p => p.pr = S.mode == 'vat' ? p.pv : p.pn);   // pr — актуальная цена в выбранном режиме (0 = не указана)
 async function load() {
   let rows, err = '';
+  const cached = LS('prod2'); let early = false;
+  if (CFG.SHEET_CSV && !P.length && Array.isArray(cached)) { const e0 = toProducts(cached); if (e0.length) { P = e0; applyMode(); applyFlags(); drawChips(); drawList(); mk('ab-list'); bar(); early = true } }   // v36.6: прайс уже сохранён на телефоне — каталог показываем сразу, не дожидаясь сети; свежий прайс догрузится ниже
   if (CFG.SHEET_CSV) {
     try {
       mk('ab-csv0'); const r = await fetch(CFG.SHEET_CSV, { cache: 'no-store' }), t = await r.text(); mk('ab-csv1');
@@ -177,7 +179,8 @@ async function load() {
       LS('prod2', rows);
     } catch (e) { err = e.message == 'Failed to fetch' ? (location.protocol == 'file:' ? 'страница открыта как файл (file://) — браузер блокирует запросы к Google. Откройте сайт по ссылке с хостинга (https://)' : 'браузер не смог загрузить таблицу (адрес страницы: ' + location.origin + '). Возможна блокировка расширением, VPN или встроенным браузером мессенджера — откройте ссылку в Chrome') : e.message; rows = LS('prod2'); }
   }
-  P = toProducts(rows || LS('prod2') || [[], ...DEMO]); applyMode(); applyFlags(); drawChips(); drawList(); mk('ab-list'); bar(); note(err, !CFG.SHEET_CSV, P.filter(p => !p.pn || !p.pv).map(p => p.n));
+  if (!(early && JSON.stringify(rows) === JSON.stringify(cached))) { P = toProducts(rows || LS('prod2') || [[], ...DEMO]); applyMode(); applyFlags(); drawChips(); drawList(); mk('ab-list'); bar() }   // v36.6: прайс не изменился — список не перерисовываем (не сбиваем прокрутку и ввод количества)
+  note(err, !CFG.SHEET_CSV, P.filter(p => !p.pn || !p.pv).map(p => p.n));
   return err;   // v33: загрузочный экран узнаёт, загрузился ли прайс
 }
 function note(err, demo, miss = []) { // плашка статуса прайса
@@ -579,6 +582,7 @@ async function sync() { // отправляет накопленные заяв�
       if (r.applied === false) delRefused(o, r);
       else { delok.push({ id: o.id, del: o.del, t: Date.now() }); LS('delok', delok) }   // запоминаем, пока выгрузка не подтвердит
     }
+    if (n0 && !qN() && !vfail.length && !toastFn) toast('Сохранено на сервере');   // v36.6: очередь отправлена и сервер ответил по каждой операции — говорим сразу, не ждём обновления данных (init) ниже; не перебиваем кнопку «Отменить»
     const d = await call({ q: 'init', undo: CFG.UNDO_HOURS }), sh = safeL(d.hist); let bf = false;   // bf — база магазинов обновлена с сервера в этом проходе
     if (d.me) { role = d.me.role == 'admin' ? 'admin' : 'trader'; LS('role', role) }   // роль — только для показа кнопок; права проверяет сервер
     trs = (Array.isArray(d.traders) ? d.traders : []).map(String); srvV = nz(d.srv); LS('srv', srvV); if (Array.isArray(d.rcp)) { rcp = d.rcp; LS('rcp', rcp); drawRc() }
@@ -594,7 +598,6 @@ async function sync() { // отправляет накопленные заяв�
       if (!!sv.del == !!o.del) return false; syncWarn = true; return Date.now() - o.t < 6e5 });                      // не совпало: сервер не применил — предупреждаем, пока не истёк срок
     LS('delok', delok); shist = sh; LS('trs', trs); LS('base', base); LS('shist', shist); shops();
     syncErr = false; lastErr = ''; authNeed = false; syncAt = new Date().toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' });
-    if (n0 && !qN() && !vfail.length && !toastFn) toast('Сохранено на сервере');   // не перебиваем кнопку «Отменить»   // «Сохранено» — только после ответа сервера
   } catch (e) { if (e && e.auth) lastErr = 'нужен вход'; else { syncErr = true; lastErr = e && e.message || 'неизвестная ошибка'; errL = { m: String(lastErr).slice(0, 300), t: Date.now(), q: qN() }; LS('lerr', errL) } }
   if (vfail.length) { const m = vfail.splice(0).join('\n'); setTimeout(() => say(m), 0) }
   syncing = false; mk('ab-sync1'); syncStatus(); if (view == 'hist') histView(); if ((view == 'shops' || view == 'rplan') && !rvK) drawShops();   // маршрут перерисовывается, когда пришли магазины (кроме момента, когда открыта отметка визита)

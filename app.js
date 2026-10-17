@@ -19,7 +19,7 @@ const DEMO = [['Финики','Финики FINDI caramel','150г','1704','1976'
 
 /* ============ 2. ХЕЛПЕРЫ И СОСТОЯНИЕ ============ */
 /* Версия сборки: должна совпадать с <meta name="ver"> в index.html. Если файлы на хостинге разных версий — покажем красную плашку. */
-const VER = '37.0';
+const VER = '37.1';
 const NEED = 36;   // нужная версия Code.gs на сервере
 { const m = document.querySelector('meta[name=ver]');
   if (!m || m.content != VER) document.body.insertAdjacentHTML('afterbegin', '<div style="background:#C82B27;color:#fff;padding:12px;font-weight:800">Файлы сайта разных версий. Загрузите ВСЕ файлы из архива заново (index.html, styles.css, app.js, sw.js) и обновите страницу дважды.</div>') }
@@ -562,6 +562,12 @@ function delRefused(o, r) { // отказ подтверждён ответом 
   if (r.del != null) { const sv = nz(r.del), h = LS('hist') || []; h.forEach(x => { if (x && x.id == o.id) x.del = sv }); LS('hist', h); setDel(o.id, sv); shist.forEach(x => { if (x.id == o.id) x.del = sv }) }
   if (r.reason != 'not_found') vfail.push((o.del ? 'Удаление' : 'Возврат') + ' заявки не выполнен: ' + (DELFAIL[r.reason] || r.reason || 'причина не указана') + (r.reason == 'not_owner' && r.owner ? ' («' + r.owner + '»)' : '') + '.');
 }
+/* v37.1. Перерисовка экрана, пришедшая от сети (ответ сервера), не должна заменять кнопки, пока палец на экране: если элемент заменён между касанием и отпусканием,
+   браузер не посылает нажатие — оно «теряется» (магазин не добавился). Пока касание идёт (но не дольше 1,5 с), перерисовка ждёт и выполняется сразу после отпускания */
+let ptrAt = 0; const ptrQ = new Map(), held = () => !!ptrAt && Date.now() - ptrAt < 1500;
+const afterTouch = (key, fn) => { if (!held()) return fn(); ptrQ.set(key, fn) };
+document.addEventListener('pointerdown', () => { ptrAt = Date.now() }, true);
+['pointerup', 'pointercancel'].forEach(n => document.addEventListener(n, () => { ptrAt = 0; if (ptrQ.size) setTimeout(() => { if (held()) return; const q = [...ptrQ.values()]; ptrQ.clear(); q.forEach(f => f()) }, 80) }, true));   // 80 мс: нажатие (click) успевает дойти до кнопки раньше перерисовки
 const BATCH_N = 25, BATCH_W = 16;   // v37: не больше 25 операций и «веса» 16 (точка маршрута 1, визит 3, заявка 4) в одной пачке — запрос должен уложиться в 70 секунд ожидания
 async function sync() { // отправляет накопленные заявки и правки магазинов, затем подтягивает торговых, магазины и историю
   if (!CFG.API_URL) return;
@@ -575,6 +581,7 @@ async function sync() { // отправляет накопленные заяв�
     // v37. Очередь собирается в один список в прежнем порядке (правки магазинов → визиты → заявки → удаления). Операция убирается из очереди только после ответа сервера.
     // Сервер версии 37+ принимает несколько операций одним запросом (batch); старый — по одной, как раньше
     const okShop = (x, r) => { shopq = shopq.filter(y => y !== x); LS('shopq', shopq);
+      if (x.op == 'rday' && r.applied !== false) { const e = { d: x.d, tr: x.tr, sid: x.id, on: !!x.on, at: Date.now(), by: me }, up = l => l.filter(q => !(q.d == x.d && q.sid == x.id && norm(q.tr) == norm(x.tr))).concat([e]); RDS = up(RDS); LS('rds', RDS); const c = rgC[x.d]; if (c && Array.isArray(c.rd)) c.rd = up(c.rd) }   // v37.1: принятая сервером правка дня сразу становится «серверной» — иначе между ответом на отправку и обновлением данных (init) точка на экране откатывалась бы назад
       if (SEC_OP[x.op] && r.applied !== false) svAt[(x.id || 'n:' + x.n) + '|' + SEC_OP[x.op]] = Date.now();   // v34: «сохранено ЧЧ:ММ» у раздела карточки
       if (r.applied === false) vfail.push('Правка магазина «' + (x.n || x.old || '') + '» не принята сервером: ' + (FAILR[r.reason] || r.reason || '—') + '.') };
     const okVisit = (v, r) => { visq = visq.filter(y => y !== v); LS('visq', visq);
@@ -618,8 +625,9 @@ async function sync() { // отправляет накопленные заяв�
     syncErr = false; lastErr = ''; authNeed = false; syncAt = new Date().toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' });
   } catch (e) { if (e && e.auth) lastErr = 'нужен вход'; else { syncErr = true; lastErr = e && e.message || 'неизвестная ошибка'; errL = { m: String(lastErr).slice(0, 300), t: Date.now(), q: qN() }; LS('lerr', errL) } }
   if (vfail.length) { const m = vfail.splice(0).join('\n'); setTimeout(() => say(m), 0) }
-  syncing = false; mk('ab-sync1'); syncStatus(); if (view == 'hist') histView(); if ((view == 'shops' || view == 'rplan') && !rvK) drawShops();   // маршрут перерисовывается, когда пришли магазины (кроме момента, когда открыта отметка визита)
-  if (view == 'shopc' && cSh) { drawFeed(cSh); loadLog(cSh); drawMarks(cSh) }   // открытая карточка магазина подтягивает ленту с сервера (v30: раньше эта строка была внутри комментария и не выполнялась)
+  syncing = false; mk('ab-sync1'); syncStatus();
+  afterTouch('sync', () => { if (view == 'hist') histView(); if ((view == 'shops' || view == 'rplan') && !rvK) drawShops() });   // маршрут перерисовывается, когда пришли магазины (кроме момента, когда открыта отметка визита). v37.1: не во время касания — иначе нажатие теряется
+  afterTouch('syncc', () => { if (view == 'shopc' && cSh) { drawFeed(cSh); loadLog(cSh); drawMarks(cSh) } })   // открытая карточка магазина подтягивает ленту с сервера (v30: раньше эта строка была внутри комментария и не выполнялась)
   if (again) { again = false; if (tok) return sync() }
 }
 
@@ -853,7 +861,7 @@ const dayB = d => { const [y, m, dd] = d.split('-').map(Number); const a = new D
 async function loadRg(d, force) { if (rgBusy || !rgOk() || !tok) return; const c = rgC[d]; if (!force && c && Date.now() - c.at < (c.err ? 15e3 : 6e4)) return;
   if (!navigator.onLine) { rgC[d] = { at: Date.now(), err: 'нет связи' }; return }
   rgBusy = d; const [from, to] = dayB(d); try { const r = await call({ q: 'route', d, from, to }); rgC[d] = r && r.ok ? { at: Date.now(), rd: safeA(r.rd), ev: safeA(r.ev) } : { at: Date.now(), err: 'сервер не отдал маршрут' } }
-  catch (e) { rgC[d] = { at: Date.now(), err: e && e.message || 'ошибка' } } finally { rgBusy = '' } if (view == 'rall') rgView() }
+  catch (e) { rgC[d] = { at: Date.now(), err: e && e.message || 'ошибка' } } finally { rgBusy = '' } afterTouch('rg', () => { if (view == 'rall') rgView() }) }
 const safeA = a => Array.isArray(a) ? a.filter(x => x && typeof x == 'object') : [];
 function rgOn(tr, d, id) { const c = rgC[d]; let v; (c && c.rd ? c.rd : RDS.filter(r => r.d == d)).forEach(r => { if (r.sid == id && norm(r.tr) == norm(tr)) v = !!r.on });
   shopq.forEach(q => { if (q.op == 'rday' && q.d == d && q.id == id && norm(q.tr) == norm(tr)) v = !!q.on }); return v }   // правка дня: true / false / undefined (нет)
@@ -1273,7 +1281,7 @@ function selStart(k) { if (selMode || rtDay >= 0 || !k || (view != 'shops' && vi
 function selRemove() { const xs = [...selSet].map(shopById).filter(Boolean); if (!xs.length) return selExit(); xs.forEach(x => setToday(x, false)); selExit(false); drawShops();
   toast('Изменено: убрано из листа на сегодня — ' + xs.length + ' ' + pl3(xs.length, 'точка', 'точки', 'точек'), () => { xs.forEach(x => setToday(x, true)); if (view == 'shops') drawShops() }) }
 { let lp = 0, sx = 0, sy = 0; const stop = () => { if (lp) { clearTimeout(lp); lp = 0 } };
-  document.addEventListener('pointerdown', e => { stop(); const r = !selMode && e.target.closest && e.target.closest('.rrow[data-a="rgo"]'); if (!r || e.button > 0) return; sx = e.clientX; sy = e.clientY; const k = r.dataset.v;
+  document.addEventListener('pointerdown', e => { stop(); const r = !selMode && e.target && e.target.closest && e.target.closest('.rrow[data-a="rgo"]'); if (!r || e.button > 0) return; sx = e.clientX; sy = e.clientY; const k = r.dataset.v;
     lp = setTimeout(() => { lp = 0; selSup = Infinity; selStart(k) }, 500) }, true);
   document.addEventListener('pointermove', e => { if (lp && Math.hypot(e.clientX - sx, e.clientY - sy) > 10) stop() }, true);
   ['pointerup', 'pointercancel'].forEach(n => document.addEventListener(n, () => { stop(); if (selSup === Infinity) selSup = Date.now() + 400 }, true));   // клик, который идёт следом за долгим нажатием, гасим

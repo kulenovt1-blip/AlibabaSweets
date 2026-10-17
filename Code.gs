@@ -1,5 +1,15 @@
 /* Али-Баба: приём заявок. Вставьте в Расширения → Apps Script ТОЙ ЖЕ таблицы, где лежит прайс.
  *
+ * v37 — быстрее при очереди, время работы сервера в ответе, автоматический визит «Взяли заказ».
+ *  • Каждый ответ без ошибки несёт поле t = { ms: сколько работал скрипт, lw: сколько ждал общую блокировку } — по нему приложение показывает, где уходит время.
+ *  • batch: до BATCH_MAX обычных записей одним запросом ({tok, batch: [{shop}|{visit}|{visitOp}|{visitCancel}|{order}|{orderOp}, …]}). Ответ — {ok, batch: [ответ на каждую]}.
+ *    Одна проверка токена; блокировка берётся на каждую запись отдельно (серия точек маршрута «rday» — одна на серию), поэтому остальные торговые не ждут конца пачки.
+ *    Исключение в записи останавливает пачку: остальные получают {error:'skipped'} и остаются в очереди приложения. Отказ по правилам (applied:false) пачку не останавливает.
+ *  • Список торговых читается один раз за запрос (кроме входа и администрирования).
+ *  • Автовизит: новая заявка (не «от имени» администратора) создаёт визит «Взяли заказ» (ID av_<ID заявки>, колонка «ID заявки» = заявка). Если у торгового в этой точке в этот день уже есть
+ *    «Взяли заказ» — второй не создаётся; «Заказа нет» того же дня заменяется (отменяется). Удаление заявки отменяет автовизит, возврат — возвращает, если его отменили не вручную.
+ *    Правка заявки переносит автовизит вместе с ней (точка, владелец, время). Старые заявки (до v37) автовизита не получают и не меняются.
+ *
  * v32 — удаление места точки (только администратор): операция shop {op: 'geodel'} очищает колонки V–Z листа «Магазины»,
  *  в журнал «Визиты» пишется событие shop_geo_del (кто, когда, какое место было). В ленту магазина оно не попадает.
  *
@@ -27,7 +37,7 @@
  *  • Все операции идут по постоянному ID события и безопасны при повторной отправке.
  *  • Сводка магазина (посл. заказ / посл. визит) всегда ПЕРЕСЧИТЫВАЕТСЯ из записей (recalcShops), а не «двигается» инкрементом.
  *  • Сверка старых данных: reconcileDryRun() (ничего не меняет, пишет отчёт в лист «Сверка») и reconcileApply() (после просмотра отчёта). */
-const SRV = 36;           // версия серверной части (видна в «Настройки → Служебная информация»)
+const SRV = 37;           // версия серверной части (видна в «Настройки → Служебная информация»)
 const SHOP_HEAD = ['Магазин', 'Город', 'Адрес', 'ID', 'Статус', 'Заметка', 'Кем (статус)', 'Когда (статус, мс)', 'Контакт', 'Телефон', 'Район', 'Посл. заказ (мс)', 'Посл. визит (мс)', 'Итог визита', 'Кем (визит)', 'Тип', 'План визита (мс)', 'Открытый вопрос',
   'Дни маршрута', 'Ответственный', 'Цены (НДС)', 'Широта', 'Долгота', 'Точность места, м', 'Место: кем', 'Место: когда',   // v31: колонки S–Z
   'Юрлицо', 'Заметки'];   // v35: AB — постоянные заметки о точке   // v33: колонка AA — ИП / ТОО точки (только название; в текст заявки не идёт)
@@ -59,15 +69,18 @@ const ID_RE = /^[A-Za-z0-9_\-]{1,64}$/;   // ID, которые присылае
 /* ---------- Вход в скрипт ---------- */
 function doGet(e) { return out({ error: 'get' }) }   // защищённые данные через GET не отдаются: токен не должен попадать в адрес запроса. Ответ отличается от «auth»: если Google по дороге превратил POST в GET, приложение повторит запрос, а не сочтёт вход отозванным
 // Любая ошибка скрипта возвращается как понятный JSON, а не как страница ошибки Google (её браузер показывает как «нет связи»)
-function doPost(e) { try { return doPost_(e) } catch (err) { return out({ error: 'server: ' + String(err && err.message || err).slice(0, 200) }) } }
+let T0 = 0, LW = 0, TRC = false, TRM = null;   // v37: T0 — начало запроса, LW — сколько ждали блокировку; TRC/TRM — список торговых читается один раз за запрос (только для данных; вход и администрирование читают заново)
+function doPost(e) { T0 = Date.now(); LW = 0; TRC = false; TRM = null; try { return doPost_(e) } catch (err) { return out({ error: 'server: ' + String(err && err.message || err).slice(0, 200) }) } finally { TRC = false; TRM = null } }
 function doPost_(e) {
   let d; try { d = JSON.parse(e.postData.contents) } catch (_) { return out({ error: 'request' }) }   // текст ошибки разбора не возвращаем: в нём может быть часть запроса
   if (!d || typeof d != 'object' || Array.isArray(d)) return out({ error: 'request' });
   if (d.auth) return out(authOp(d.auth));                   // вход и первое задание пароля — единственное, что доступно без токена
+  TRC = !d.admin;
   const ctx = authCtx(d); if (!ctx) return out({ error: 'auth' });
   if (ctx.legacy && (d.q || d.admin)) return out({ error: 'auth' });   // ключ старых устройств — только дослать накопленное; читать базу и администрировать по нему нельзя
   if (d.q) return out(readOp(d, ctx));                      // чтение: без общей блокировки (ensureIds берёт её сам, только если нужно)
   if (d.admin) return out(adminOp(d.admin, ctx));
+  if (d.batch !== undefined) return out(ctx.legacy ? { error: 'auth' } : batchOp(d.batch, ctx));   // v37: пачка записей; блокировка берётся внутри
   return out(withLock(() => writeOp(d, ctx)));
 }
 function writeOp(d, ctx) {                // записывает заявку, визит или правку магазина (повтор того же ID игнорируется)
@@ -79,6 +92,32 @@ function writeOp(d, ctx) {                // записывает заявку, 
   if (d.orderOp) return orderOp(d.orderOp, ctx);                                    // удаление / возврат заявки
   if (d.order) return saveOrder(d.order, ctx);
   return { error: 'action' };
+}
+const BATCH_MAX = 30, BATCH_KEYS = ['shop', 'visit', 'visitOp', 'visitCancel', 'order', 'orderOp'];
+const isRday = it => !!(it && typeof it == 'object' && it.shop && typeof it.shop == 'object' && it.shop.op == 'rday' && Object.keys(it).length == 1);
+function batchOp(items, ctx) {            // v37: записи одной пачкой; ответ — по одному на запись, в том же порядке
+  if (!Array.isArray(items) || !items.length || items.length > BATCH_MAX) return { error: 'request' };
+  const res = []; let i = 0;
+  while (i < items.length) {
+    const it = items[i]; let k = 1; if (isRday(it)) while (i + k < items.length && isRday(items[i + k])) k++;   // серия точек маршрута подряд: лист «Магазины» и столбец ID операций читаем один раз, строки пишем одной записью
+    try {
+      if (isRday(it)) { res.push(...rdayRun(items.slice(i, i + k), ctx)); i += k; continue }
+      const key = it && typeof it == 'object' && !Array.isArray(it) ? Object.keys(it) : [];
+      if (key.length != 1 || BATCH_KEYS.indexOf(key[0]) < 0 || !it[key[0]]) { res.push({ error: 'request' }); i++; continue }
+      res.push(withLock(() => writeOp(it, ctx))); i++;
+    } catch (err) {                      // сбой записи: остальные не трогаем, приложение оставит их в очереди
+      for (let q = 0; q < k; q++) res.push({ error: 'server: ' + String(err && err.message || err).slice(0, 200) });
+      i += k; while (i < items.length) { res.push({ error: 'skipped' }); i++ } }
+  }
+  return { ok: 1, batch: res };
+}
+function rdayRun(list, ctx) {             // серия rday под одной блокировкой; ответы те же, что у одиночных запросов (shopOp с общим состоянием ST)
+  return withLock(() => {
+    const rs = rdSheet(), n = rs.getLastRow(), ST = { list: readShops(), rs, rows: [], seen: new Set(n > 1 ? rs.getRange(2, 8, n - 1, 1).getValues().map(r => T(r[0])) : []) }, res = []; let failed = false;
+    try { list.forEach(it => { if (failed) { res.push({ error: 'skipped' }); return }
+        try { res.push(shopOp(it.shop, ctx, ST)) } catch (err) { failed = true; res.push({ error: 'server: ' + String(err && err.message || err).slice(0, 200) }) } }) }
+    finally { if (ST.rows.length) wr(rs, rs.getLastRow() + 1, 1, ST.rows) }
+    return res });
 }
 const rdSheet = () => ensureHead(sh('Маршрут дня'), RD_HEAD);   // дату «2026-10-16» таблица может превратить в дату — читаем через dstr (в часовом поясе таблицы)
 function routeDays(ctx, now, d1, d2) {   // v35: правки маршрута на день: по умолчанию со вчерашнего (или за даты d1..d2); торговому — свои (все — если «Общий маршрут» открыт), администратору — все. Последняя правка по (дата, торговый, точка) побеждает
@@ -133,7 +172,7 @@ function ordersIn(from, to, undo, now) { // заявки, созданные в 
 let LOCKED = false;
 function withLock(fn) {
   if (LOCKED) return fn();               // блокировка уже наша — второй раз её не запрашиваем
-  const lock = LockService.getScriptLock(); lock.waitLock(20000); LOCKED = true;
+  const lock = LockService.getScriptLock(), w0 = Date.now(); lock.waitLock(20000); LW += Date.now() - w0; LOCKED = true;
   try { return fn() } finally { LOCKED = false; lock.releaseLock() }
 }
 
@@ -275,8 +314,10 @@ function pwProblem(pw, name) {           // требования к паролю
 /* ---------- Учётные записи (лист «Торговые») ---------- */
 const roleOf = v => /^(admin|админ)/i.test(T(v)) ? 'admin' : 'trader';
 function readTraders() {
-  const s = trSheet(), n = s.getLastRow(); if (n < 2) return [];
-  return s.getRange(2, 1, n - 1, TR_HEAD.length).getValues().map((r, i) => ({ r: i + 2, n: T(r[0]), role: roleOf(r[1]), ver: +r[2] || 0, hash: T(r[3]), inv: T(r[4]), invU: +r[5] || 0, st: T(r[6]), last: +r[7] || 0 })).filter(x => x.n);
+  if (TRC && TRM) return TRM;            // v37: внутри одного запроса данных лист «Торговые» не меняется — читаем один раз
+  const s = trSheet(), n = s.getLastRow(); let r = [];
+  if (n >= 2) r = s.getRange(2, 1, n - 1, TR_HEAD.length).getValues().map((r, i) => ({ r: i + 2, n: T(r[0]), role: roleOf(r[1]), ver: +r[2] || 0, hash: T(r[3]), inv: T(r[4]), invU: +r[5] || 0, st: T(r[6]), last: +r[7] || 0 })).filter(x => x.n);
+  if (TRC) TRM = r; return r;
 }
 function findTrader(name, list) { const l = (list || readTraders()).filter(x => same(x.n, name)); return l.length == 1 ? l[0] : null }   // одинаковые имена — профиль не определён
 const active = x => !!(x.hash && x.st != 'revoked');
@@ -487,13 +528,38 @@ function saveOrder(o0, ctx) {            // создание заявки (по�
   if (ix >= 0) { const owner = T(s.getRange(ix + 2, 3).getValue());
     if (!owner) return no('no_owner'); if (!same(owner, w.name) && !(adm && (o.ed || (as && same(owner, as))))) return no('not_owner');   // чужую заявку правит только администратор; заявку без владельца не меняет никто. Повтор создания «от имени» — лечим
     return o.ed ? editOrder(s, ix + 2, o, adm, w.name, bed, as) : healOrder(s, ix + 2) }
-  if (as && !same(as, w.name)) { o.trader = as; o.by = w.name }                    // v36: владелец — выбранный торговый; кто оформил на самом деле — в JSON (by) и в журнале («Изменил»)
+  const proxy = !!(as && !same(as, w.name)); if (proxy) { o.trader = as; o.by = w.name }                    // v36: владелец — выбранный торговый; кто оформил на самом деле — в JSON (by) и в журнале («Изменил»)
   const r = upShop(o.h.s, o.h.c, o.h.a, o.h.sid), sid = shopIdAt(r), ts = o.ts;
   o.h.sid = sid;
   ap(s, [new Date(), o.id, o.trader, o.h.d, o.h.c, o.h.s, o.h.a, vat(o), o.disc, o.sum, o.text, JSON.stringify(o), '', '', sid, ts]);
   jlog({ id: 'oc:' + o.id, shop: o.h.s, sid, who: o.trader, by: o.by || '', kind: 'order_create', val: o.sum, nt: 'на ' + o.h.d, ts, oid: o.id });
+  if (!proxy) autoVisit(o.trader, o.id, o.h.s, sid, ts);   // v37: заявка = визит «Взяли заказ» (оформленная администратором «от имени» — не визит)
   recalcShops([sid]);
   return { ok: 1, applied: true, sid, tr: o.trader };
+}
+/* ---------- v37: автовизит «Взяли заказ» ---------- */
+const AV_RES = 'Взяли заказ', avId = oid => 'av_' + String(oid).slice(0, 61);   // ID без двоеточия: такой визит можно править и отменять обычными операциями
+const dayIn = ts => Utilities.formatDate(new Date(ts), SpreadsheetApp.getActive().getSpreadsheetTimeZone(), 'yyyy-MM-dd');
+function autoVisit(who, oid, shop, sid, ts) {   // повтор безопасен; отменённый вручную автовизит не воскрешается
+  if (!who || !sid) return;
+  const id = avId(oid), jr = readJournal(); if (jr.some(j => j.id == id)) return;
+  const day = dayIn(ts), mine = jr.filter(j => j.kind == 'visit' && !j.state && j.sid == sid && same(j.who, who) && dayIn(j.ts) == day);
+  if (mine.some(j => T(j.val) == AV_RES)) return;                                   // торговый уже отметил «Взяли заказ» сам — второй не нужен
+  mine.filter(j => T(j.val) == 'Заказа нет').forEach(j => visitChange(j, 'cancel', { by: who, opId: 'avr:' + oid, at: Date.now() }));   // заявка — факт: «Заказа нет» того же дня заменяется (остаётся в истории визита)
+  jlog({ id, shop, sid, who, kind: 'visit', val: AV_RES, nt: '', ts, oid });
+}
+function avSet(oid, act, by, ref) {       // заявку удалили (cancel) или вернули (restore); ref — время удаления (для ID операции)
+  const j = readJournal().find(y => y.id == avId(oid) && y.kind == 'visit'); if (!j) return;   // заявки до v37 автовизита не имеют
+  if (act == 'cancel') { if (!j.state && T(j.val) == AV_RES) visitChange(j, 'cancel', { by, opId: 'avc:' + oid + ':' + ref, at: Date.now() }); return }   // результат, который торговый поменял сам, не трогаем
+  let h = []; try { h = JSON.parse(j.hist) || [] } catch (_) {}
+  const last = h[h.length - 1];
+  if (j.state && last && /^avc:/.test(String(last.op))) visitChange(j, 'restore', { by, opId: 'avu:' + oid + ':' + ref, at: Date.now() });   // вернуть только то, что сняла сама заявка
+}
+function avFix(oid, f) {                  // правка заявки: автовизит остаётся с ней (точка, владелец, время)
+  const j = readJournal().find(y => y.id == avId(oid) && y.kind == 'visit'); if (!j || j.state || T(j.val) != AV_RES) return;
+  if (j.sid == f.sid && j.shop == f.shop && same(j.who, f.who) && j.ts == f.ts) return;
+  if (j.sid && j.sid != f.sid) { const old = readShops().find(x => x.id == j.sid); if (old && old.lv == j.ts && old.lb == AV_RES) wr(shopSheet(), old.r, 13, [['', '', '']]) }   // у прежней точки сводка «посл. визит» держалась на этом визите; без других визитов пересчёт её бы не стёр
+  const s = jSheet(); s.getRange(j.r, 3, 1, 3).setValues([[f.shop, f.sid, f.who]]); s.getRange(j.r, 9).setValue(f.ts);
 }
 function healOrder(s, row) {             // повторный запрос создания: ничего не дублируем, дописываем недостающее и пересчитываем
   const v = s.getRange(row, 1, 1, 16).getValues()[0]; let o = {}; try { o = JSON.parse(v[11]) || {} } catch (_) {}
@@ -501,7 +567,8 @@ function healOrder(s, row) {             // повторный запрос со
   if (!sid) { const h = o.h || {}; sid = shopIdAt(upShop(h.s || v[5], h.c || v[4], h.a || v[6], h.sid)) }
   if (!ts) ts = +o.ts || ms(v[0]);
   s.getRange(row, 15, 1, 2).setValues([[sid, ts]]);
-  if (!hasLog('oc:' + v[1])) jlog({ id: 'oc:' + v[1], shop: T(v[5]), sid, who: T(v[2]), kind: 'order_create', val: +v[9] || 0, nt: 'на ' + dstr(o.h && o.h.d || v[3]), ts, oid: T(v[1]) });
+  if (!hasLog('oc:' + v[1])) { jlog({ id: 'oc:' + v[1], shop: T(v[5]), sid, who: T(v[2]), kind: 'order_create', val: +v[9] || 0, nt: 'на ' + dstr(o.h && o.h.d || v[3]), ts, oid: T(v[1]) });
+    if (!o.by && !((+v[13] || 0) || isD(v[12]))) autoVisit(T(v[2]), T(v[1]), T(v[5]), sid, ts) }   // v37: недостающий хвост прошлой попытки — и автовизит (удалённой и «от имени» заявке он не нужен)
   recalcShops([sid]);
   return { ok: 1, applied: true, dup: true, sid };
 }
@@ -528,6 +595,7 @@ function editOrder(s, row, o, adm, by, bed, as) { // заменяет содер
   if (nOwn != owner) wr(s, row, 3, [[nOwn]]);
   wr(s, row, 4, [[o.h.d, o.h.c, o.h.s, o.h.a, vat(o), o.disc, o.sum, o.text, JSON.stringify(o)]]);
   s.getRange(row, 15, 1, 2).setValues([[sid, ts]]); if (ts != created) setLogTs('oc:' + v[1], ts);   // событие «заявка создана» в ленте магазина переезжает на новую дату
+  avFix(T(v[1]), { sid, shop: o.h.s, who: nOwn, ts });   // v37: автовизит едет вместе с заявкой (другая точка, владелец, время)
   recalcShops([sid, oldSid]);                                                       // при переносе A→B пересчитываются оба магазина
   return same_ ? { ok: 1, applied: true, dup: true, sid, tr: nOwn } : { ok: 1, applied: true, sid, tr: nOwn };
 }
@@ -554,6 +622,7 @@ function setDeleted(id, ts, trader, at, now, adm) { // помечает заяв
     jlog(Object.assign({ id: 'od:' + v[1] + ':' + dts, kind: 'order_cancel', ts: dts }, ev));
     if (!cur) { s.getRange(row, 13).setValue(Utilities.formatDate(new Date(ts), SpreadsheetApp.getActive().getSpreadsheetTimeZone(), 'yyyy-MM-dd HH:mm') + ' · ' + trader);   // для людей; v34: и кто удалил — по нему администратор видит в «Недавно удалённых» чужие заявки, удалённые им
       s.getRange(row, 14).setValue(+ts) }                                           // для приложения (число, без часовых поясов)
+    avSet(T(v[1]), 'cancel', trader, dts);   // v37: заявки нет — автовизит «Взяли заказ» снимается (приложение спросит, как отметить визит)
     recalcShops([sid]); return { applied: true, dup: !!cur, del: dts };
   }
   if (!cur) { recalcShops([sid]); return { applied: true, dup: true, del: 0 } }      // уже не удалена
@@ -562,6 +631,7 @@ function setDeleted(id, ts, trader, at, now, adm) { // помечает заяв
   if (strict ? now - cur > lim : (at - cur > lim + UNDO_TOL || now - at > QUEUE_MAX)) return { applied: false, reason: 'expired', del: cur };
   jlog(Object.assign({ id: 'or:' + v[1] + ':' + cur, kind: 'order_restore', ts: strict ? now : at }, ev));
   s.getRange(row, 13, 1, 2).clearContent();
+  avSet(T(v[1]), 'restore', trader, cur);   // v37: вернули заявку — вернулся и автовизит, если его снимала не рука торгового
   recalcShops([sid]); return { applied: true, del: 0 };
 }
 
@@ -607,10 +677,10 @@ function upShop(n, c, a, id, ty) {           // находит магазин (�
   if (ty) s.getRange(s.getLastRow(), 16).setValue(String(ty));
   return s.getLastRow();
 }
-function shopOp(x, ctx) {                // правки магазинов: каждое поле проверяется; статус записывается от имени проверенного профиля
+function shopOp(x, ctx, ST) {                // правки магазинов: каждое поле проверяется; статус записывается от имени проверенного профиля
   if (!x || typeof x != 'object') return no('invalid', 'shop');
   const now = Date.now(), op = T(x.op), id = str(x.id, 64); if (id === null || (id && !ID_RE.test(id))) return no('invalid', 'id');
-  if (op == 'days' || op == 'owner' || op == 'vat' || op == 'geo' || op == 'geodel' || op == 'rday') return shopFieldOp(op, id, x, ctx, now);   // v35: rday — маршрут на день   // v31: поля маршрута, режима цен и места — каждое отдельной операцией; v32: geodel — удалить место (администратор)
+  if (op == 'days' || op == 'owner' || op == 'vat' || op == 'geo' || op == 'geodel' || op == 'rday') return shopFieldOp(op, id, x, ctx, now, ST);   // v35: rday — маршрут на день   // v31: поля маршрута, режима цен и места — каждое отдельной операцией; v32: geodel — удалить место (администратор)
   if (op == 'del') { if (!id) return no('invalid', 'id'); delShop(id); return yes() }
   const n = str(x.n, 120), c = str(x.c, 60), a = str(x.a, 300); if (!n) return no('invalid', 'name'); if (c === null || a === null) return no('invalid', 'address');
   const ty = str(x.ty, 30); if (ty === null || (ty && TYPES.indexOf(ty) < 0)) return no('invalid', 'ty');
@@ -634,10 +704,10 @@ function shopOp(x, ctx) {                // правки магазинов: к�
 }
 /* v31. Дни маршрута, ответственный, режим цен, место точки. Только по ID существующего магазина (новых не создаёт).
    Права: дни у точки с ответственным меняют он и администратор; свободную точку берёт любой, свою отдаёт сам, чужую передаёт только администратор */
-function shopFieldOp(op, id, x, ctx, now) {
+function shopFieldOp(op, id, x, ctx, now, ST) {   // ST — общее состояние серии rday в пачке (v37)
   if (ctx.legacy || !ctx.user) return no('trader_mismatch');
   if (!id) return no('invalid', 'id');
-  const list = readShops(), sp = list.find(y => y.id == id); if (!sp) return no('not_found');
+  const list = ST ? ST.list : readShops(), sp = list.find(y => y.id == id); if (!sp) return no('not_found');
   const s = shopSheet(), adm = ctx.role == 'admin', mine = !sp.ow || same(sp.ow, ctx.user);
   if (op == 'days') {
     const d = x.days; if (!Array.isArray(d) || d.length > 7 || d.some(i => !(Number.isInteger(i) && i >= 0 && i <= 6))) return no('invalid', 'days');
@@ -662,8 +732,10 @@ function shopFieldOp(op, id, x, ctx, now) {
     if (x.on !== true && x.on !== false) return no('invalid', 'on');
     const tr = str(x.tr, 40); if (!tr) return no('invalid', 'tr'); const t = findTrader(tr); if (!t) return no('unknown_trader');
     if (!same(t.n, ctx.user) && !adm) return no('forbidden');
+    const row = [d, t.n, sp.id, sp.n, x.on ? '+' : '−', ctx.user, now, rid];
+    if (ST) { if (ST.seen.has(rid)) return yes({ dup: true }); ST.seen.add(rid); ST.rows.push(row); return yes() }   // v37: в пачке строки пишутся одной записью в конце серии
     const rs = rdSheet(), n = rs.getLastRow(); if (n > 1 && rs.getRange(2, 8, n - 1, 1).getValues().some(r => T(r[0]) == rid)) return yes({ dup: true });
-    ap(rs, [d, t.n, sp.id, sp.n, x.on ? '+' : '−', ctx.user, now, rid]); return yes() }
+    ap(rs, row); return yes() }
   if (op == 'vat') { const m = T(x.m); if (m != 'vat' && m != 'net' && m !== '') return no('invalid', 'm'); wr(s, sp.r, 21, [[VM_TXT[m]]]); return yes({ vm: m }) }
   if (op == 'geo') {
     if (!rng(x.la, -90, 90) || !rng(x.ln, -180, 180) || (+x.la === 0 && +x.ln === 0)) return no('invalid', 'geo');   // 0,0 — признак «место не определилось», а не точка
@@ -987,4 +1059,4 @@ function sh(n) {                         // лист создаётся авто
     'Получатели': ['Имя', 'Телефон', 'Города (через запятую; пусто = все)', 'По умолчанию (да)'], 'Продвигать': PROMO_HEAD, 'Маршрут дня': RD_HEAD }[n]) }
   return s;
 }
-const out = o => ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON);
+const out = o => { if (T0 && o && typeof o == 'object' && !Array.isArray(o) && !o.error) o.t = { ms: Date.now() - T0, lw: LW }; return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON) };   // v37: t — время работы скрипта и ожидания блокировки (мс); в ответы с ошибкой не добавляется

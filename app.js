@@ -19,7 +19,7 @@ const DEMO = [['Финики','Финики FINDI caramel','150г','1704','1976'
 
 /* ============ 2. ХЕЛПЕРЫ И СОСТОЯНИЕ ============ */
 /* Версия сборки: должна совпадать с <meta name="ver"> в index.html. Если файлы на хостинге разных версий — покажем красную плашку. */
-const VER = '37.1';
+const VER = '37.2';
 const NEED = 36;   // нужная версия Code.gs на сервере
 { const m = document.querySelector('meta[name=ver]');
   if (!m || m.content != VER) document.body.insertAdjacentHTML('afterbegin', '<div style="background:#C82B27;color:#fff;padding:12px;font-weight:800">Файлы сайта разных версий. Загрузите ВСЕ файлы из архива заново (index.html, styles.css, app.js, sw.js) и обновите страницу дважды.</div>') }
@@ -301,20 +301,18 @@ function goHome() { if (needLogin()) return authView(); shMode = 'route'; rtDay 
 function todayInfo() { // v33: «Сегодня» в профиле — точки маршрута и свои заявки за сегодня
   try { const cur = base.filter(b => inToday(b)), t0 = dayMs(Date.now()), L = allHist().filter(x => !x.del && isMine(x) && dayMs(x.ts || 0) == t0);
     return { done: cur.filter(b => doneToday(b)).length, all: cur.length, n: L.length, sum: L.reduce((a, x) => a + nz(x.sum), 0) } } catch (e) { return null } }
-const uiSeg = (lbl, L, k, a) => `<b>${lbl}</b><div class="seg sg3">${L.map(([v, t]) => `<button data-a="${a}" data-v="${v}" class="${UI[k] == v ? 'on' : ''}">${t}</button>`).join('')}</div>`;
 function moreView() { openSheet('more', 'Профиль');   // v33: макет «Профиль» — карточка с именем и «Сегодня», плитки, вид, блок администратора, «Выйти»
   const tile = (a, ic, t, sub, cls) => `<button class="mtl${cls ? ' ' + cls : ''}" data-a="${a}"><span class="mti">${ico(ic, 22)}</span><span class="mtt"><b>${t}</b><span class="m">${sub}</span></span></button>`;
   const d = todayInfo(), adm2 = CFG.API_URL && tok && role == 'admin';
   const nq = qN(), card = !CFG.API_URL ? '' : tok && me ? `<div class="pfc"><span class="pfh"><span class="pfa">${esc(me.slice(0, 1).toUpperCase())}</span><span class="pft"><b>${esc(me)}</b><span>${role == 'admin' ? 'Администратор' : 'Торговый'}</span></span><button class="pfx" data-a="out">Выйти</button></span>${d ? `<span class="pfd">Сегодня: <b>${d.done} из ${d.all}</b> ${pl3(d.all, 'точки', 'точек', 'точек')} · <b>${d.n}</b> ${plZ(d.n)} · <em>${tg(d.sum)}</em></span>` : ''}${nq ? `<span class="pfd pfq">Ждут отправки: <b>${nq}</b>. Выйти можно после отправки: эти данные записаны от имени «${esc(me)}».</span>` : ''}</div>`   // v36: «Выйти» — в карточке; отдельного экрана «Профиль» больше нет
     : `<div class="pfc"><span class="pfh"><span class="pfa">${ico('user', 22)}</span><span class="pft"><b>Вход не выполнен</b><span>${qN() ? 'ждут отправки: ' + qN() : 'войдите, чтобы отправлять заявки'}</span></span></span><button class="send acc" data-a="auth">Войти</button></div>`;
   $('#sb').innerHTML = card + `<div class="mtg">${tile('drafts', 'folder', 'Черновики', drafts.length ? 'сохранено: ' + drafts.length : 'пока пусто', 'acc')}${tile('set', 'sliders', 'Настройки', 'города, прайс, данные')}</div>`
-    + `<div class="sum pfv">${uiSeg('Тема', TH, 'th', 'uith')}<p class="m thh">«Авто» — светлая или тёмная, как в настройках телефона</p>${uiSeg('Размер текста', FS, 'fs', 'uifs')}</div>`
     + (adm2 ? `<div class="pfs"><span>АДМИНИСТРАТОР</span></div><div class="mtg">${tile('adm', 'user', 'Доступ и профили', 'приглашения, роли, проверка', 'adm')}${srvV >= 31 ? tile('promo', 'star', 'Продвигать товары', promoL.length ? 'отмечено: ' + promoL.length : 'ничего не отмечено', 'adm') : ''}</div>` : '')
     + (standalone ? '' : `<button class="pfi" data-a="inst">${ico('plus', 20)}<span class="mtt"><b>Установить на главный экран</b><span class="m">значок приложения на телефоне</span></span></button>`)
     + `<div class="pff"><span class="pfl"><img src="logo.jpg" alt="Логотип Али-Баба"></span><span class="m">Али-Баба · версия ${VER}</span></div>`;
 }
 const needLogin = () => !!CFG.API_URL && !tok && !LS('pending');   // входа нет (не входили, вышли или сервер отозвал доступ); неотвеченный вопрос «Отправлено?» важнее экрана входа
-function closeSheet() { if (view == 'auth' && needLogin()) return; selMode = false; selSet = new Set();   // экран входа нельзя смахнуть: без входа приложением не пользуются
+function closeSheet() { if (view == 'auth' && needLogin()) return; saveSet(); selMode = false; selSet = new Set();   // экран входа нельзя смахнуть: без входа приложением не пользуются
   view = ''; editId = ''; admCode = null; document.body.classList.remove('sh'); navSync(); bar(); if (needLogin()) authView() }   // приглашение, показанное администратору, не переживает закрытия окна
 function drawRc() { // выбор получателя в шапке — такой же селектор, как город; автоподбор по городу, можно сменить
   const el = $('#rch'); if (!rcp.length) { el.hidden = true; return } const c = rcPick(); el.hidden = false;
@@ -465,6 +463,13 @@ const uiBlock = () => `<b>Тема</b><div class="seg sg3" style="margin:6px 0 4
   <b>Размер текста</b><div class="seg sg3" style="margin:6px 0 14px">${FS.map(([k, t]) => `<button data-a="uifs" data-v="${k}" class="${UI.fs == k ? 'on' : ''}">${t}</button>`).join('')}</div>
   <b>Каталог товаров</b><div class="seg sg3" style="margin:6px 0 8px">${CV.map(([k, t]) => `<button data-a="uicv" data-v="${k}" class="${UI.cv == k ? 'on' : ''}">${t}</button>`).join('')}</div>
   <p class="m" style="margin:0 0 4px">Меняется сразу и только на этом телефоне.</p>`;
+function saveSet() { // v37.2: города и запасной номер сохраняются при выходе из поля и при закрытии окна; пустой список городов не принимаем
+  const op = $('#op'), ct = $('#ct'); if (!op || !ct || view != 'set') return; let ch = false;
+  const o = op.value.trim() || CFG.OPERATOR, c = ct.value.split(',').map(x => x.trim()).filter(Boolean);
+  if (o != S.op) { S.op = o; ch = true }
+  if (c.length && c.join('|') != S.cities.join('|')) { S.cities = c; ch = true }
+  if (ch) { LS('set', S); cities() }   // cities() сама добавляет город текущей заявки, если его убрали из списка
+  op.value = S.op; ct.value = S.cities.join(', '); if (ch) toast('Сохранено') }
 function setUI(k, v) { UI[k] = v; LS('ui', UI); applyUI(); if (k == 'cv') { drawCv(); drawList() } if (view == 'set') setView(); if (view == 'more') moreView() }
 applyUI();
 function setView() {
@@ -478,8 +483,7 @@ function setView() {
   <details class="sc"><summary>Получатели</summary><p class="m" style="margin:0 0 8px;line-height:1.5">${rl}</p>
     <details class="mini"><summary>Запасной номер WhatsApp</summary><input id="op" inputmode="tel" value="${esc(S.op)}" placeholder="77001234567"><p class="m" style="margin:0">Используется, только если лист «Получатели» пуст. Код страны и номер, без + и пробелов.</p></details></details>
   <details class="sc"><summary>Данные</summary><p class="m" style="margin:0 0 4px">Черновики, избранное и неотправленное хранятся на этом устройстве. Файл поможет перенести их на новый телефон или на другой адрес сайта.</p><button class="ghost" data-a="bak">${ico('down', 18)} Сохранить данные устройства (файл)</button><button class="ghost" data-a="imp">${ico('up', 18)} Загрузить данные из файла</button><input type="file" id="impf" accept=".json,application/json" hidden></details>
-  <details class="sc"><summary>Служебная информация</summary><div class="m" style="font-size:13px;line-height:1.5">Версия: ${VER}${CFG.API_URL ? ' · Code.gs: ' + (srvV || 'не определена') + (srvV && srvV < NEED ? ' (устарел!)' : '') : ''} · адрес: ${esc(location.origin)}<br>Товаров: ${P.length} (с ценой с НДС: ${P.filter(p => p.pv).length}, без НДС: ${P.filter(p => p.pn).length})<br>Режим цен: ${S.mode == 'vat' ? 'с НДС' : 'без НДС'}<br>${CFG.API_URL ? `База: ${syncErr ? 'ошибка: ' + esc(lastErr) : 'подключена'} · торговых в списке: ${trs.length} · профиль: ${esc(me || 'не выбран')}<br>Ждут отправки: заявок ${outbox.length}, правок магазинов ${shopq.length}, визитов ${visq.length}<br>Последняя ошибка синхронизации: ${errL ? ft(errL.t) + ' — ' + esc(errL.m) + (errL.q ? ' (в очереди было ' + errL.q + ')' : '') : 'не было'}` : 'База заявок не подключена (API_URL пуст)'}</div><button class="ghost" data-a="dgtg">Диагностика (временная): ${LS('diag') ? 'открыть отчёт' : 'включить'}</button></details>
-  <button class="send" data-a="ss">Сохранить</button>`;
+  <details class="sc"><summary>Служебная информация</summary><div class="m" style="font-size:13px;line-height:1.5">Версия: ${VER}${CFG.API_URL ? ' · Code.gs: ' + (srvV || 'не определена') + (srvV && srvV < NEED ? ' (устарел!)' : '') : ''} · адрес: ${esc(location.origin)}<br>Товаров: ${P.length} (с ценой с НДС: ${P.filter(p => p.pv).length}, без НДС: ${P.filter(p => p.pn).length})<br>Режим цен: ${S.mode == 'vat' ? 'с НДС' : 'без НДС'}<br>${CFG.API_URL ? `База: ${syncErr ? 'ошибка: ' + esc(lastErr) : 'подключена'} · торговых в списке: ${trs.length} · профиль: ${esc(me || 'не выбран')}<br>Ждут отправки: заявок ${outbox.length}, правок магазинов ${shopq.length}, визитов ${visq.length}<br>Последняя ошибка синхронизации: ${errL ? ft(errL.t) + ' — ' + esc(errL.m) + (errL.q ? ' (в очереди было ' + errL.q + ')' : '') : 'не было'}` : 'База заявок не подключена (API_URL пуст)'}</div><button class="ghost" data-a="dgtg">Диагностика (временная): ${LS('diag') ? 'открыть отчёт' : 'включить'}</button></details>`;   // v37.2: кнопки «Сохранить» нет — города и запасной номер сохраняются сами (saveSet), как и всё остальное в настройках
 }
 
 /* ============ 6б. РЕЖИМ ЦЕН (с НДС / без НДС) ============ */
@@ -1010,6 +1014,7 @@ function drawToday(L) {
   const cur = L.filter(b => inToday(b)).sort(byName), done = cur.filter(b => doneToday(b)).sort((a, b) => tcl(a) - tcl(b)), ext = offRoute(L, cur).sort((a, b) => tcl(a) - tcl(b));
   const todo = cur.filter(b => !doneToday(b)).sort((a, b) => deferred(a) - deferred(b)), gk = goKey(), gb = gk ? todo.find(b => skey(b) == gk) || null : null;
   const last = GO.d == today() && GO.k ? L.find(b => skey(b) == GO.k) : null, lastDone = last && !gb && (doneToday(last) || (GO.df && deferred(last))) ? last : null;
+  rAll = todo.map(skey);   // v37.2: для «Убрать все с сегодня»
   const rest = todo.filter(b => b !== gb), live = rest.filter(b => !deferred(b)), pct = cur.length ? Math.round(done.length / cur.length * 100) : 0;
   const addr = b => esc([b.a, b.c].filter(Boolean).join(' · ') || 'без адреса'), who = b => b.lw && norm(b.lw) != norm(me) ? ' · ' + esc(b.lw) : '';
   const lc = t => t ? t[0].toLowerCase() + t.slice(1) : '', oBy = b => { const o = allHist().find(x => !x.del && isToday(x.ts) && x.h && (b.id ? x.h.sid == b.id : norm(x.h.s) == norm(b.n))); const t = o ? trOf(o) : ''; return t && norm(t) != norm(me) ? ' · ' + esc(t) : '' }, psub = b => visDone(b) && !(isToday(b.lo) && b.lo >= b.lv) ? 'Визит ' + hhmm(b.lv) + ' · ' + esc(lc(b.lb)) + who(b) : 'Заявка ' + hhmm(b.lo) + oBy(b);   // v33: как в макете — «Заявка 11:40», «Визит 10:20 · взяли заказ»; v37: автовизит «Взяли заказ» создаётся вместе с заявкой (одинаковое время) — показываем заявку
@@ -1036,7 +1041,7 @@ function drawToday(L) {
   h += rest.map(b => { const k = esc(skey(b)), df = deferred(b), sl = selMode && selSet.has(skey(b));
     if (selMode) return tl(`<span class="tn ${df ? 'df' : 'nx'}"></span>`, `<div class="tlb"><button class="rrow rsl${df ? ' df' : ''}${sl ? ' on' : ''}" data-a="rsel" data-v="${k}" role="checkbox" aria-checked="${sl}"><span class="rck">${sl ? ico('check', 18) : ''}</span><span class="rrt"><b>${esc(b.n)}</b><span class="m">${df ? dfs(b) : esc(b.a || b.c || 'без адреса') + (b.fq ? ' · есть вопрос' : '')}</span></span></button></div>`);
     return tl(`<span class="tn ${df ? 'df' : 'nx'}"></span>`, `<div class="tlb"><button class="rrow${df ? ' df' : ''}" data-a="rgo" data-v="${k}"><span class="rrt"><b>${esc(b.n)}</b><span class="m">${df ? dfs(b) : esc(b.a || b.c || 'без адреса') + (b.fq ? ' · есть вопрос' : '')}</span></span><span class="rgo">Еду сюда${ico('chev', 20)}</span></button>${df ? `<button class="ghost rno" data-a="rrm" data-v="${k}"><span>Не зайду сегодня</span></button>` : ''}</div>`) }).join('');
-  h += `</div>${selMode ? `<div class="selbar" role="toolbar"><b class="selc" aria-label="Выбрано: ${selSet.size}">${selSet.size}</b><button class="ok" data-a="rselrm"${selSet.size ? '' : ' disabled'}>Убрать с сегодня</button><button class="ghost2" data-a="rselx">Отмена</button></div>` : ''}<button class="ghost radd" data-a="radd">${ico(rtAdd ? 'x' : 'plus', 18)} ${rtAdd ? 'Скрыть список для добавления' : 'Добавить точку на сегодня'}</button>`;
+  h += `</div>${selMode ? `<div class="selbar" role="toolbar"><b class="selc" aria-label="Выбрано: ${selSet.size}">${selSet.size}</b><button class="ok" data-a="rselrm"${selSet.size ? '' : ' disabled'}>Убрать с сегодня</button><button class="ghost2" data-a="rselx">Отмена</button></div>` : ''}${!selMode && todo.length > 1 ? `<button class="ghost rall" data-a="rallrm">Убрать все с сегодня · ${todo.length}</button>` : ''}<button class="ghost radd" data-a="radd">${ico(rtAdd ? 'x' : 'plus', 18)} ${rtAdd ? 'Скрыть список для добавления' : 'Добавить точку на сегодня'}</button>`;
   $('#shl').innerHTML = h;
   const w = document.getElementById('shaw'); if (w) w.hidden = !rtAdd;
   const pick = (b, tags) => `<button class="shi" data-a="rpick" data-v="${esc(skey(b))}"><div style="flex:1;min-width:0"><b>${esc(b.n)}</b><div class="m">${addr(b)}</div>${tags ? `<div class="tg">${tags.map(t => `<span>${esc(t)}</span>`).join('')}</div>` : ''}</div><span class="pl add">+ добавить</span></button>`;
@@ -1276,6 +1281,11 @@ function shopNew(nm) {
 }
 
 /* v37. Режим выбора точек в маршрутном листе: долгое нажатие на точку → галочки → «Убрать с сегодня (N)». Выход: «Отмена», «назад» телефона, закрытие страницы */
+let rAll = [];
+async function allRemove() { const n0 = rAll.map(shopById).filter(x => x && !doneToday(x)).length; if (!n0) return;   // v37.2: все ещё не пройденные точки (и «Еду сюда», и отложенные); пройденные остаются
+  if (!await ask('Убрать все точки с сегодня?\nБудет убрано: ' + n0 + ' ' + pl3(n0, 'точка', 'точки', 'точек') + '. Пройденные останутся. Сразу после можно нажать «Отменить».', 'Убрать все', 'Не убирать', true)) return;
+  const xs = rAll.map(shopById).filter(x => x && !doneToday(x)); if (!xs.length) return; xs.forEach(x => setToday(x, false)); selExit(false); drawShops();   // список могли обновить, пока висел вопрос
+  toast('Изменено: убрано из листа на сегодня — ' + xs.length + ' ' + pl3(xs.length, 'точка', 'точки', 'точек'), () => { xs.forEach(x => setToday(x, true)); if (view == 'shops') drawShops() }) }
 function selExit(redraw = true) { if (!selMode && !selSet.size) return; selMode = false; selSet = new Set(); if (redraw && (view == 'shops' || view == 'rplan')) drawShops() }
 function selStart(k) { if (selMode || rtDay >= 0 || !k || (view != 'shops' && view != 'rplan') || !shopById(k)) return; selMode = true; selSet = new Set([k]); try { navigator.vibrate && navigator.vibrate(15) } catch (_) {} drawShops() }
 function selRemove() { const xs = [...selSet].map(shopById).filter(Boolean); if (!xs.length) return selExit(); xs.forEach(x => setToday(x, false)); selExit(false); drawShops();
@@ -1296,6 +1306,7 @@ document.addEventListener('click', async e => {   // async: вопросы (ask)
   if (a == 'rsel') { if (selSet.has(v)) selSet.delete(v); else selSet.add(v); if (!selSet.size) selMode = false; return drawShops() }
   if (a == 'rselx') return selExit();
   if (a == 'rselrm') return selRemove();
+  if (a == 'rallrm') return allRemove();
   if (a == 'dlg') { if (dlgDone) dlgDone(+v); return }
   if (/^(nroute|nmain|nmore|hopen)$/.test(a) && view == 'auth' && needLogin()) return;   // без входа разделы не открываются
   if (a == 'nroute') return goHome(); if (a == 'nmain') { closeSheet(); drawList(); return } if (a == 'nmore') return moreView();
@@ -1504,11 +1515,11 @@ document.addEventListener('click', async e => {   // async: вопросы (ask)
     else { if (m) VATP[k] = m; else delete VATP[k]; LS('vatp', VATP) } shopCard(k); cSaved('Цены для магазина: ' + (m ? ML[m] : 'по последней заявке')) }
   else if (a == 'uicv') { if (CV.some(t => t[0] == v)) setUI('cv', v) }
   else if (a == 'cv') setUI('cv', UI.cv == 'list' ? 'grid' : 'list')
-  else if (a == 'ss') { S.op = $('#op').value.trim() || CFG.OPERATOR; S.cities = $('#ct').value.split(',').map(s => s.trim()).filter(Boolean); LS('set', S); cities(); closeSheet() }
   else if (a == 'rl') { load(); closeSheet() }
   else if (a == 'bak') exportBackup(); else if (a == 'imp') $('#impf').click()
 });
 document.addEventListener('change', e => { const t = e.target;
+  if (t.id == 'ct' || t.id == 'op') return saveSet();   // v37.2
   if (t.dataset.q !== undefined) { const p = find(t.dataset.q); if (!p) return; let v = num(t.value), m = '';   // v36.3: ввод количества — те же границы, что у сервера
     if (v < 0) { v = 0 } if (v > QMAX) { v = QMAX; m = 'Не больше 100 000 ' + p.u } else if (!frac(p) && v != Math.round(v)) { v = Math.max(1, Math.round(v)); m = 'В «' + p.u + '» — только целые: ' + v + ' ' + p.u }
     setQ(p, v); if (m) toast(m) }

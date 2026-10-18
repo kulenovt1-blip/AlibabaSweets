@@ -19,7 +19,7 @@ const DEMO = [['Финики','Финики FINDI caramel','150г','1704','1976'
 
 /* ============ 2. ХЕЛПЕРЫ И СОСТОЯНИЕ ============ */
 /* Версия сборки: должна совпадать с <meta name="ver"> в index.html. Если файлы на хостинге разных версий — покажем красную плашку. */
-const VER = '37.3';
+const VER = '37.4';
 const NEED = 36;   // нужная версия Code.gs на сервере
 { const m = document.querySelector('meta[name=ver]');
   if (!m || m.content != VER) document.body.insertAdjacentHTML('afterbegin', '<div style="background:#C82B27;color:#fff;padding:12px;font-weight:800">Файлы сайта разных версий. Загрузите ВСЕ файлы из архива заново (index.html, styles.css, app.js, sw.js) и обновите страницу дважды.</div>') }
@@ -290,7 +290,7 @@ function unsnap(z) { cart = JSON.parse(z.cart); disc = z.disc; eo = z.eo; eob = 
 /* ============ 6. ШТОРКА: корзина, история, настройки ============ */
 /* Разделы (нижняя панель): Маршрут / Заявка / История / Профиль (v33: бывшее «Ещё»). Страница раздела открывается поверх каталога; кнопка «Назад» ведёт на уровень выше */
 const TAB = { shops: 'route', rplan: 'route', rall: 'route', shopc: 'route', shop: 'route', shopn: 'route', hist: 'hist', hd: 'hist', more: 'more', set: 'more', adm: 'more', dr: 'more', cart: 'main', promo: 'more' };
-const BACK = { shopc: () => shopsView(), shop: () => shopCard(skey(eSh)), shopn: () => shopsView(), rplan: () => { rtAdd = false; shopsView() }, rall: () => shopsView(), hd: () => histView(),
+const BACK = { shopc: () => shopsView(), shop: () => shopCard(skey(eSh)), shopn: () => shopsView(), rplan: () => { rtAdd = false; shopsView() }, rall: () => shopsView(), pick: () => pkBack(), hd: () => histView(),
   set: () => moreView(), promo: () => moreView(), dr: () => moreView(), adm: () => moreView(), cart: () => { closeSheet(); drawList() } };
 function navSync() { const t = view ? TAB[view] || '' : 'main';
   document.querySelectorAll('.bn button').forEach(b => b.classList.toggle('on', b.dataset.t == t));
@@ -477,7 +477,7 @@ function setView() {
   const rl = rcp.length ? rcp.map(r => esc(r.n) + (r.c.length ? ' (' + esc(r.c.join(', ')) + ')' : '') + (r.d ? ' ★' : '') + ' · ' + esc(r.p)).join('<br>') + '<br><span class="m">Список ведётся на листе «Получатели» таблицы и общий для всех. Выбирается получатель на главном экране.</span>' : CFG.API_URL ? 'Список пуст: заполните лист «Получатели» (имя, телефон, города, по умолчанию). Пока заявки уходят на запасной номер.' : 'Общая база не подключена — заявки уходят на запасной номер.';
   $('#sb').innerHTML = `
   <details class="sc" open><summary>Вид</summary>${uiBlock()}</details>
-  ${role == 'admin' && rdSrv() ? `<details class="sc" open><summary>Общий маршрут</summary><p class="m" style="margin:0 0 8px">Маршруты всех торговых на любой день: «Маршрут» → «Общий маршрут». Вам он виден всегда.</p><div class="seg">${[[1, 'Виден торговым'], [0, 'Только администраторам']].map(([k, t]) => `<button data-a="shrt" data-v="${k}" class="${+cfgShare == k ? 'on' : ''}">${t}</button>`).join('')}</div></details>` : ''}
+  ${role == 'admin' && rdSrv() ? `<details class="sc" open><summary>Общий маршрут</summary><p class="m" style="margin:0 0 8px">Маршруты всех торговых на ближайшие 2 недели: «Маршрут» → «Другой день» → «Все». Вам он виден всегда.</p><div class="seg">${[[1, 'Виден торговым'], [0, 'Только администраторам']].map(([k, t]) => `<button data-a="shrt" data-v="${k}" class="${+cfgShare == k ? 'on' : ''}">${t}</button>`).join('')}</div></details>` : ''}
   <details class="sc"><summary>Города и прайс</summary><b>Города (через запятую)</b><input id="ct" value="${esc(S.cities.join(', '))}"><button class="ghost" data-a="rl">Обновить прайс</button>${standalone ? '' : `<button class="ghost" data-a="inst">${ico('plus', 18)} Установить на главный экран</button>`}</details>
   <details class="sc"><summary>Получатели</summary><p class="m" style="margin:0 0 8px;line-height:1.5">${rl}</p>
     <details class="mini"><summary>Запасной номер WhatsApp</summary><input id="op" inputmode="tel" value="${esc(S.op)}" placeholder="77001234567"><p class="m" style="margin:0">Используется, только если лист «Получатели» пуст. Код страны и номер, без + и пробелов.</p></details></details>
@@ -840,43 +840,48 @@ function dueInfo(b) { // почему магазин попал в список 
   }
   return tags.length ? { tags, sc } : null;
 }
+function shFilt() { // v37.4: поиск, «Что с точкой», статус, город/тип/район и список — общие для «Все магазины» и выбора точек в маршрут
+  const cs = [...new Set([...S.cities, ...base.map(b => b.c)].filter(Boolean))];   // v33: «Все магазины» — вариант Б (DECISIONS п. 49, 53)
+  const cityF = cs.length > 1 ? `<select id="shc" aria-label="Город"><option value="">Все города</option>${cs.map(c => `<option ${c == shCity ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>` : '';
+  return `<div class="shsr"><div class="sf"><span class="si">${ico('search', 18)}</span><input id="shq" type="search" placeholder="Имя, адрес, район" aria-label="Найти магазин: название, адрес или район" value="${esc(shQ)}"></div><button class="ghost shnew" data-a="shn">${ico('plus', 18)} Новый</button></div>
+  <div id="shf"></div>
+  <div class="sfl">${cityF}<select id="sht" aria-label="Тип точки"><option value="">Любой тип</option>${TY.map(t => `<option ${t == shT ? 'selected' : ''}>${t}</option>`).join('')}</select>${(() => { const r = rgList(shCity); if (shRg && !r.some(x => norm(x) == norm(shRg))) shRg = ''; return r.length ? `<select id="shr" aria-label="Район"><option value="">Все районы</option>${r.map(x => `<option ${norm(x) == norm(shRg) ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select>` : '' })()}</div>
+  <div id="shl"></div>`;
+}
 function shopsView() { // раздел «Маршрут»: лист на сегодня или справочник «Все магазины»
   const route = shMode == 'route'; if (route) { rtDay = -1 } if (shCity === null) shCity = H.c || '';
   openSheet('shops', route ? 'Маршрут' : 'Магазины');
   if (route) { const sh = document.getElementById('sheet'); if (sh) sh.classList.add('hero');   // v33: у маршрута своя крупная шапка (DECISIONS п. 52)
-    $('#sb').innerHTML = `<div id="shl"></div><div id="shaw" class="shaw" hidden><input id="shq" type="search" placeholder="Добавить: название, адрес или район" value="${esc(shQ)}"><div id="sha"></div></div><div id="shx"></div>`; return drawShops() }
-  const cs = [...new Set([...S.cities, ...base.map(b => b.c)].filter(Boolean))];   // v33: «Все магазины» — вариант Б (DECISIONS п. 49, 53)
-  const cityF = cs.length > 1 ? `<select id="shc" aria-label="Город"><option value="">Все города</option>${cs.map(c => `<option ${c == shCity ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>` : '';
-  $('#sb').innerHTML = `<div class="seg" style="margin-bottom:12px">${[['route', 'На сегодня'], ['all', 'Все магазины']].map(([k, t]) => `<button data-a="shm" data-v="${k}" class="${shMode == k ? 'on' : ''}">${t}</button>`).join('')}</div>
-  <div class="shsr"><div class="sf"><span class="si">${ico('search', 18)}</span><input id="shq" type="search" placeholder="Имя, адрес, район" aria-label="Найти магазин: название, адрес или район" value="${esc(shQ)}"></div><button class="ghost shnew" data-a="shn">${ico('plus', 18)} Новый</button></div>
-  <div id="shf"></div>
-  <div class="sfl">${cityF}<select id="sht" aria-label="Тип точки"><option value="">Любой тип</option>${TY.map(t => `<option ${t == shT ? 'selected' : ''}>${t}</option>`).join('')}</select>${(() => { const r = rgList(shCity); if (shRg && !r.some(x => norm(x) == norm(shRg))) shRg = ''; return r.length ? `<select id="shr" aria-label="Район"><option value="">Все районы</option>${r.map(x => `<option ${norm(x) == norm(shRg) ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select>` : '' })()}</div>
-  <div id="shl"></div>`;
+    $('#sb').innerHTML = `<div id="shl"></div><div id="shx"></div>`; return drawShops() }
+  $('#sb').innerHTML = `<div class="seg" style="margin-bottom:12px">${[['route', 'На сегодня'], ['all', 'Все магазины']].map(([k, t]) => `<button data-a="shm" data-v="${k}" class="${shMode == k ? 'on' : ''}">${t}</button>`).join('')}</div>` + shFilt();
   drawShops();
 }
 /* v35. «Общий маршрут» — маршруты всех торговых на любой день (и прошлые): по блокам торговых + «Свободные точки» (без ответственного — в маршруте у всех).
    Точки дня — по дням маршрута и ответственному (b.rw, b.ow) плюс правки дня (лист «Маршрут дня»); «пройдено» — визиты и заявки этого дня с сервера (q: 'route').
    Для прошлых дней точки считаются по ТЕКУЩИМ дням маршрута (истории дней нет). Администратор добавляет и убирает точки торговым на сегодня и вперёд. Торговым раздел виден, если администратор не выключил его в настройках */
-let rgD = '', rgC = {}, rgBusy = '', rgAdd = '', rgQ = '', cfgShare = LS('cfgsh') !== false;   // rgD — выбранный день; rgC — данные дня с сервера; rgAdd — у какого торгового открыт поиск «+ Добавить точку»
+let rgD = '', rgC = {}, rgBusy = '', rgTr = '', cfgShare = LS('cfgsh') !== false;   // v37.4: rgTr — чей маршрут: '' — мой, имя торгового, '*' — все. «Другой день»: от завтра до сегодня + PDMAX
+const PDMAX = 14, addD = (d, n) => { const [y, m, dd] = d.split('-').map(Number); return locIso(new Date(y, m - 1, dd + n, 12).getTime()) };   // rgD — выбранный день; rgC — данные дня с сервера
 const rgOk = () => rdSrv();   // v36.5: раздел открыт всем: торговый планирует свои точки (вперёд), а чужие видит, только если администратор открыл общий маршрут
 const rgAll = () => role == 'admin' || cfgShare;
 const dayB = d => { const [y, m, dd] = d.split('-').map(Number); const a = new Date(y, m - 1, dd).getTime(); return [a, new Date(y, m - 1, dd + 1).getTime()] };
 async function loadRg(d, force) { if (rgBusy || !rgOk() || !tok) return; const c = rgC[d]; if (!force && c && Date.now() - c.at < (c.err ? 15e3 : 6e4)) return;
   if (!navigator.onLine) { rgC[d] = { at: Date.now(), err: 'нет связи' }; return }
   rgBusy = d; const [from, to] = dayB(d); try { const r = await call({ q: 'route', d, from, to }); rgC[d] = r && r.ok ? { at: Date.now(), rd: safeA(r.rd), ev: safeA(r.ev) } : { at: Date.now(), err: 'сервер не отдал маршрут' } }
-  catch (e) { rgC[d] = { at: Date.now(), err: e && e.message || 'ошибка' } } finally { rgBusy = '' } afterTouch('rg', () => { if (view == 'rall') rgView() }) }
+  catch (e) { rgC[d] = { at: Date.now(), err: e && e.message || 'ошибка' } } finally { rgBusy = '' } afterTouch('rg', () => { if (view == 'rall') rgView(); else if (view == 'pick') drawShops() }) }
 const safeA = a => Array.isArray(a) ? a.filter(x => x && typeof x == 'object') : [];
 function rgOn(tr, d, id) { const c = rgC[d]; let v; (c && c.rd ? c.rd : RDS.filter(r => r.d == d)).forEach(r => { if (r.sid == id && norm(r.tr) == norm(tr)) v = !!r.on });
   shopq.forEach(q => { if (q.op == 'rday' && q.d == d && q.id == id && norm(q.tr) == norm(tr)) v = !!q.on }); return v }   // правка дня: true / false / undefined (нет)
 function rgView(top) {   // v37: при перерисовке на том же экране прокрутка сохраняется (раньше уходила в начало); top — новый день, начать сверху
   const sh1 = document.getElementById('sheet'), keep = !top && view == 'rall' && sh1 ? sh1.scrollTop : 0;
-  openSheet('rall', rgAll() ? 'Общий маршрут' : 'Мой маршрут по дням'); const t0 = today(); if (!rgD) rgD = t0; const d = rgD, wd = wdOfD(d), c = rgC[d]; loadRg(d);
-  const adm = role == 'admin', edTr = tr => d >= t0 && (adm || (!!me && norm(tr) == norm(me))), T = (rgAll() ? [...new Set([...trs, me].filter(Boolean))] : [me].filter(Boolean)).sort((a, b) => a.localeCompare(b, 'ru')), L = base.filter(b => b.id);   // v36.5: правит свой блок каждый (на сегодня и вперёд), любой — администратор
+  openSheet('rall', 'Другой день'); const t0 = today(), dMin = rgAll() ? t0 : addD(t0, 1), dMax = addD(t0, PDMAX); if (!rgD || rgD < dMin) rgD = dMin; if (rgD > dMax) rgD = dMax;   // v37.4: «Другой день» — от завтра на 14 дней вперёд; тем, кто видит чужие маршруты (администратор и торговые при включённом «Виден торговым»), доступен ещё и сегодня — ход дня других торговых
+  const d = rgD, wd = wdOfD(d), c = rgC[d]; loadRg(d);
+  const adm = role == 'admin', edTr = tr => d >= t0 && (adm || (!!me && norm(tr) == norm(me))), Tall = (rgAll() ? [...new Set([...trs, me].filter(Boolean))] : [me].filter(Boolean)).sort((a, b) => a.localeCompare(b, 'ru')),
+    T = rgTr == '*' && rgAll() ? Tall : rgTr && rgAll() && Tall.some(t => norm(t) == norm(rgTr)) ? Tall.filter(t => norm(t) == norm(rgTr)) : Tall.filter(t => norm(t) == norm(me)), L = base.filter(b => b.id);   // v36.5: правит свой блок каждый (на сегодня и вперёд), любой — администратор
   const ev = c && c.ev ? c.ev : [], evOf = (id, tr) => ev.filter(x => x.sid == id && (!tr || norm(x.who) == norm(tr))).sort((p, q) => p.ts - q.ts);
   const plan = tr => { const own = L.filter(b => b.ow && norm(b.ow) == norm(tr) && inWeek(b, wd)), add = L.filter(b => !own.includes(b) && rgOn(tr, d, b.id) === true);
     return { pts: own.filter(b => rgOn(tr, d, b.id) !== false).concat(add).sort((p, q) => p.n.localeCompare(q.n, 'ru')), add, out: own.filter(b => rgOn(tr, d, b.id) === false) } };
-  const P = {}; T.forEach(t => { P[t] = plan(t) });
-  const taken = new Set(T.flatMap(t => P[t].add.map(b => b.id))), free = L.filter(b => !b.ow && inWeek(b, wd) && !taken.has(b.id)).sort((p, q) => p.n.localeCompare(q.n, 'ru'));
+  const P = {}; Tall.forEach(t => { P[t] = plan(t) });
+  const taken = new Set(Tall.flatMap(t => P[t].add.map(b => b.id))), free = L.filter(b => !b.ow && inWeek(b, wd) && !taken.has(b.id)).sort((p, q) => p.n.localeCompare(q.n, 'ru'));
   const lc = t => t ? t[0].toLowerCase() + t.slice(1) : '', pend = (b, tr) => shopq.some(q => q.op == 'rday' && q.id == b.id && q.d == d && norm(q.tr) == norm(tr)) ? ' · ждёт отправки' : '';
   const st = (b, tr) => { const e = evOf(b.id, tr), cl = e.filter(x => x.k == 'o' || !DEFER.includes(x.val)), x = cl.length ? cl[cl.length - 1] : e[e.length - 1]; return x ? { x, done: !!cl.length } : null };   // последнее закрывающее (заявка / визит), иначе — отложенное
   const sub = (x, tr) => (x.k == 'o' ? 'Заявка ' + hhmm(x.ts) : 'Визит ' + hhmm(x.ts) + ' · ' + esc(lc(x.val || ''))) + (tr ? '' : ' · ' + esc(x.who));
@@ -890,17 +895,18 @@ function rgView(top) {   // v37: при перерисовке на том же 
     return `<section class="rgs"><div class="rgh"><div class="rgw"><b>${esc(tr)}${norm(tr) == norm(me) ? ' <small>(вы)</small>' : ''}</b><span class="m">${p.pts.length ? p.pts.length + ' ' + pl3(p.pts.length, 'точка', 'точки', 'точек') : 'своих точек нет · свободные — внизу'}</span></div>${p.pts.length ? `<div class="rcn"><b>${done.length}<span>/${p.pts.length}</span></b><small>пройдено${ext.length ? ' · +' + ext.length + ' вне' : ''}</small></div>` : ''}</div>${p.pts.length ? `<div class="pbar"><span style="width:${pct}%"></span></div>` : ''}
       <div class="tline">${done.map(b => pt(b, tr, p.add.includes(b) ? ' · на этот день' : '')).join('')}${ext.map(b => pt(b, tr, ' · вне маршрута')).join('')}${todo.map(b => pt(b, tr, p.add.includes(b) ? ' · на этот день' : '', edit ? rm(b, tr) : '')).join('')}
       ${edit ? p.out.map(b => tl('<span class="tn nx"></span>', `<div class="tlb rgr"><div class="rrow rgo2"><span class="rrt"><b>${esc(b.n)}</b><span class="m">убрана на этот день</span></span><button class="ghost wkx" data-a="rgadd" data-v="${esc(b.id)}" data-t="${esc(tr)}">${ico('plus', 16)}<span>Вернуть</span></button></div></div>`)).join('') : ''}</div>
-      ${edit ? (rgAdd == tr ? `<div class="rga"><input id="rgq" type="search" placeholder="Название, адрес или район" value="${esc(rgQ)}"><div id="rgl">${rgPick(tr, p)}</div><button class="ghost radd" data-a="rgopen" data-t="">${ico('x', 18)} Скрыть</button></div>` : `<button class="ghost radd" data-a="rgopen" data-t="${esc(tr)}">${ico('plus', 18)} Добавить точку · ${esc(tr)}</button>`) : ''}</section>` };
-  const head = `<div class="day"><button class="dnb" data-a="rgprev" aria-label="Предыдущий день">${ico('back', 22)}</button><label class="dl"><span>${esc(d == t0 ? 'Сегодня · ' + fd(d) : WDF[wd][0].toUpperCase() + WDF[wd].slice(1) + ', ' + fd(d))}</span><small>${c && c.err ? 'не загрузилось: ' + esc(c.err) : !c && rgBusy ? 'загружаю…' : WD[wd] + ' · ' + T.length + ' ' + pl3(T.length, 'торговый', 'торговых', 'торговых')}</small><input type="date" id="rgdp" value="${esc(d)}" aria-label="Выбрать день"></label><button class="dnb" data-a="rgnext" aria-label="Следующий день">${ico('chev', 22)}</button></div>`
-    + `<div class="dsw">${d != t0 ? '<button class="lnk dall dtd" data-a="rgtoday">К сегодняшнему дню</button>' : ''}${c && c.err ? '<button class="lnk dall" data-a="rgretry">Повторить</button>' : ''}</div>`;
+      ${edit ? `<button class="ghost radd" data-a="rgopen" data-t="${esc(tr)}">${ico('plus', 18)} ${T.length == 1 && norm(tr) == norm(me) ? 'Добавить точки на ' + fd(d) : 'Добавить точки · ' + esc(tr)}</button>` : ''}</section>` };   // v37.4
+  const rel = relD(d),   // v37.4
+    chip = ([k, t]) => `<button class="chip${(rgTr || '') == k ? ' on' : ''}" data-a="pdtr" data-v="${esc(k)}" aria-pressed="${(rgTr || '') == k}">${esc(t)}</button>`,
+    chips = rgAll() && Tall.length ? `<div class="shfg"><small class="shfl">Чей маршрут</small><div class="chips shfc">${[['', 'Мой'], ...Tall.filter(t => norm(t) != norm(me)).map(t => [t, t]), ['*', 'Все']].map(chip).join('')}</div></div>` : '';
+  const head = `<div class="seg pdseg"><button data-a="pdt">Сегодня</button><button class="on" aria-pressed="true">Другой день</button></div>${chips}`
+    + `<div class="day"><button class="dnb" data-a="rgprev" aria-label="Предыдущий день"${d <= dMin ? ' disabled' : ''}>${ico('back', 22)}</button><div class="dl"><span>${esc(WDF[wd][0].toUpperCase() + WDF[wd].slice(1) + ', ' + fd(d))}</span><small>${c && c.err ? 'не загрузилось: ' + esc(c.err) : !c && rgBusy ? 'загружаю…' : rel}</small></div><button class="dnb" data-a="rgnext" aria-label="Следующий день"${d >= dMax ? ' disabled' : ''}>${ico('chev', 22)}</button></div>`
+    + `<div class="dsw">${c && c.err ? '<button class="lnk dall" data-a="rgretry">Повторить</button>' : ''}</div>`;
   const fdone = free.filter(b => (st(b, '') || {}).done).length;
-  $('#sb').innerHTML = head + (d < t0 ? '<p class="m rgn">Точки прошлого дня — по нынешним дням маршрута; отметки — визиты и заявки этого дня.</p>' : '')
+  $('#sb').innerHTML = head + '<p class="m rgn">Заявки и визиты — только в сегодняшнем маршруте.</p>'
     + T.map(t => blk(t, P[t])).join('')
     + `<section class="rgs"><div class="rgh"><div class="rgw"><b>Свободные точки</b><span class="m">без ответственного — в маршруте у всех</span></div>${free.length ? `<div class="rcn"><b>${fdone}<span>/${free.length}</span></b><small>пройдено</small></div>` : ''}</div>${free.length ? `<div class="pbar"><span style="width:${Math.round(fdone / free.length * 100)}%"></span></div>` : ''}<div class="tline">${free.map(b => pt(b, '')).join('') || '<p class="m wke">Нет.</p>'}</div></section>`;
   if (keep) { const s2 = document.getElementById('sheet'); if (s2) s2.scrollTop = keep } }
-function rgPick(tr, p) { const q = norm(rgQ); if (!q) return '<p class="m wke">Начните вводить название, адрес или район.</p>'; const has = new Set(p.pts.map(b => b.id));
-  const L = base.filter(b => b.id && !has.has(b.id) && shMatch(b, q)).sort((x, y) => x.n.localeCompare(y.n, 'ru'));
-  return (L.slice(0, 30).map(b => `<button class="shi" data-a="rgadd" data-v="${esc(b.id)}" data-t="${esc(tr)}"><div style="flex:1;min-width:0"><b>${esc(b.n)}</b><div class="m">${esc([b.a, b.c].filter(Boolean).join(' · ') || 'без адреса')}${b.ow ? ' · ' + esc(b.ow) : ''}</div></div><span class="pl add">+ добавить</span></button>`).join('') || '<p class="m wke">Не найдено.</p>') + nwBtn(rgQ) }
 function planView() { // постоянный маршрут по дням недели и правила подсказок — отдельная страница, чтобы не мешать листу на сегодня
   if (rtDay < 0) rtDay = wdNow(); shMode = 'route'; openSheet('rplan', 'Маршрут по дням');   // v33: неделя целиком (DECISIONS п. 51)
   $('#sb').innerHTML = `<p class="m wkin" id="wki"></p><div id="shl"></div>
@@ -923,7 +929,7 @@ const saveRoute = () => { const old = isoDay(Date.now() - 14 * 864e5); Object.ke
 const wdays = b => CFG.API_URL && srvV >= 31 && Array.isArray(b.rw) ? b.rw : Array.isArray(RW[skey(b)]) ? RW[skey(b)] : [];
 const inWeek = (b, i) => wdays(b).includes(i);
 const myPt = b => !b.ow || norm(b.ow) == norm(me), canDays = b => role == 'admin' || myPt(b);   // своя или свободная точка; дни чужой меняет только администратор
-const daysDeny = b => say('Точка «' + b.n + '» закреплена за «' + b.ow + '»: дни маршрута меняет он или администратор.\nДобавить её себе на сегодня можно кнопкой «В маршрут на сегодня».');
+const daysDeny = b => say('Точка «' + b.n + '» закреплена за «' + b.ow + '»: дни маршрута меняет он или администратор.\nДобавить её себе можно в разделе «В маршрут».');
 /* v35. Маршрут на день — общий, в таблице (лист «Маршрут дня»): правки дня видны торговому на любом телефоне, администратор составляет маршрут за торговых.
    RDS — правки с сервера (последняя по дате, торговому и точке), поверх — неотправленные из очереди. Пока сервер старше 35 или у точки нет ID — как раньше, на телефоне (RD) */
 let RDS = Array.isArray(LS('rds')) ? LS('rds') : [];
@@ -1022,7 +1028,7 @@ function drawToday(L) {
   const dl = new Date().toLocaleDateString('ru', { weekday: 'long', day: 'numeric', month: 'long' }).toUpperCase();
   let h = `<div class="rhd"><div class="rhr"><div><div class="rdt">${esc(dl)}</div><div class="rtt">Маршрут</div></div>
     <div class="rcn" aria-label="пройдено ${done.length} из ${cur.length}${ext.length ? ' · вне маршрута: ' + ext.length : ''}"><b>${done.length}<span>/${cur.length}</span></b><small>пройдено${ext.length ? ' · +' + ext.length + ' вне маршрута' : ''}</small></div></div>
-    <div class="pbar"><span style="width:${pct}%"></span></div>${CFG.API_URL ? '<button class="rsy" data-a="syn"><span class="sd"></span><span id="sy2"></span></button>' : ''}</div><div class="tline">`;
+    <div class="pbar"><span style="width:${pct}%"></span></div>${rgOk() ? '<div class="seg pdseg"><button class="on" aria-pressed="true">Сегодня</button><button data-a="rgall">Другой день</button></div>' : ''}${CFG.API_URL ? '<button class="rsy" data-a="syn"><span class="sd"></span><span id="sy2"></span></button>' : ''}</div><div class="tline">`;   // v37.4: переключатель «Сегодня | Другой день»
   h += done.concat(ext).map(b => tl(`<span class="tn ok">${ico('check', 16)}</span>`, `<button class="tlp" data-a="scard" data-v="${esc(skey(b))}"><b>${esc(b.n)}</b><span class="m">${psub(b)}${ext.includes(b) ? ' · вне маршрута' : ''}</span></button>`)).join('');
   if (gb) { const k = esc(skey(gb));
     h += tl(`<span class="tn go">${ico('nav', 16)}</span>`, `<div class="gocard"><div class="gor"><span class="bdgl">ЕДУ СЮДА</span><span class="m">выбрано в ${hhmm(GO.t || Date.now())}</span></div>
@@ -1041,19 +1047,17 @@ function drawToday(L) {
   h += rest.map(b => { const k = esc(skey(b)), df = deferred(b), sl = selMode && selSet.has(skey(b));
     if (selMode) return tl(`<span class="tn ${df ? 'df' : 'nx'}"></span>`, `<div class="tlb"><button class="rrow rsl${df ? ' df' : ''}${sl ? ' on' : ''}" data-a="rsel" data-v="${k}" role="checkbox" aria-checked="${sl}"><span class="rck">${sl ? ico('check', 18) : ''}</span><span class="rrt"><b>${esc(b.n)}</b><span class="m">${df ? dfs(b) : esc(b.a || b.c || 'без адреса') + (b.fq ? ' · есть вопрос' : '')}</span></span></button></div>`);
     return tl(`<span class="tn ${df ? 'df' : 'nx'}"></span>`, `<div class="tlb"><button class="rrow${df ? ' df' : ''}" data-a="rgo" data-v="${k}"><span class="rrt"><b>${esc(b.n)}</b><span class="m">${df ? dfs(b) : esc(b.a || b.c || 'без адреса') + (b.fq ? ' · есть вопрос' : '')}</span></span><span class="rgo">Еду сюда${ico('chev', 20)}</span></button>${df ? `<button class="ghost rno" data-a="rrm" data-v="${k}"><span>Не зайду сегодня</span></button>` : ''}</div>`) }).join('');
-  h += `</div>${selMode ? `<div class="selbar" role="toolbar"><b class="selc" aria-label="Выбрано: ${selSet.size}">${selSet.size}</b><button class="ok" data-a="rselrm"${selSet.size ? '' : ' disabled'}>Убрать с сегодня</button><button class="ghost2" data-a="rselx">Отмена</button></div>` : ''}<button class="ghost radd" data-a="radd">${ico(rtAdd ? 'x' : 'plus', 18)} ${rtAdd ? 'Скрыть список для добавления' : 'Добавить точку на сегодня'}</button>`;
+  h += `</div>${selMode ? `<div class="selbar" role="toolbar"><b class="selc" aria-label="Выбрано: ${selSet.size}">${selSet.size}</b><button class="ok" data-a="rselrm"${selSet.size ? '' : ' disabled'}>Убрать с сегодня</button><button class="ghost2" data-a="rselx">Отмена</button></div>` : ''}<button class="ghost radd" data-a="radd">${ico('plus', 18)} Добавить точки на сегодня</button>`;   // v37.4: выбор магазинов — отдельный экран (pickView)
   $('#shl').innerHTML = h;
-  const w = document.getElementById('shaw'); if (w) w.hidden = !rtAdd;
   const pick = (b, tags) => `<button class="shi" data-a="rpick" data-v="${esc(skey(b))}"><div style="flex:1;min-width:0"><b>${esc(b.n)}</b><div class="m">${addr(b)}</div>${tags ? `<div class="tg">${tags.map(t => `<span>${esc(t)}</span>`).join('')}</div>` : ''}</div><span class="pl add">+ добавить</span></button>`;
-  if (rtAdd) { const q = norm(shQ), ad = L.filter(b => !cur.includes(b) && shMatch(b, q)).sort(byName);
-    $('#sha').innerHTML = (ad.slice(0, 40).map(b => pick(b)).join('') + (ad.length > 40 ? `<p class="m" style="margin:0 2px 8px">Показаны первые 40 из ${ad.length}. Уточните поиском.</p>` : '') || '<p class="empty">Подходящих магазинов нет: все уже в списке или не подходят под поиск.</p>') + nwBtn(shQ) }
   const tips = L.filter(b => !inToday(b) && myPt(b)).map(b => ({ b, d: dueInfo(b) })).filter(x => x.d).sort((x, y) => y.d.sc - x.d.sc).slice(0, 20);
   $('#shx').innerHTML = (tips.length ? `<details class="rt rtip"><summary><span>Стоит заехать · ${tips.length}</span><small class="m">не в маршруте, но давно не были или есть вопрос</small></summary>${tips.map(({ b, d }) => pick(b, d.tags)).join('')}</details>` : '')
-    + `<div class="rnav"><button class="ghost" data-a="shm" data-v="all">Все магазины</button><button class="ghost" data-a="rplan">Маршрут по дням</button>${rgOk() ? `<button class="ghost rnw" data-a="rgall">${ico('user', 18)} ${rgAll() ? 'Общий маршрут — все торговые' : 'Мой маршрут на другие дни'}</button>` : ''}</div>`;   // v35: общий маршрутный лист (администратор там же ставит точки торговым)
+    + `<div class="rnav"><button class="ghost" data-a="shm" data-v="all">Все магазины</button><button class="ghost" data-a="rplan">Маршрут по дням</button></div>`;   // v37.4: «Общий маршрут» / «Мой маршрут на другие дни» заменены переключателем «Другой день» (v35: общий лист — администратор ставит точки торговым)
   syncStatus();
 }
 function drawShops() {
-  const route = shMode == 'route', q = norm(shQ);
+  const route = shMode == 'route' && view != 'pick', q = norm(shQ);
+  if (view == 'pick') return drawAll(base.filter(b => pkId(b) && (!shCity || norm(b.c) == norm(shCity)) && (!shT || b.ty == shT) && (!shRg || norm(b.rg) == norm(shRg)) && shMatch(b, q)));   // v37.4
   if (route && rtDay < 0) return drawToday(base);
   if (route) return drawWeek(base);   // v33: «Маршрут по дням» — вся неделя; лента на сегодня — все точки дня, поиск — только в списке для добавления
   let L = base.filter(b => (!shCity || norm(b.c) == norm(shCity)) && (!shT || b.ty == shT) && (!shRg || norm(b.rg) == norm(shRg)) && shMatch(b, q));   // v35: статус — рядом кнопок в drawAll (числа считаются с учётом обоих рядов)
@@ -1090,6 +1094,10 @@ function shRow(b) { const k = shClass(b), urg = k.dc === null || k.dc >= RT.vd;
   const own = b.ow ? (k.mine ? 'вы' : esc(b.ow)) : (CFG.API_URL && srvV >= 31 ? 'свободная' : '');
   const sub = !b.lv && !b.lo ? 'Ни визитов, ни заказов' : [b.lv ? 'Визит ' + ago(b.lv) : '', b.lo ? 'заказ ' + ago(b.lo) : 'заказов не было'].filter(Boolean).join(' · ');
   const tile = k.dc === null ? '<b>нет</b><small>визитов</small>' : k.dc == 0 ? '<b class="sm">сегодня</b>' : `<b>${k.dc}</b><small>дн.</small>`;
+  if (view == 'pick' && pk) { const key = esc(skey(b)), tail = `<span class="sdt${urg ? ' urg' : ''}" aria-label="${k.dc === null ? 'контактов не было' : 'дней с последнего контакта: ' + k.dc}">${tile}</span>`;   // v37.4: тап — добавить, удержание — выбрать несколько
+    if (pkIn(b)) return `<div class="shrow off" aria-disabled="true"><span class="pkc"></span><span class="srt"><b>${esc(b.n)}</b><span class="m">Уже в этом дне</span></span><span class="sdt in">${ico('check', 18)}</span></div>`;
+    const sl = pkMode && pkSel.has(skey(b));
+    return `<button class="shrow${sl ? ' pks' : ''}" data-a="pkrow" data-v="${key}"${pkMode ? ` role="checkbox" aria-checked="${sl}"` : ''}>${pkMode ? `<span class="pkc${sl ? ' on' : ''}">${sl ? ico('check', 16) : ''}</span>` : ''}<span class="srt"><b>${esc(b.n)}</b><span class="srp">${pillOf(b) || '<span class="pl nt">Без статуса</span>'}${own ? `<span class="m">· ${own}</span>` : ''}</span><span class="m">${[b.ty, b.a, b.rg].filter(Boolean).map(esc).join(' · ') || esc(b.c || '')}</span><span class="m">${sub}</span></span>${tail}</button>` }
   return `<button class="shrow" data-a="scard" data-v="${esc(skey(b))}"><span class="srt"><b>${esc(b.n)}</b><span class="srp">${pillOf(b) || '<span class="pl nt">Без статуса</span>'}${own ? `<span class="m">· ${own}</span>` : ''}</span><span class="m">${[b.ty, b.a, b.rg].filter(Boolean).map(esc).join(' · ') || esc(b.c || '')}</span><span class="m">${sub}</span></span><span class="sdt${urg ? ' urg' : ''}" aria-label="${k.dc === null ? 'контактов не было' : 'дней с последнего контакта: ' + k.dc}">${tile}</span></button>` }
 const STS = { reg: 'Постоянный', good: 'Хороший', prom: 'Перспективный', neu: 'Нейтральный', hard: 'Сложный', no: 'Не заходить', closed: 'Закрыт', ref: 'Отказались' };   // v35: короткие названия статусов для ряда кнопок
 function drawAll(L0) { // v35: два ряда кнопок — «что с точкой» и статус; числа в каждом ряду — с учётом выбора в другом
@@ -1101,21 +1109,50 @@ function drawAll(L0) { // v35: два ряда кнопок — «что с то
     ${sts.length ? `<div class="shfg"><small class="shfl">Статус</small><div class="chips shfc">${sts.map(([k, t, n]) => `<button class="chip${shSt == k ? ' on' : ''}" data-a="shst" data-v="${k}" aria-pressed="${shSt == k}">${k && k != '-' ? `<span class="sdot" style="background:${ST[k][1]}"></span>` : ''}${t} <em>${n}</em></button>`).join('')}</div></div>` : ''}
     <div class="shsort m">${ico('down', 16)} ${shF == 'took' ? 'Заявки с ' + fd(locIso(Date.now() - 4 * 864e5)) + ' по ' + fd(locIso(Date.now())) + ' (5 дней), сначала свежие' : 'По срочности: сначала те, где давно не были'}</div>`;
   const grp = (t, list) => list.length ? `<h3 class="sub">${t} · ${list.length}</h3><div class="shls">${list.map(shRow).join('')}</div>` : '';
-  let h;
-  if (shF == 'all') { const live = L.filter(b => !shOut(b)), out = L.filter(shOut).sort(shUrg);
+  let h, vis = [];
+  if (shF == 'all') { const live = L.filter(b => !shOut(b)), out = L.filter(shOut).sort(shUrg); vis = live;
     h = grp('Давно без визита', live.filter(b => shClass(b).far).sort(shUrg)) + grp('Были недавно', live.filter(b => !shClass(b).far).sort(shUrg))
       + (out.length ? `<details class="rt shout"><summary>Отказались, не заходить, закрыты · ${out.length}</summary><div class="shls">${out.map(shRow).join('')}</div></details>` : '') }
-  else h = grp(SHF.find(([f]) => f == shF)[1], L.filter(b => shClass(b)[shF]).sort(shF == 'took' ? (a, b) => (b.lo || 0) - (a.lo || 0) : shUrg));
-  $('#shl').innerHTML = (h || '<p class="empty">Магазинов не найдено</p>') + nwBtn(shQ);
+  else { vis = L.filter(b => shClass(b)[shF]); h = grp(SHF.find(([f]) => f == shF)[1], vis.sort(shF == 'took' ? (a, b) => (b.lo || 0) - (a.lo || 0) : shUrg)) }
+  let pre = '', post = '';
+  if (view == 'pick' && pk && pkMode) { pkVis = vis.filter(b => !pkIn(b)).map(skey); const all = pkVis.length && pkVis.every(k => pkSel.has(k)), n = pkSel.size;   // v37.4: «Выбрать все» — те, что видны под фильтрами и ещё не в дне
+    pre = `<div class="pksa"><button class="ghost rsa" data-a="pkall">${all ? 'Снять все' : 'Выбрать все · ' + pkVis.length}</button></div>`;
+    post = `<div class="selbar pkbar" role="toolbar"><b class="selc" aria-label="Выбрано: ${n}">${n}</b><button class="ok" data-a="pkgo"${n ? '' : ' disabled'}>Добавить ${n} на ${fdl(pk.d)}</button><button class="ghost2" data-a="pkx">Отмена</button></div>` }
+  $('#shl').innerHTML = pre + (h || '<p class="empty">Магазинов не найдено</p>') + nwBtn(shQ) + post;
 }
+/* v37.4. Выбор магазинов в маршрут — один экран для сегодня и любого другого дня: те же поиск и фильтры, что во «Все магазины».
+   Тап по магазину — сразу в день (с «Отменить»); удержание — выбор нескольких (фильтры остаются), «Добавить N на …» */
+let pk = null, pkMode = false, pkSel = new Set(), pkVis = [];   // pk: { tr — чей маршрут, d — день, from — откуда пришли ('today' | 'day') }
+const fdl = d => new Date(d + 'T12:00:00').toLocaleDateString('ru', { day: 'numeric', month: 'long' });
+const relD = d => { const n = Math.round((new Date(d + 'T12:00:00') - new Date(today() + 'T12:00:00')) / 864e5); return n == 0 ? 'сегодня' : n == 1 ? 'завтра' : n == 2 ? 'послезавтра' : 'через ' + n + ' ' + pl3(n, 'день', 'дня', 'дней') };
+const inDay = (b, tr, d) => norm(tr) == norm(me) && d == today() ? inToday(b) : b.id ? inPlan(b, tr, d) : false;   // точка в маршруте торгового на день (по данным на телефоне)
+let cRt = { tr: '', d: '' };   // раздел «В маршрут» в карточке: чей маршрут и какой день выбран
+const pkOwn = () => !!pk && norm(pk.tr) == norm(me) && pk.d == today();   // свой маршрут на сегодня — точки без ID тоже можно (как раньше)
+const pkId = b => !!b.id || pkOwn();
+const pkIn = b => { if (!pk) return false; if (pkOwn()) return inToday(b); if (!b.id) return false; const v = rgOn(pk.tr, pk.d, b.id); return v !== undefined ? v : autoIn(b, pk.tr, pk.d) };
+const pkPut = (b, on) => { if (pkOwn()) setToday(b, on); else if (b.id) rdSet(b, pk.tr, pk.d, on) };
+function pickBody() { if (!pk) return;
+  $('#sb').innerHTML = `<div class="pkh"><div class="eyebrow">План · ${relD(pk.d)}${norm(pk.tr) == norm(me) ? '' : ' · ' + esc(pk.tr)}</div><div class="pkt" role="heading" aria-level="2">Добавить на ${fdl(pk.d)}</div><p class="m pkn">Нажмите на магазин — он сразу попадёт в день. Чтобы выбрать несколько, удерживайте.</p></div>` + shFilt();
+  drawShops() }
+function pickView(tr, d, from) { if (!tr || !d || (role != 'admin' && norm(tr) != norm(me))) return;
+  pk = { tr, d, from: from || 'today' }; pkMode = false; pkSel = new Set(); pkVis = []; shQ = ''; if (shCity === null) shCity = H.c || '';
+  if (!pkOwn()) loadRg(d);
+  openSheet('pick', 'Выбор магазинов'); pickBody() }
+function pkBack() { const f = pk && pk.from == 'day'; pk = null; pkMode = false; pkSel = new Set(); if (f) rgView(); else { shMode = 'route'; shopsView() } }
+function pkStart(k) { if (pkMode || !pk || !k) return; const b = shopById(k); if (!b || pkIn(b)) return; pkMode = true; pkSel = new Set([k]); try { navigator.vibrate && navigator.vibrate(15) } catch (_) {} drawShops() }
+function pkExit() { if (!pkMode && !pkSel.size) return; pkMode = false; pkSel = new Set(); if (view == 'pick') drawShops() }
+function pkAdd(xs) { xs = xs.filter(b => b && !pkIn(b)); if (!xs.length) return;
+  const tr = pk.tr, d = pk.d, put = on => { if (!pk || pk.tr != tr || pk.d != d) { const ps = pk; pk = { tr, d }; xs.forEach(b => pkPut(b, on)); pk = ps } else xs.forEach(b => pkPut(b, on)) };
+  put(true); const where = (norm(tr) == norm(me) ? '' : tr + ', ') + fdl(d);
+  cSaved(xs.length == 1 ? 'Добавлена: «' + xs[0].n + '» · ' + where : 'Добавлено ' + xs.length + ' ' + pl3(xs.length, 'точка', 'точки', 'точек') + ' · ' + where, () => { put(false); if (view == 'pick') drawShops(); else if (view == 'rall') rgView(); else if (view == 'shops') drawShops() }) }
 const shopById = v => String(v).startsWith('n:') ? base.find(b => b.n == v.slice(2)) : byId(v);
 let cVO = false, cOpen = new Set((Array.isArray(LS('copen')) ? LS('copen') : []).map(String));   // cVO — открыта отметка визита; cOpen — какие разделы карточки раскрыты (запоминается)
 const feedSub = x => { const ev = feed(x); return ev === null ? (cLog === false ? 'не загрузилась' : 'загружается…') : ev.length ? 'последнее: ' + ft(ev[0].ts) : 'событий пока нет' };
 function shopCard(v) {
   const x = shopById(v) || cSh; if (!x) return shopsView();
-  if (cKey != (x.id || x.n)) { cKey = x.id || x.n; cLog = null; cMine = 0; cTot = 0; evF = 'all'; evEd = ''; cErr = ''; cSt = x.st || '-'; cVO = false; loadLog(x) } cSh = x;
-  openSheet('shopc', ''); const tdy = inToday(x), wk = WD.filter((d, i) => inWeek(x, i));
-  const sec = (id, title, sub, body, ic) => `<details class="sc cs" data-s="${id}"${cOpen.has(id) ? ' open' : ''}><summary>${ic ? ico(ic, 22) : ''}<span class="cst">${title}<small class="m"${id == 'feed' ? ' id="fsub"' : ''}>${sub}<em class="svm" id="sv-${id}">${secMark(x, id)}</em></small></span></summary>${body}</details>`;
+  if (cKey != (x.id || x.n)) { cKey = x.id || x.n; cLog = null; cMine = 0; cTot = 0; evF = 'all'; evEd = ''; cErr = ''; cSt = x.st || '-'; cVO = false; cRt = { tr: me, d: today() }; loadLog(x) } cSh = x;
+  openSheet('shopc', ''); const wk = WD.filter((d, i) => inWeek(x, i));
+  const sec = (id, title, sub, body, ic) => `<details class="sc cs" data-s="${id}"${(id == 'rt' ? !cOpen.has('rt0') : cOpen.has(id)) ? ' open' : ''}><summary>${ic ? ico(ic, 22) : ''}<span class="cst">${title}<small class="m"${id == 'feed' ? ' id="fsub"' : ''}>${sub}<em class="svm" id="sv-${id}">${secMark(x, id)}</em></small></span></summary>${body}</details>`;
   const visit = cVO ? `<div class="sum rv" style="margin-top:10px"><b>Результат визита</b><p class="m" style="margin:4px 0 8px">Нажмите результат — визит запишется. Комментарий — по желанию.</p><input id="vn" maxlength="500" placeholder="Комментарий (для «Другое» — обязательно)" style="margin:0 0 10px"><div class="vg vg2">${VO.map((t, i) => `<button data-a="vis" data-v="${i}"${(c0 => c0 && c0.val == t ? ' class="on" aria-pressed="true"' : '')(myToday(x))}>${t}</button>`).join('')}</div>
     <details class="mini" style="margin-top:10px"><summary>Визит был раньше — указать дату и время</summary><div class="vdt"><input type="date" id="vd" max="${today()}" value="${today()}" aria-label="Дата визита"><input type="time" id="vt" value="${hhmm(Date.now())}" data-t0="${hhmm(Date.now())}" aria-label="Время визита"></div></details>
     <div class="m" id="myl" style="margin-top:8px">${myLast(x) ? 'Ваш последний визит сюда: ' + ft(myLast(x)) : 'Вы здесь ещё не отмечались'}</div></div>` : '';
@@ -1135,6 +1172,7 @@ function shopCard(v) {
   ${visit}
   ${x.tl || gq(x) ? `<div class="cta2">${x.tl ? `<a class="ghost" href="tel:${esc(x.tl.replace(/[^\d+]/g, ''))}">${ico('phone', 18)} Позвонить</a>` : ''}${gq(x) ? `<a class="ghost" href="${esc(geoUrl(x))}" target="_blank" rel="noopener">${ico('nav', 18)} Как проехать</a>` : ''}</div>` : ''}
   <div class="scs">
+  ${rtSec(x, sec)}
   ${sec('days', 'Дни маршрута', wk.length ? wk.join(', ') : 'не заданы', `<div class="m">${canDays(x) ? 'В эти дни магазин сам попадает в маршрут на сегодня' + (x.ow ? '' : ' (у всех торговых, пока точка свободна)') : 'Точка закреплена за «' + esc(x.ow) + '»: дни меняет он или администратор'}</div><div class="wk" style="margin:8px 0 0">${WD.map((d, i) => `<button data-a="rwd" data-v="${i}" class="${inWeek(x, i) ? 'on' : ''}"${canDays(x) ? '' : ' disabled'}>${d}</button>`).join('')}</div>`, 'cal')}
   ${CFG.API_URL && srvV >= 31 ? sec('own', 'Ответственный', x.ow ? esc(x.ow) + (norm(x.ow) == norm(me) ? ' (вы)' : '') : 'свободная точка', ownBody(x), 'user') : ''}
   ${sec('vat', 'Цены для магазина', vatSub(x), vatBody(x), 'tag')}
@@ -1145,15 +1183,24 @@ function shopCard(v) {
   ${sec('feed', 'Лента событий', feedSub(x), `<div class="m">Заказы, визиты и статусы. Время события и время внесения показаны отдельно, если различаются.</div><div id="feed">${feedHtml(x)}</div>`, 'list')}
   ${sec('st', 'Статус', x.st && ST[x.st] ? ST[x.st][0] : 'не задан', stBody, 'check')}
   </div>
-  <button class="ghost" data-a="rtd">${tdy ? ico('x', 18) + ' Не сегодня' : ico('plus', 18) + ' В маршрут на сегодня'}</button>
-  <p class="m shc">${tdy ? 'Уберёт точку из маршрута до завтра' : 'Добавит точку в маршрут только на сегодня'}</p>`;
+`;
 }
+/* v37.4. Карточка магазина → «В маршрут»: 7 дней (сегодня и 6 вперёд) с числом точек в дне; зелёная рамка — точка уже в дне. Администратор выбирает, в чей маршрут */
+function rtSec(x, sec) {
+  const adm = role == 'admin', t0 = today(); if (!adm || !cRt.tr) cRt.tr = me; if (!cRt.d || cRt.d < t0) cRt.d = t0;
+  const tr = cRt.tr, d = cRt.d, ds = Array.from({ length: 7 }, (_, i) => addD(t0, i)), isMe = norm(tr) == norm(me), who = isMe ? '' : tr, can = !!x.id || (isMe && d == t0), on = inDay(x, tr, d);
+  const trList = adm ? [...new Set([me, ...trs].filter(Boolean))] : [];
+  const inD = ds.filter(z => inDay(x, tr, z)), sub = (isMe ? 'в вашем маршруте' : 'в маршруте «' + esc(tr) + '»') + (inD.length ? ': ' + inD.map(z => z == t0 ? 'сегодня' : fd(z)).join(', ') : ' на ближайшие 7 дней нет');
+  const chips = adm && trList.length > 1 ? `<div class="eyebrow">В чей маршрут</div><div class="chips" style="margin:0 0 10px">${trList.map(t => `<button class="chip${norm(t) == norm(tr) ? ' on' : ''}" data-a="rttr" data-v="${esc(t)}" aria-pressed="${norm(t) == norm(tr)}">${norm(t) == norm(me) ? 'Мой' : esc(t)}</button>`).join('')}</div>` : '';
+  const days = `<div class="wk rtw" role="group" aria-label="День маршрута">${ds.map((z, i) => { const n = base.filter(b => inDay(b, tr, z)).length, here = inDay(x, tr, z); return `<button data-a="rtdy" data-v="${z}" class="${here ? 'in' : ''}${z == d ? ' on' : ''}" aria-pressed="${z == d}" aria-label="${esc(fdl(z))}: ${n} ${pl3(n, 'точка', 'точки', 'точек')}${here ? ', магазин уже в дне' : ''}"><small>${i == 0 ? 'СЕГ' : WD[wdOfD(z)].toUpperCase()}</small>${+z.slice(8)}<em>${n}</em></button>` }).join('')}</div>`;
+  const lbl = on ? (isMe ? 'Убрать ' + (d == t0 ? 'из маршрута на сегодня' : 'с ' + fdl(d)) : 'Убрать из маршрута «' + esc(tr) + '» ' + (d == t0 ? 'на сегодня' : 'с ' + fdl(d))) : (isMe ? 'Добавить на ' : 'Добавить в маршрут «' + esc(tr) + '» на ') + (d == t0 ? 'сегодня' : fdl(d));   // имена не склоняем
+  return sec('rt', 'В маршрут', sub, `${chips}${days}<p class="m rth">Зелёная рамка — магазин уже в этом дне. Число — сколько точек в дне. Дни недели, по которым магазин ездит всегда, — в разделе «Дни маршрута».</p>${can ? `<button class="${on ? 'ghost' : 'send'}" data-a="rtgo" style="margin-top:0">${on ? ico('x', 18) : ico('plus', 20)} ${lbl}</button>` : '<p class="m">У точки ещё нет ID — добавить её можно только в свой маршрут на сегодня.</p>'}`, 'nav') }
 const vatSub = x => { const vp = vmOf(x), nm = vatNorm(x); return vp ? ML[vp] + ' (выбрано)' : 'по последней заявке: ' + (nm ? ML[nm.m] : 'заявок пока нет') };
 const vatBody = x => { const vp = vmOf(x); return `<div class="seg sg3" style="margin:4px 0 8px">${[['vat', 'С НДС'], ['net', 'Без НДС'], ['', 'По последней заявке']].map(([k, t]) => `<button data-a="svat" data-v="${k}" class="${vp == k ? 'on' : ''}">${t}</button>`).join('')}</div>
   <p class="m" style="margin:0">Если режим заявки будет другим, приложение спросит при отправке. ${CFG.API_URL && srvV >= 31 ? 'Выбор общий для всех торговых.' : 'Выбор хранится только на этом телефоне.'}</p>` };
 function ownBody(x) { // v31: ответственный за точку. Свободную берёт любой, свою отдаёт сам, чужую передаёт администратор
   const o = x.ow, mine = !!o && norm(o) == norm(me), adm = role == 'admin';
-  let h = `<p class="m" style="margin:0 0 8px">${!o ? 'Свободная точка: в дни маршрута она у всех торговых, дни может менять любой.' : mine ? 'Точка закреплена за вами: она только в вашем маршруте, дни меняете вы (и администратор).' : 'Точка закреплена за «' + esc(o) + '»: она в его маршруте, дни меняет он или администратор. Разово добавить её себе можно кнопкой «В маршрут на сегодня».'}</p>`;
+  let h = `<p class="m" style="margin:0 0 8px">${!o ? 'Свободная точка: в дни маршрута она у всех торговых, дни может менять любой.' : mine ? 'Точка закреплена за вами: она только в вашем маршруте, дни меняете вы (и администратор).' : 'Точка закреплена за «' + esc(o) + '»: она в его маршруте, дни меняет он или администратор. Разово добавить её себе можно в разделе «В маршрут».'}</p>`;
   if (!o) h += `<button class="send" style="margin-top:0" data-a="own" data-v="take">${ico('user', 20)} Беру точку</button>`;
   else if (mine || adm) h += `<button class="ghost" data-a="own" data-v="release">Освободить точку</button>`;
   if (adm) { const t = trs.filter(n => !o || norm(n) != norm(o)); if (t.length) h += `<p class="m" style="margin:12px 0 6px">Передать точку торговому:</p><div class="vg vg2">${t.map(n => `<button data-a="own" data-v="set" data-n="${esc(n)}">${esc(n)}</button>`).join('')}</div>` }
@@ -1205,7 +1252,7 @@ async function loadLog(x) {
 const stPh = st => st == 'no' ? 'Причина (обязательно)' : st == 'ref' ? 'Другая причина (необязательно)' : 'Заметка';
 const myLast = x => Math.max(cMine || 0, x.lw == me ? x.lv || 0 : 0);   // когда этот профиль последний раз отмечал визит в магазине
 /* v34. Сохранения в карточке магазина — по одному правилу: сообщение «… · отправляется» (с «Отменить», где можно) и пометка у раздела: «ждёт отправки» → «сохранено ЧЧ:ММ» после ответа сервера */
-const SEC_OP = { note: 'nb', info: 'ct', meta: 'plan', days: 'days', owner: 'own', vat: 'vat', status: 'st', geo: 'geo', geodel: 'geo' };   // операция очереди → раздел карточки
+const SEC_OP = { note: 'nb', info: 'ct', meta: 'plan', days: 'days', rday: 'rt', owner: 'own', vat: 'vat', status: 'st', geo: 'geo', geodel: 'geo' };   // операция очереди → раздел карточки
 let svAt = {};   // когда сервер подтвердил сохранение раздела: { 'ID|раздел': время } (только в памяти)
 const secKey = (x, sc) => (x.id || 'n:' + x.n) + '|' + sc;
 const secMark = (x, sc) => !CFG.API_URL ? '' : shopq.some(q => SEC_OP[q.op] == sc && (x.id ? q.id == x.id : q.n == x.n)) ? ' · ждёт отправки' : svAt[secKey(x, sc)] ? ' · сохранено ' + hhmm(svAt[secKey(x, sc)]) : '';
@@ -1283,23 +1330,27 @@ function shopNew(nm) {
 /* v37. Режим выбора точек в маршрутном листе: долгое нажатие на точку → галочки → «Убрать с сегодня (N)». Выход: «Отмена», «назад» телефона, закрытие страницы */
 let rAll = [];
 function selExit(redraw = true) { if (!selMode && !selSet.size) return; selMode = false; selSet = new Set(); if (redraw && (view == 'shops' || view == 'rplan')) drawShops() }
-function selStart(k) { if (selMode || rtDay >= 0 || !k || (view != 'shops' && view != 'rplan') || !shopById(k)) return; selMode = true; selSet = new Set([k]); try { navigator.vibrate && navigator.vibrate(15) } catch (_) {} drawShops() }
+function selStart(k) { if (view == 'pick') return pkStart(k); if (selMode || rtDay >= 0 || !k || (view != 'shops' && view != 'rplan') || !shopById(k)) return; selMode = true; selSet = new Set([k]); try { navigator.vibrate && navigator.vibrate(15) } catch (_) {} drawShops() }
 function selRemove() { const xs = [...selSet].map(shopById).filter(Boolean); if (!xs.length) return selExit(); xs.forEach(x => setToday(x, false)); selExit(false); drawShops();
   toast('Изменено: убрано из листа на сегодня — ' + xs.length + ' ' + pl3(xs.length, 'точка', 'точки', 'точек'), () => { xs.forEach(x => setToday(x, true)); if (view == 'shops') drawShops() }) }
 { let lp = 0, sx = 0, sy = 0; const stop = () => { if (lp) { clearTimeout(lp); lp = 0 } };
-  document.addEventListener('pointerdown', e => { stop(); const r = !selMode && e.target && e.target.closest && e.target.closest('.rrow[data-a="rgo"]'); if (!r || e.button > 0) return; sx = e.clientX; sy = e.clientY; const k = r.dataset.v;
+  document.addEventListener('pointerdown', e => { stop(); const r = !selMode && !pkMode && e.target && e.target.closest && e.target.closest('.rrow[data-a="rgo"], .shrow[data-a="pkrow"]'); if (!r || e.button > 0) return; sx = e.clientX; sy = e.clientY; const k = r.dataset.v;
     lp = setTimeout(() => { lp = 0; selSup = Infinity; selStart(k) }, 500) }, true);
   document.addEventListener('pointermove', e => { if (lp && Math.hypot(e.clientX - sx, e.clientY - sy) > 10) stop() }, true);
   ['pointerup', 'pointercancel'].forEach(n => document.addEventListener(n, () => { stop(); if (selSup === Infinity) selSup = Date.now() + 400 }, true));   // клик, который идёт следом за долгим нажатием, гасим
   document.addEventListener('scroll', stop, true);
-  document.addEventListener('contextmenu', e => { if (e.target.closest && e.target.closest('.rrow')) e.preventDefault() }) }
+  document.addEventListener('contextmenu', e => { if (e.target.closest && e.target.closest('.rrow, .shrow[data-a="pkrow"]')) e.preventDefault() }) }
 
 /* ============ 8. СОБЫТИЯ ============ */
 document.addEventListener('click', async e => {   // async: вопросы (ask) ждут ответа в своём окне
   const b = e.target.closest('[data-a]'); if (!b) return;
   const a = b.dataset.a, id = b.dataset.id, p = id && find(id), v = b.dataset.v;
-  if (selSup && (a == 'rgo' || a == 'rsel')) { const w = selSup > Date.now(); selSup = 0; if (w) return }   // v37: отпускание после долгого нажатия — не нажатие
+  if (selSup && (a == 'rgo' || a == 'rsel' || a == 'pkrow')) { const w = selSup > Date.now(); selSup = 0; if (w) return }   // v37: отпускание после долгого нажатия — не нажатие
   if (a == 'rsel') { if (selSet.has(v)) selSet.delete(v); else selSet.add(v); if (!selSet.size) selMode = false; return drawShops() }
+  if (a == 'pkrow') { const x = shopById(v); if (!x || !pk) return; if (pkMode) { if (pkSel.has(v)) pkSel.delete(v); else pkSel.add(v); if (!pkSel.size) pkMode = false; return drawShops() } pkAdd([x]); return drawShops() }   // v37.4
+  if (a == 'pkall') { pkSel = pkVis.length && pkVis.every(k => pkSel.has(k)) ? new Set() : new Set([...pkSel, ...pkVis]); if (!pkSel.size) pkMode = false; return drawShops() }
+  if (a == 'pkgo') { const xs = [...pkSel].map(shopById).filter(Boolean); pkMode = false; pkSel = new Set(); pkAdd(xs); return drawShops() }
+  if (a == 'pkx') return pkExit();
   if (a == 'rselx') return selExit();
   if (a == 'rselrm') return selRemove();
   if (a == 'rselall') { selSet = selSet.size >= rAll.length ? new Set() : new Set(rAll); if (!selSet.size) selMode = false; return drawShops() }   // v37.3: «Выбрать все» / «Снять все»
@@ -1308,13 +1359,15 @@ document.addEventListener('click', async e => {   // async: вопросы (ask)
   if (a == 'nroute') return goHome(); if (a == 'nmain') { closeSheet(); drawList(); return } if (a == 'nmore') return moreView();
   if (a == 'back') { const f = BACK[view]; if (f) f(); else { closeSheet(); drawList() } return }
   if (a == 'rplan') { rtDay = -1; rtAdd = false; rvK = ''; return planView() }
-  if (a == 'shrt') { const on = v == '1'; if (on == cfgShare) return; const r = await admDo({ op: 'cfg', share: on }); if (r) { cfgShare = on; LS('cfgsh', on); toast(on ? 'Общий маршрут виден торговым' : 'Общий маршрут — только администраторам') } if (view == 'set') setView(); return }   // v35: сразу на сервер (нужна связь)
+  if (a == 'shrt') { const on = v == '1'; if (on == cfgShare) return; const r = await admDo({ op: 'cfg', share: on }); if (r) { cfgShare = on; LS('cfgsh', on); toast(on ? 'Маршруты других торговых видны торговым' : 'Маршруты других торговых — только администраторам') } if (view == 'set') setView(); return }   // v35: сразу на сервер (нужна связь)
   if (a == 'shst') { shSt = v == shSt ? '' : v || ''; return drawShops() }   // v35: статус — кнопкой; v36: «Любого» нет — повторное нажатие снимает выбор
-  if (a == 'rgall') { rgD = today(); rgAdd = ''; rgQ = ''; return rgView() }
-  if (a == 'rgprev' || a == 'rgnext') { const [y, m, d] = rgD.split('-').map(Number); rgD = locIso(new Date(y, m - 1, d + (a == 'rgnext' ? 1 : -1), 12).getTime()); rgAdd = ''; return rgView(true) }
-  if (a == 'rgtoday') { rgD = today(); return rgView(true) } if (a == 'rgretry') { delete rgC[rgD]; return rgView() }
-  if (a == 'rgopen') { rgAdd = b.dataset.t || ''; rgQ = ''; rgView(); const q = document.getElementById('rgq'); if (q && q.focus) try { q.focus() } catch (_) {} return }
-  if (a == 'rgrm' || a == 'rgadd') { const x = byId(v), tr = b.dataset.t || '', d = rgD; if (!x || !tr || d < today() || (role != 'admin' && (!me || norm(tr) != norm(me)))) return; const on = a == 'rgadd'; rdSet(x, tr, d, on); rgQ = ''; rgView();   // v35: администратор ставит маршрут торговому
+  if (a == 'rgall') { rgD = addD(today(), 1); rgTr = ''; return rgView(true) }   // v37.4: «Другой день» открывается на завтра
+  if (a == 'rgprev' || a == 'rgnext') { const n = addD(rgD, a == 'rgnext' ? 1 : -1); if (n < (rgAll() ? today() : addD(today(), 1)) || n > addD(today(), PDMAX)) return; rgD = n; return rgView(true) }   // v37.4: от завтра до сегодня + 14
+  if (a == 'pdt') { shMode = 'route'; return shopsView() }   // v37.4: переключатель «Сегодня»
+  if (a == 'pdtr') { rgTr = v || ''; return rgView(true) }   // v37.4: чей маршрут
+  if (a == 'rgretry') { delete rgC[rgD]; return rgView() }
+  if (a == 'rgopen') return pickView(b.dataset.t || me, rgD, 'day')   // v37.4: общий экран выбора магазинов
+  if (a == 'rgrm' || a == 'rgadd') { const x = byId(v), tr = b.dataset.t || '', d = rgD; if (!x || !tr || d < today() || (role != 'admin' && (!me || norm(tr) != norm(me)))) return; const on = a == 'rgadd'; rdSet(x, tr, d, on); rgView();   // v35: администратор ставит маршрут торговому
     return cSaved((on ? 'Добавлена' : 'Убрана') + ': «' + x.n + '» · ' + tr + ', ' + fd(d), () => { rdSet(x, tr, d, !on); if (view == 'rall') rgView() }) }
   if (a == 'cvis') { cVO = !cVO; return shopCard(skey(cSh)) }
   if (a == 'cat') { cat = v; drawChips(); drawList() }
@@ -1386,7 +1439,7 @@ document.addEventListener('click', async e => {   // async: вопросы (ask)
   else if (a == 'shn') shopNew()
   else if (a == 'shnq') shopNew(b.dataset.q || '')
   else if (a == 'rday') { if (+v == -2) { rtDay = 7; rtAdd = false; return drawShops() } rtDay = +v; rvK = ''; rtAdd = false; if (rtDay >= 0) planView(); else shopsView() }
-  else if (a == 'radd') { rtAdd = !rtAdd; drawShops() }
+  else if (a == 'radd') { if (rtDay < 0) pickView(me, today(), 'today'); else { rtAdd = !rtAdd; drawShops() } }   // v37.4: на сегодня — общий экран выбора
   else if (a == 'rvis') { rvK = rvK == v ? '' : v; if (rtDay < 0) setGo(v); drawShops() }   // v33: отметка визита из ленты — это и есть «еду сюда»
   else if (a == 'rgo') { setGo(v); rvK = ''; rtAdd = false; drawShops(); const sh = document.getElementById('sheet'); if (sh) sh.scrollTop = 0 }   // v33: «Еду сюда»
   else if (a == 'shf') { shF = v == shF ? 'all' : v; drawShops() }   // v33: вкладки «Все магазины»; v36: повторное нажатие — обратно к «Все»
@@ -1413,7 +1466,11 @@ document.addEventListener('click', async e => {   // async: вопросы (ask)
     catch (e) { say(e && e.auth ? 'Нужно войти заново.' : 'Нет связи: отметка не сохранена. Попробуйте ещё раз.') } finally { prBusy = false }
     if (view == 'promo') $('#prl').innerHTML = promoList() }
   else if (a == 'rsn') { const e = $('#stn'); e.value = v || ''; document.querySelectorAll('.rsn button').forEach(q => q.classList.toggle('on', q.dataset.v == (v || ''))) }   // v31: причина «Отказались» одним нажатием
-  else if (a == 'rtd') { const x = cSh; if (!x) return; const on = !inToday(x); setToday(x, on); shopCard(skey(x)); if (!on) toast('«' + x.n + '» убран из маршрута на сегодня', () => { setToday(x, true); if (view == 'shopc') shopCard(skey(x)) }) }
+  else if (a == 'rtdy') { if (!v) return; cRt.d = v; shopCard(skey(cSh)) }
+  else if (a == 'rttr') { if (role != 'admin') return; cRt.tr = v || me; shopCard(skey(cSh)) }
+  else if (a == 'rtgo') { const x = cSh; if (!x) return; const tr = cRt.tr || me, d = cRt.d || today(); if (role != 'admin' && norm(tr) != norm(me)) return; const on = !inDay(x, tr, d); if (!x.id && !(norm(tr) == norm(me) && d == today())) return;
+    const put = v2 => { if (norm(tr) == norm(me) && d == today()) setToday(x, v2); else rdSet(x, tr, d, v2) }, where = (norm(tr) == norm(me) ? '' : tr + ', ') + (d == today() ? 'сегодня' : fdl(d)); put(on); shopCard(skey(x));
+    cSaved((on ? 'Добавлена: «' : 'Убрана: «') + x.n + '» · ' + where, () => { put(!on); if (view == 'shopc' && cSh === x) shopCard(skey(x)) }) }
   else if (a == 'shns') { const n = $('#nn').value.trim().replace(/\s+/g, ' '), c = $('#nc').value, ad = $('#na').value.trim(), ty = $('#nty').value; if (!n) return;
     { const r = await dupAsk(n, c, ad); if (!r) return; if (r !== 'new') { cKey = ''; return shopCard(skey(r)) } }   // v35: одноимённый — «это он?», новый — только с адресом
     const ul = String($('#nul').value || '').trim().slice(0, 120), o = upShop(n, c, ad, newSid()); o.ty = ty; if (ul) o.ul = ul; LS('base', base);
@@ -1528,13 +1585,13 @@ document.addEventListener('change', e => { const t = e.target;
   else if (t.id == 'cas') { H.as = t.value; save(); cartView() }   // v36: «От имени» (администратор)
   else if (t.id == 'htr') { hTr = t.value; histView() }
   else if (t.id == 'tys') { cSh.ty = t.value; saveMeta(cSh); cSaved('Тип точки сохранён') }
-  else if (t.id == 'sht') { shT = t.value; shopsView() }
+  else if (t.id == 'sht') { shT = t.value; if (view == 'pick') pickBody(); else shopsView() }
   else if (/^rt(p|v|o|q|vd|od)$/.test(t.id)) { const k = { rtp: 'plan', rtv: 'visit', rto: 'order', rtq: 'q', rtvd: 'vd', rtod: 'od' }[t.id]; RT[k] = t.type == 'checkbox' ? t.checked : Math.max(1, Math.min(365, +t.value || RT0[k])); LS('rt', RT); drawShops() }
-  else if (t.id == 'shc') { shCity = t.value; shopsView() } else if (t.id == 'shr') { shRg = t.value; drawShops() } else if (t.id == 'rgdp') { if (/^\d{4}-\d\d-\d\d$/.test(t.value)) { rgD = t.value; rgAdd = ''; rgView(true) } }
+  else if (t.id == 'shc') { shCity = t.value; if (view == 'pick') pickBody(); else shopsView() } else if (t.id == 'shr') { shRg = t.value; drawShops() } else if (t.id == 'rgdp') { if (/^\d{4}-\d\d-\d\d$/.test(t.value)) { rgD = t.value; rgView(true) } }
   else if (t.id == 'impf') importBackup(t.files[0]); });
 document.addEventListener('toggle', e => { const d = e.target; if (!d || !d.matches || !d.matches('details.cs') || !d.dataset || !d.dataset.s) return;   // v30: раскрытые разделы карточки запоминаются (раньше сворачивались при любом нажатии внутри)
-  if (d.open) cOpen.add(d.dataset.s); else cOpen.delete(d.dataset.s); LS('copen', [...cOpen]) }, true);
-document.addEventListener('input', e => { if (e.target.id == 'rgq') { rgQ = e.target.value; const e2 = document.getElementById('rgl'); if (e2) { const d = rgD, wd = wdOfD(d), L = base.filter(b => b.id), own = L.filter(b => b.ow && norm(b.ow) == norm(rgAdd) && inWeek(b, wd)); e2.innerHTML = rgPick(rgAdd, { pts: own.filter(b => rgOn(rgAdd, d, b.id) !== false).concat(L.filter(b => !own.includes(b) && rgOn(rgAdd, d, b.id) === true)) }) } return } if (e.target.id == 'shq') { shQ = e.target.value; if (view == 'rplan') drawWeekAdd(); else drawShops() } else if (e.target.id == 'prq') { prQ = e.target.value; $('#prl').innerHTML = promoList() } });
+  const k = d.dataset.s == 'rt' ? 'rt0' : d.dataset.s, on = d.dataset.s == 'rt' ? !d.open : d.open; if (on) cOpen.add(k); else cOpen.delete(k); LS('copen', [...cOpen]) }, true);   // v37.4: «В маршрут» раскрыт, пока сам не свернёшь (запоминается как «rt0»)
+document.addEventListener('input', e => { if (e.target.id == 'shq') { shQ = e.target.value; if (view == 'rplan') drawWeekAdd(); else drawShops() } else if (e.target.id == 'prq') { prQ = e.target.value; $('#prl').innerHTML = promoList() } });
 $('#q').oninput = e => { Q = e.target.value.toLowerCase(); drawList() };
 ['d', 's', 'a'].forEach(k => $('#' + k).addEventListener('change', e => { if (k == 'd') { pickD(e.target.value); $('#d').value = H.d; drawD(); drawHf(); return save() } H[k] = e.target.value;
   if (k == 's') { // название магазина приводим к записи из общей базы (сначала тот же город), подставляем город, адрес и ID
@@ -1550,6 +1607,7 @@ const arm = () => { if (!history.state || history.state.ab !== 1) history.pushSt
 document.addEventListener('pointerdown', arm, true);
 window.addEventListener('popstate', () => {
   const keep = () => history.pushState({ ab: 1 }, '');
+  if (pkMode && !dlgDone) { pkExit(); return keep() }
   if (selMode && !dlgDone) { selExit(); return keep() }                                             // v37: «назад» выходит из выбора точек
   if (dlgDone) { dlgDone(dlgBk); return keep() }                                                    // открыто окно вопроса — «назад» = «Отмена»
   if ($('#lb').classList.contains('on')) { $('#lb').classList.remove('on'); return keep() }

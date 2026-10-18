@@ -641,3 +641,22 @@ button.pfc:active{transform:none;opacity:.92}
 
 .rsa{min-height:48px;font-weight:700}   /* v37.3: «Выбрать все» — строка над точками в режиме выбора */
 #sheet.pfsh{display:flex;flex-direction:column}#sheet.pfsh #sb{flex:1;display:flex;flex-direction:column}#sheet.pfsh .pff{margin-top:auto;padding-top:18px}   /* v37.3: «Профиль» — логотип и версия прижаты к низу окна */
+
+/* v37.4: «Другой день» */
+.pdseg{margin:12px 0 6px}
+.rhd .pdseg{margin:12px 0 4px}
+/* v37.4: выбор магазинов в маршрут */
+.pkh{margin:2px 0 10px}.pkt{margin:2px 0 4px;font-size:calc(24px*var(--fz));line-height:1.15;font-weight:800}.pkn{margin:0}
+.pkc{flex:none;width:28px;height:28px;border-radius:8px;border:2px solid var(--line-strong);background:var(--surface);display:flex;align-items:center;justify-content:center;color:var(--surface)}
+.pkc.on{background:var(--ink);border-color:var(--ink);color:var(--surface)}
+.shrow.pks{background:var(--surface-sunken);box-shadow:inset 0 0 0 2px var(--ink)}
+.shrow.off{opacity:.62;cursor:default}.shrow.off .pkc{background:var(--surface-sunken);border-color:var(--divider)}.shrow.off b{color:var(--muted)}
+.sdt.in{background:var(--success-tint);color:var(--on-success-tint)}
+.pksa{margin:0 0 8px}.pksa .rsa{width:100%}
+/* v37.4: карточка магазина → «В маршрут» */
+.rtw{gap:4px;margin:2px 0 8px}.rtw button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;min-height:68px;line-height:1.1;font-size:calc(17px*var(--fz));font-weight:800}
+.rtw button small{font-size:calc(10px*var(--fz));font-weight:700;letter-spacing:.02em;opacity:.8}.rtw button em{font-style:normal;font-size:calc(12px*var(--fz));font-weight:600;opacity:.85}
+.rtw button.in{border:2px solid var(--success);background:var(--success-tint);color:var(--on-success-tint)}
+.rtw button.on{background:var(--primary);color:var(--on-primary);border-color:var(--primary)}.rtw button.in.on{box-shadow:inset 0 0 0 2px var(--success)}
+.rth{margin:0 0 10px}
+.pkbar .ok{flex:1 1 0;min-width:0;white-space:normal;line-height:1.15;padding:6px 10px}

@@ -639,4 +639,5 @@ button.pfc:active{transform:none;opacity:.92}
 .selbar button{flex:none;min-height:48px;padding:0 14px;border-radius:12px;font-weight:800;border:2px solid var(--on-inverse);background:transparent;color:var(--on-inverse)}
 .selbar button.ok{background:var(--on-inverse);color:var(--cart-bar)}.selbar button:disabled{opacity:.45}
 
-.rall{margin-top:12px;min-height:48px;color:var(--danger);border-color:var(--danger-line);font-weight:600}   /* v37.2: «Убрать все с сегодня» — красный только текстом и обводкой */
+.rsa{min-height:48px;font-weight:700}   /* v37.3: «Выбрать все» — строка над точками в режиме выбора */
+#sheet.pfsh{display:flex;flex-direction:column}#sheet.pfsh #sb{flex:1;display:flex;flex-direction:column}#sheet.pfsh .pff{margin-top:auto;padding-top:18px}   /* v37.3: «Профиль» — логотип и версия прижаты к низу окна */

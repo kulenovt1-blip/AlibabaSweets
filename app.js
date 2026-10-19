@@ -19,7 +19,7 @@ const DEMO = [['Финики','Финики FINDI caramel','150г','1704','1976'
 
 /* ============ 2. ХЕЛПЕРЫ И СОСТОЯНИЕ ============ */
 /* Версия сборки: должна совпадать с <meta name="ver"> в index.html. Если файлы на хостинге разных версий — покажем красную плашку. */
-const VER = '37.5';
+const VER = '37.6';
 const NEED = 36;   // нужная версия Code.gs на сервере
 { const m = document.querySelector('meta[name=ver]');
   if (!m || m.content != VER) document.body.insertAdjacentHTML('afterbegin', '<div style="background:#C82B27;color:#fff;padding:12px;font-weight:800">Файлы сайта разных версий. Загрузите ВСЕ файлы из архива заново (index.html, styles.css, app.js, sw.js) и обновите страницу дважды.</div>') }
@@ -451,7 +451,7 @@ function histDetail(id) { // полная карточка заявки. v33: ш
 /* ============ 6а. ВИД: тема и размер текста (только на этом устройстве, ключ ui; применяется сразу, без «Сохранить») ============ */
 const TH = [['light', 'Светлая'], ['dark', 'Тёмная'], ['sys', 'Авто']], FS = [[0, 'Обычный'], [1, 'Крупный'], [2, 'Очень крупный']], CV = [['grid', 'Плиткой'], ['list', 'Списком']];
 let UI = LS('ui'); if (!UI || typeof UI != 'object' || Array.isArray(UI)) UI = {};
-UI.th = TH.some(t => t[0] == UI.th) ? UI.th : 'light'; UI.fs = [0, 1, 2].includes(UI.fs) ? UI.fs : 0; UI.cv = UI.cv == 'list' ? 'list' : 'grid';   // cv — вид каталога (по умолчанию плитка)   // по умолчанию светлая: на улице днём тёмная читается хуже
+UI.th = TH.some(t => t[0] == UI.th) ? UI.th : 'light'; UI.fs = [0, 1, 2].includes(UI.fs) ? UI.fs : 0; UI.cv = UI.cv == 'list' ? 'list' : 'grid'; UI.nav = UI.nav == 'maps' ? 'maps' : '2gis';   // cv — вид каталога (по умолчанию плитка)   // по умолчанию светлая: на улице днём тёмная читается хуже
 const darkMq = typeof matchMedia == 'function' ? matchMedia('(prefers-color-scheme: dark)') : null;
 function applyUI() {
   const r = document.documentElement, dark = UI.th == 'dark' || (UI.th == 'sys' && !!(darkMq && darkMq.matches));
@@ -459,9 +459,11 @@ function applyUI() {
   document.querySelectorAll('meta[name=theme-color]').forEach(m => m.setAttribute('content', dark ? '#0E100E' : '#F3F3EE'));
 }
 if (darkMq && darkMq.addEventListener) darkMq.addEventListener('change', () => { if (UI.th == 'sys') applyUI() });   // «Авто»: тема меняется вслед за системой
+const NV = [['2gis', '2ГИС'], ['maps', 'Карты телефона']];   // v37.6: куда ведёт «Как проехать» (только на этом устройстве, ключ ui.nav)
 const uiBlock = () => `<b>Тема</b><div class="seg sg3" style="margin:6px 0 4px">${TH.map(([k, t]) => `<button data-a="uith" data-v="${k}" class="${UI.th == k ? 'on' : ''}">${t}</button>`).join('')}</div><p class="m thh" style="margin:0 0 14px">«Авто» — светлая или тёмная, как в настройках телефона</p>
   <b>Размер текста</b><div class="seg sg3" style="margin:6px 0 14px">${FS.map(([k, t]) => `<button data-a="uifs" data-v="${k}" class="${UI.fs == k ? 'on' : ''}">${t}</button>`).join('')}</div>
-  <b>Каталог товаров</b><div class="seg sg3" style="margin:6px 0 8px">${CV.map(([k, t]) => `<button data-a="uicv" data-v="${k}" class="${UI.cv == k ? 'on' : ''}">${t}</button>`).join('')}</div>
+  <b>Каталог товаров</b><div class="seg sg3" style="margin:6px 0 14px">${CV.map(([k, t]) => `<button data-a="uicv" data-v="${k}" class="${UI.cv == k ? 'on' : ''}">${t}</button>`).join('')}</div>
+  <b>«Как проехать»</b><div class="seg" style="margin:6px 0 4px">${NV.map(([k, t]) => `<button data-a="uinv" data-v="${k}" class="${UI.nav == k ? 'on' : ''}" aria-pressed="${UI.nav == k}">${t}</button>`).join('')}</div><p class="m" style="margin:0 0 14px">2ГИС открывается с маршрутом до точки; если приложения нет, откроются обычные карты телефона.</p>
   <p class="m" style="margin:0 0 4px">Меняется сразу и только на этом телефоне.</p>`;
 function saveSet() { // v37.2: города и запасной номер сохраняются при выходе из поля и при закрытии окна; пустой список городов не принимаем
   const op = $('#op'), ct = $('#ct'); if (!op || !ct || view != 'set') return; let ch = false;
@@ -1036,7 +1038,7 @@ function drawToday(L) {
       ${deferred(gb) ? `<span class="dfl">${ico('clock', 15)} ${dfs(gb)}</span>` : ''}${gb.fq ? `<div class="goq"><span>ВОПРОС · </span>${esc(gb.fq)}</div>` : ''}
       <div class="gob"><button class="send" data-a="rvis" data-v="${k}">${ico('check', 22)}<span>Визит</span></button><button class="send acc" data-a="rord" data-v="${k}">${ico('bag', 22)}<span>Заявка</span></button></div>
       ${rvK == skey(gb) ? (cu => `<div class="sum rv"><b>Результат визита</b><p class="m" style="margin:4px 0 8px">${cu ? 'Сегодня отмечено: «' + esc(cu.val) + '». Другой результат заменит его, повторное нажатие на выбранный — отменит.' : srvAuto() ? 'Нажмите результат — визит запишется. «Взяли заказ» откроет заявку.' : 'Нажмите результат — визит запишется. Комментарий — по желанию.'}</p><input id="rvn" maxlength="500" placeholder="Комментарий (для «Другое» — обязательно)" style="margin:0 0 10px"><div class="vg vg2">${VO.map((t, i) => `<button data-a="rres" data-v="${i}"${cu && cu.val == t ? ' class="on" aria-pressed="true"' : ''}>${t}</button>`).join('')}</div></div>`)(myToday(gb)) : ''}
-      ${gq(gb) ? `<a class="ghost gonav" href="${esc(geoUrl(gb))}" target="_blank" rel="noopener">${ico('nav', 18)} Как проехать</a>` : ''}
+      ${gq(gb) ? `<a class="ghost gonav" href="${esc(geoUrl(gb))}" target="_blank" rel="noopener" data-a="navgo" data-v="${k}">${ico('nav', 18)} Как проехать</a>` : ''}
       <div class="gol"><button class="lnk" data-a="scard" data-v="${k}">Карточка точки</button><button class="lnk" data-a="rgox">Другая точка</button></div></div>`, ' now') }
   else if (cur.length && !live.length && !gb) { const od = allHist().filter(x => !x.del && isMine(x) && isToday(x.ts)), sm = od.reduce((a, x) => a + (+x.sum || 0), 0), np = done.length + ext.length;
     h += tl(`<span class="tn ok">${ico('check', 18)}</span>`, `<div class="rsum"><small>НА СЕГОДНЯ</small><b>Маршрут пройден</b><span>${np} ${pl3(np, 'точка', 'точки', 'точек')} · ${od.length ? `${od.length} ${pl3(od.length, 'заявка', 'заявки', 'заявок')} · <em>${tg(sm)}</em>` : 'заявок нет'}</span>${rest.length ? `<span>${rest.length == 1 ? 'Осталась отложенная точка' : 'Остались отложенные точки'} — зайдите, если успеете.</span>` : ''}</div>`, ' now') }
@@ -1170,7 +1172,7 @@ function shopCard(v) {
   ${x.fq ? `<div class="shq"><small>ОТКРЫТЫЙ ВОПРОС</small><b>${esc(x.fq)}</b></div>` : ''}${x.nb ? `<div class="shnb"><small>ЗАМЕТКИ</small><div>${esc(x.nb)}</div></div>` : ''}
   <div class="cta"><button class="send alt${cVO ? ' on' : ''}" data-a="cvis">${ico(cVO ? 'x' : 'check', 22)} ${cVO ? 'Закрыть' : 'Визит'}</button><button class="send" data-a="sord" data-v="${esc(x.id || '')}">${ico('bag', 22)} Заявка</button></div>
   ${visit}
-  ${x.tl || gq(x) ? `<div class="cta2">${x.tl ? `<a class="ghost" href="tel:${esc(x.tl.replace(/[^\d+]/g, ''))}">${ico('phone', 18)} Позвонить</a>` : ''}${gq(x) ? `<a class="ghost" href="${esc(geoUrl(x))}" target="_blank" rel="noopener">${ico('nav', 18)} Как проехать</a>` : ''}</div>` : ''}
+  ${x.tl || gq(x) ? `<div class="cta2">${x.tl ? `<a class="ghost" href="tel:${esc(x.tl.replace(/[^\d+]/g, ''))}">${ico('phone', 18)} Позвонить</a>` : ''}${gq(x) ? `<a class="ghost" href="${esc(geoUrl(x))}" target="_blank" rel="noopener" data-a="navgo" data-v="${esc(skey(x))}">${ico('nav', 18)} Как проехать</a>` : ''}</div>` : ''}
   <div class="scs">
   ${rtSec(x, sec)}
   ${sec('days', 'Дни маршрута', wk.length ? wk.join(', ') : 'не заданы', `<div class="m">${canDays(x) ? 'В эти дни магазин сам попадает в маршрут на сегодня' + (x.ow ? '' : ' (у всех торговых, пока точка свободна)') : 'Точка закреплена за «' + esc(x.ow) + '»: дни меняет он или администратор'}</div><div class="wk" style="margin:8px 0 0">${WD.map((d, i) => `<button data-a="rwd" data-v="${i}" class="${inWeek(x, i) ? 'on' : ''}"${canDays(x) ? '' : ' disabled'}>${d}</button>`).join('')}</div>`, 'cal')}
@@ -1212,6 +1214,16 @@ const geoDist = (p, q) => { const R = 6371e3, r = Math.PI / 180, dl = (q.la - p.
 const gq = x => !!x && x.la != null && x.ln != null && isFinite(x.la) && isFinite(x.ln);
 const geoTxt = x => gq(x) ? (nz(x.ac) <= 100 ? 'точно' : 'приблизительно') + ' (±' + nz(x.ac) + ' м)' : 'не записано';
 const geoUrl = x => 'https://www.google.com/maps/dir/?api=1&destination=' + nz(x.la) + ',' + nz(x.ln);   // официальный формат ссылок Google Maps: на телефоне открывает приложение карт
+/* v37.6. «Как проехать»: по умолчанию 2ГИС, в «Профиле»/«Настройках» можно выбрать «Карты телефона» (прежняя ссылка Google Maps — телефон открывает свои карты).
+   Android: intent на приложение 2ГИС, нет приложения — Chrome сам откроет browser_fallback_url (карты, как раньше). Другие телефоны: схема dgis://, не открылась за NAV_MS — карты.
+   Компьютер: сразу карты (2ГИС там не открыть). Схема маршрута — документация 2ГИС: dgis://2gis.ru/routeSearch/rsType/car/to/<долгота>,<широта>. Не проверено на телефоне */
+let NAV_MS = 1800, navT = 0;
+const dgisPath = x => `2gis.ru/routeSearch/rsType/car/to/${nz(x.ln)},${nz(x.la)}`;
+function navOpen(x) { const web = geoUrl(x), ua = navigator.userAgent || '';
+  if (!gq(x)) return; clearTimeout(navT); navT = 0;
+  if (/Android/i.test(ua)) { leaving = true; location.href = `intent://${dgisPath(x)}#Intent;scheme=dgis;package=ru.dublgis.dgismobile;S.browser_fallback_url=${encodeURIComponent(web)};end`; navT = setTimeout(() => { navT = 0; leaving = false }, NAV_MS); return }
+  if (/iPhone|iPad|iPod/i.test(ua)) { location.href = 'dgis://' + dgisPath(x); navT = setTimeout(() => { navT = 0; if (!document.hidden) location.href = web }, NAV_MS); return }
+  window.open(web, '_blank', 'noopener') }
 const geoBody = x => `${gq(x) ? `<p class="m" style="margin:0 0 8px">Записал${x.gb ? ': ' + esc(x.gb) : 'и'}${x.ga ? ', ' + ft(x.ga) : ''}. ${nz(x.ac) > 100 ? 'Место приблизительное — уточните, когда будете на точке.' : ''}</p>` : `<p class="m" style="margin:0 0 8px">Нажмите, когда стоите у магазина: место поможет доехать по кнопке «Как проехать», а позже — строить маршрут.</p>`}
   <div class="m" id="geost" style="min-height:1.2em;margin-bottom:6px"></div><button class="ghost" style="margin-top:0" data-a="geo">${ico('pin', 18)} ${gq(x) ? 'Обновить место' : 'Записать место'}</button>${gq(x) && role == 'admin' && x.id ? `<button class="ghost" style="color:var(--danger);border-color:var(--danger)" data-a="geodel">${ico('trash', 18)} Удалить место</button>` : ''}`;   // v32: удалить место — только администратор
 async function geoDel(x) { // v32: удалить записанное место. Только администратор (сервер проверяет сам); в журнал пишется, какое место было
@@ -1347,6 +1359,7 @@ document.addEventListener('click', async e => {   // async: вопросы (ask)
   const a = b.dataset.a, id = b.dataset.id, p = id && find(id), v = b.dataset.v;
   if (selSup && (a == 'rgo' || a == 'rsel' || a == 'pkrow')) { const w = selSup > Date.now(); selSup = 0; if (w) return }   // v37: отпускание после долгого нажатия — не нажатие
   if (a == 'rsel') { if (selSet.has(v)) selSet.delete(v); else selSet.add(v); if (!selSet.size) selMode = false; return drawShops() }
+  if (a == 'navgo') { if (UI.nav == 'maps') return; const x = shopById(v); if (!x || !gq(x)) return; e.preventDefault(); return navOpen(x) }   // v37.6: 2ГИС; «Карты телефона» — обычная ссылка
   if (a == 'pkrow') { const x = shopById(v); if (!x || !pk) return; if (pkMode) { if (pkSel.has(v)) pkSel.delete(v); else pkSel.add(v); if (!pkSel.size) pkMode = false; return drawShops() } pkAdd([x]); return drawShops() }   // v37.4
   if (a == 'pkall') { pkSel = pkVis.length && pkVis.every(k => pkSel.has(k)) ? new Set() : new Set([...pkSel, ...pkVis]); if (!pkSel.size) pkMode = false; return drawShops() }
   if (a == 'pkgo') { const xs = [...pkSel].map(shopById).filter(Boolean); pkMode = false; pkSel = new Set(); pkAdd(xs); return drawShops() }
@@ -1566,6 +1579,7 @@ document.addEventListener('click', async e => {   // async: вопросы (ask)
   else if (a == 'svat') { if (!cSh) return; const x = cSh, k = skey(x), m = v == 'vat' || v == 'net' ? v : '';
     if (CFG.API_URL && srvV >= 31 && x.id) { x.vm = m; delete VATP[k]; LS('vatp', VATP); LS('base', base); shopq.push({ op: 'vat', id: x.id, n: x.n, c: x.c || '', a: x.a || '', m }); LS('shopq', shopq); sync() }   // v31: в таблицу
     else { if (m) VATP[k] = m; else delete VATP[k]; LS('vatp', VATP) } shopCard(k); cSaved('Цены для магазина: ' + (m ? ML[m] : 'по последней заявке')) }
+  else if (a == 'uinv') { if (NV.some(t => t[0] == v)) setUI('nav', v) }
   else if (a == 'uicv') { if (CV.some(t => t[0] == v)) setUI('cv', v) }
   else if (a == 'cv') setUI('cv', UI.cv == 'list' ? 'grid' : 'list')
   else if (a == 'rl') { load(); closeSheet() }

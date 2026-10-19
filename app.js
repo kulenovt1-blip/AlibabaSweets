@@ -19,7 +19,7 @@ const DEMO = [['Финики','Финики FINDI caramel','150г','1704','1976'
 
 /* ============ 2. ХЕЛПЕРЫ И СОСТОЯНИЕ ============ */
 /* Версия сборки: должна совпадать с <meta name="ver"> в index.html. Если файлы на хостинге разных версий — покажем красную плашку. */
-const VER = '37.4';
+const VER = '37.5';
 const NEED = 36;   // нужная версия Code.gs на сервере
 { const m = document.querySelector('meta[name=ver]');
   if (!m || m.content != VER) document.body.insertAdjacentHTML('afterbegin', '<div style="background:#C82B27;color:#fff;padding:12px;font-weight:800">Файлы сайта разных версий. Загрузите ВСЕ файлы из архива заново (index.html, styles.css, app.js, sw.js) и обновите страницу дважды.</div>') }
@@ -873,7 +873,7 @@ function rgOn(tr, d, id) { const c = rgC[d]; let v; (c && c.rd ? c.rd : RDS.filt
   shopq.forEach(q => { if (q.op == 'rday' && q.d == d && q.id == id && norm(q.tr) == norm(tr)) v = !!q.on }); return v }   // правка дня: true / false / undefined (нет)
 function rgView(top) {   // v37: при перерисовке на том же экране прокрутка сохраняется (раньше уходила в начало); top — новый день, начать сверху
   const sh1 = document.getElementById('sheet'), keep = !top && view == 'rall' && sh1 ? sh1.scrollTop : 0;
-  openSheet('rall', 'Другой день'); const t0 = today(), dMin = rgAll() ? t0 : addD(t0, 1), dMax = addD(t0, PDMAX); if (!rgD || rgD < dMin) rgD = dMin; if (rgD > dMax) rgD = dMax;   // v37.4: «Другой день» — от завтра на 14 дней вперёд; тем, кто видит чужие маршруты (администратор и торговые при включённом «Виден торговым»), доступен ещё и сегодня — ход дня других торговых
+  openSheet('rall', 'Другой день'); const t0 = today(), dMin = addD(t0, -PDMAX), dMax = addD(t0, PDMAX); if (!rgD || rgD < dMin) rgD = dMin; if (rgD > dMax) rgD = dMax;   // v37.4: «Другой день» — от 14 дней назад до 14 вперёд; прошлые дни — только просмотр (состав по текущему шаблону дней, «пройдено» — по журналу того дня)
   const d = rgD, wd = wdOfD(d), c = rgC[d]; loadRg(d);
   const adm = role == 'admin', edTr = tr => d >= t0 && (adm || (!!me && norm(tr) == norm(me))), Tall = (rgAll() ? [...new Set([...trs, me].filter(Boolean))] : [me].filter(Boolean)).sort((a, b) => a.localeCompare(b, 'ru')),
     T = rgTr == '*' && rgAll() ? Tall : rgTr && rgAll() && Tall.some(t => norm(t) == norm(rgTr)) ? Tall.filter(t => norm(t) == norm(rgTr)) : Tall.filter(t => norm(t) == norm(me)), L = base.filter(b => b.id);   // v36.5: правит свой блок каждый (на сегодня и вперёд), любой — администратор
@@ -903,7 +903,7 @@ function rgView(top) {   // v37: при перерисовке на том же 
     + `<div class="day"><button class="dnb" data-a="rgprev" aria-label="Предыдущий день"${d <= dMin ? ' disabled' : ''}>${ico('back', 22)}</button><div class="dl"><span>${esc(WDF[wd][0].toUpperCase() + WDF[wd].slice(1) + ', ' + fd(d))}</span><small>${c && c.err ? 'не загрузилось: ' + esc(c.err) : !c && rgBusy ? 'загружаю…' : rel}</small></div><button class="dnb" data-a="rgnext" aria-label="Следующий день"${d >= dMax ? ' disabled' : ''}>${ico('chev', 22)}</button></div>`
     + `<div class="dsw">${c && c.err ? '<button class="lnk dall" data-a="rgretry">Повторить</button>' : ''}</div>`;
   const fdone = free.filter(b => (st(b, '') || {}).done).length;
-  $('#sb').innerHTML = head + '<p class="m rgn">Заявки и визиты — только в сегодняшнем маршруте.</p>'
+  $('#sb').innerHTML = head + `<p class="m rgn">${d < t0 ? 'Прошлый день — только просмотр. Состав — по текущим дням маршрута и правкам на этот день, а не как было тогда. «Пройдено» — по визитам и заявкам того дня.' : 'Заявки и визиты — только в сегодняшнем маршруте.'}</p>`
     + T.map(t => blk(t, P[t])).join('')
     + `<section class="rgs"><div class="rgh"><div class="rgw"><b>Свободные точки</b><span class="m">без ответственного — в маршруте у всех</span></div>${free.length ? `<div class="rcn"><b>${fdone}<span>/${free.length}</span></b><small>пройдено</small></div>` : ''}</div>${free.length ? `<div class="pbar"><span style="width:${Math.round(fdone / free.length * 100)}%"></span></div>` : ''}<div class="tline">${free.map(b => pt(b, '')).join('') || '<p class="m wke">Нет.</p>'}</div></section>`;
   if (keep) { const s2 = document.getElementById('sheet'); if (s2) s2.scrollTop = keep } }
@@ -1124,7 +1124,7 @@ function drawAll(L0) { // v35: два ряда кнопок — «что с то
    Тап по магазину — сразу в день (с «Отменить»); удержание — выбор нескольких (фильтры остаются), «Добавить N на …» */
 let pk = null, pkMode = false, pkSel = new Set(), pkVis = [];   // pk: { tr — чей маршрут, d — день, from — откуда пришли ('today' | 'day') }
 const fdl = d => new Date(d + 'T12:00:00').toLocaleDateString('ru', { day: 'numeric', month: 'long' });
-const relD = d => { const n = Math.round((new Date(d + 'T12:00:00') - new Date(today() + 'T12:00:00')) / 864e5); return n == 0 ? 'сегодня' : n == 1 ? 'завтра' : n == 2 ? 'послезавтра' : 'через ' + n + ' ' + pl3(n, 'день', 'дня', 'дней') };
+const relD = d => { const n = Math.round((new Date(d + 'T12:00:00') - new Date(today() + 'T12:00:00')) / 864e5); return n == 0 ? 'сегодня' : n == 1 ? 'завтра' : n == 2 ? 'послезавтра' : n == -1 ? 'вчера' : n == -2 ? 'позавчера' : n < 0 ? -n + ' ' + pl3(-n, 'день', 'дня', 'дней') + ' назад' : 'через ' + n + ' ' + pl3(n, 'день', 'дня', 'дней') };
 const inDay = (b, tr, d) => norm(tr) == norm(me) && d == today() ? inToday(b) : b.id ? inPlan(b, tr, d) : false;   // точка в маршруте торгового на день (по данным на телефоне)
 let cRt = { tr: '', d: '' };   // раздел «В маршрут» в карточке: чей маршрут и какой день выбран
 const pkOwn = () => !!pk && norm(pk.tr) == norm(me) && pk.d == today();   // свой маршрут на сегодня — точки без ID тоже можно (как раньше)
@@ -1362,7 +1362,7 @@ document.addEventListener('click', async e => {   // async: вопросы (ask)
   if (a == 'shrt') { const on = v == '1'; if (on == cfgShare) return; const r = await admDo({ op: 'cfg', share: on }); if (r) { cfgShare = on; LS('cfgsh', on); toast(on ? 'Маршруты других торговых видны торговым' : 'Маршруты других торговых — только администраторам') } if (view == 'set') setView(); return }   // v35: сразу на сервер (нужна связь)
   if (a == 'shst') { shSt = v == shSt ? '' : v || ''; return drawShops() }   // v35: статус — кнопкой; v36: «Любого» нет — повторное нажатие снимает выбор
   if (a == 'rgall') { rgD = addD(today(), 1); rgTr = ''; return rgView(true) }   // v37.4: «Другой день» открывается на завтра
-  if (a == 'rgprev' || a == 'rgnext') { const n = addD(rgD, a == 'rgnext' ? 1 : -1); if (n < (rgAll() ? today() : addD(today(), 1)) || n > addD(today(), PDMAX)) return; rgD = n; return rgView(true) }   // v37.4: от завтра до сегодня + 14
+  if (a == 'rgprev' || a == 'rgnext') { const n = addD(rgD, a == 'rgnext' ? 1 : -1); if (n < addD(today(), -PDMAX) || n > addD(today(), PDMAX)) return; rgD = n; return rgView(true) }   // v37.4: от сегодня − 14 до сегодня + 14
   if (a == 'pdt') { shMode = 'route'; return shopsView() }   // v37.4: переключатель «Сегодня»
   if (a == 'pdtr') { rgTr = v || ''; return rgView(true) }   // v37.4: чей маршрут
   if (a == 'rgretry') { delete rgC[rgD]; return rgView() }

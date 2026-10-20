@@ -19,7 +19,7 @@ const DEMO = [['Финики','Финики FINDI caramel','150г','1704','1976'
 
 /* ============ 2. ХЕЛПЕРЫ И СОСТОЯНИЕ ============ */
 /* Версия сборки: должна совпадать с <meta name="ver"> в index.html. Если файлы на хостинге разных версий — покажем красную плашку. */
-const VER = '37.7';
+const VER = '37.8';
 const NEED = 36;   // нужная версия Code.gs на сервере
 { const m = document.querySelector('meta[name=ver]');
   if (!m || m.content != VER) document.body.insertAdjacentHTML('afterbegin', '<div style="background:#C82B27;color:#fff;padding:12px;font-weight:800">Файлы сайта разных версий. Загрузите ВСЕ файлы из архива заново (index.html, styles.css, app.js, sw.js) и обновите страницу дважды.</div>') }
@@ -290,6 +290,9 @@ function unsnap(z) { cart = JSON.parse(z.cart); disc = z.disc; eo = z.eo; eob = 
 /* ============ 6. ШТОРКА: корзина, история, настройки ============ */
 /* Разделы (нижняя панель): Маршрут / Заявка / История / Профиль (v33: бывшее «Ещё»). Страница раздела открывается поверх каталога; кнопка «Назад» ведёт на уровень выше */
 const TAB = { shops: 'route', rplan: 'route', rall: 'route', shopc: 'route', shop: 'route', shopn: 'route', hist: 'hist', hd: 'hist', more: 'more', set: 'more', adm: 'more', dr: 'more', cart: 'main', promo: 'more' };
+const OPEN = new Set();   // v37.8: раскрытые блоки-<details> в списках («Отказались…», «Стоит заехать», «Недавно удалённые») — перерисовка (конец синхронизации, возврат из карточки) не должна их сворачивать
+const dOpen = k => OPEN.has(k) ? ' open' : '';
+document.addEventListener('toggle', e => { const d = e.target, k = d && d.dataset && d.dataset.o; if (!k) return; if (d.open) OPEN.add(k); else OPEN.delete(k) }, true);   // toggle не всплывает — ловим на перехвате
 let RET = null;   // v37.7: откуда открыли карточку магазина — экран и положение списка, чтобы «Назад» вернул на то же место
 function cardBack() { const r = RET; RET = null; const y = r ? r.y : 0, fix = () => { const sh = document.getElementById('sheet'); if (sh && y) sh.scrollTop = y };
   if (r && r.v == 'rall') return rgView(false, y); if (r && r.v == 'rplan') { planView(); return fix() } shopsView(); fix() }
@@ -421,7 +424,7 @@ function histView() { // вкладки «Мои» / «Все заявки»; п
     list = `<div class="hmy">${MN.map((m, i) => { const t = new Date(y, i, 1).getTime(); if (t > now) return ''; const z = bk && bk[i]; return `<button class="hmr" data-a="hpm" data-v="${t}"><span>${m}</span><small class="m">${z ? nn(z) : ''}</small><b>${z ? tg(z.sum) : '…'}</b></button>` }).reverse().join('')}</div>` }
   else { let last = -1; list = act.map(x => { const dd = dayMs(x.ts || 0), h = p != 'd' && dd != last ? (last = dd, (() => { const z = act.filter(y => dayMs(y.ts || 0) == dd); return `<h3 class="sub hdd">${esc(lblDay(dd))} · ${z.length} · ${tg(z.reduce((s, y) => s + (+y.sum || 0), 0))}</h3>` })()) : ''; return h + card(x) }).join('') || emptyMsg }   // неделя и месяц — по дням
   $('#sb').innerHTML = tabs + trSel + seg + plate + sts + `<div class="hcl">${list}</div>`
-  + (trash.length ? `<details class="htr"><summary>${ico('trash', 20)}<span><b>Недавно удалённые: ${trash.length}</b> · вернуть можно ещё ${left(tLeft)}</span></summary>` + trash.map(x => `<div class="hc hcd"><div class="hch"><span class="hct"><b>${esc(x.h.s || '—')}</b><span class="m">${ft(x.ts)} · ${tg(x.sum)}${isMine(x) ? '' : ' · ' + esc(x.trader)}</span><span class="m">Можно вернуть ещё ${left(x)}</span>${delq.some(o => o.id == x.id) ? '<span class="m">' + pendChip() + ' (удаление)</span>' : ''}</span><button class="ocb" data-a="hres" data-v="${esc(x.id)}">Вернуть</button></div></div>`).join('') + '</details>' : '');
+  + (trash.length ? `<details class="htr" data-o="htr"${dOpen('htr')}><summary>${ico('trash', 20)}<span><b>Недавно удалённые: ${trash.length}</b> · вернуть можно ещё ${left(tLeft)}</span></summary>` + trash.map(x => `<div class="hc hcd"><div class="hch"><span class="hct"><b>${esc(x.h.s || '—')}</b><span class="m">${ft(x.ts)} · ${tg(x.sum)}${isMine(x) ? '' : ' · ' + esc(x.trader)}</span><span class="m">Можно вернуть ещё ${left(x)}</span>${delq.some(o => o.id == x.id) ? '<span class="m">' + pendChip() + ' (удаление)</span>' : ''}</span><button class="ocb" data-a="hres" data-v="${esc(x.id)}">Вернуть</button></div></div>`).join('') + '</details>' : '');
 }
 /* v31. «Продвигать товары» (только администратор): отметка хранится на листе «Продвигать» и сразу видна торговым после синхронизации */
 let prQ = '', prBusy = false;
@@ -1048,7 +1051,7 @@ function drawToday(L) {
   $('#shl').innerHTML = h;
   const pick = (b, tags) => `<button class="shi" data-a="rpick" data-v="${esc(skey(b))}"><div style="flex:1;min-width:0"><b>${esc(b.n)}</b><div class="m">${addr(b)}</div>${tags ? `<div class="tg">${tags.map(t => `<span>${esc(t)}</span>`).join('')}</div>` : ''}</div><span class="pl add">+ добавить</span></button>`;
   const tips = L.filter(b => !inToday(b) && myPt(b)).map(b => ({ b, d: dueInfo(b) })).filter(x => x.d).sort((x, y) => y.d.sc - x.d.sc).slice(0, 20);
-  $('#shx').innerHTML = (tips.length ? `<details class="rt rtip"><summary><span>Стоит заехать · ${tips.length}</span><small class="m">не в маршруте, но давно не были или есть вопрос</small></summary>${tips.map(({ b, d }) => pick(b, d.tags)).join('')}</details>` : '')
+  $('#shx').innerHTML = (tips.length ? `<details class="rt rtip" data-o="rtip"${dOpen('rtip')}><summary><span>Стоит заехать · ${tips.length}</span><small class="m">не в маршруте, но давно не были или есть вопрос</small></summary>${tips.map(({ b, d }) => pick(b, d.tags)).join('')}</details>` : '')
     + `<div class="rnav"><button class="ghost" data-a="shm" data-v="all">Все магазины</button><button class="ghost" data-a="rplan">Маршрут по дням</button></div>`;   // v37.4: «Общий маршрут» / «Мой маршрут на другие дни» заменены переключателем «Другой день» (v35: общий лист — администратор ставит точки торговым)
   syncStatus();
 }
@@ -1109,7 +1112,7 @@ function drawAll(L0) { // v35: два ряда кнопок — «что с то
   let h, vis = [];
   if (shF == 'all') { const live = L.filter(b => !shOut(b)), out = L.filter(shOut).sort(shUrg); vis = live;
     h = grp('Давно без визита', live.filter(b => shClass(b).far).sort(shUrg)) + grp('Были недавно', live.filter(b => !shClass(b).far).sort(shUrg))
-      + (out.length ? `<details class="rt shout"><summary>Отказались, не заходить, закрыты · ${out.length}</summary><div class="shls">${out.map(shRow).join('')}</div></details>` : '') }
+      + (out.length ? `<details class="rt shout" data-o="shout"${dOpen('shout')}><summary>Отказались, не заходить, закрыты · ${out.length}</summary><div class="shls">${out.map(shRow).join('')}</div></details>` : '') }
   else { vis = L.filter(b => shClass(b)[shF]); h = grp(SHF.find(([f]) => f == shF)[1], vis.sort(shF == 'took' ? (a, b) => (b.lo || 0) - (a.lo || 0) : shUrg)) }
   let pre = '', post = '';
   if (view == 'pick' && pk && pkMode) { pkVis = vis.filter(b => !pkIn(b)).map(skey); const all = pkVis.length && pkVis.every(k => pkSel.has(k)), n = pkSel.size;   // v37.4: «Выбрать все» — те, что видны под фильтрами и ещё не в дне

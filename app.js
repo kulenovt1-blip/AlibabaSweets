@@ -19,7 +19,7 @@ const DEMO = [['Финики','Финики FINDI caramel','150г','1704','1976'
 
 /* ============ 2. ХЕЛПЕРЫ И СОСТОЯНИЕ ============ */
 /* Версия сборки: должна совпадать с <meta name="ver"> в index.html. Если файлы на хостинге разных версий — покажем красную плашку. */
-const VER = '37.6';
+const VER = '37.7';
 const NEED = 36;   // нужная версия Code.gs на сервере
 { const m = document.querySelector('meta[name=ver]');
   if (!m || m.content != VER) document.body.insertAdjacentHTML('afterbegin', '<div style="background:#C82B27;color:#fff;padding:12px;font-weight:800">Файлы сайта разных версий. Загрузите ВСЕ файлы из архива заново (index.html, styles.css, app.js, sw.js) и обновите страницу дважды.</div>') }
@@ -73,7 +73,7 @@ function pickD(v) { // v34: ручной выбор даты поставки. �
   if (v < locIso(ordT())) return say('Поставка не может быть раньше дня заявки (' + fd(locIso(ordT())) + '). Если заявку приняли раньше — сначала укажите «Время заявки».');
   H.d = v; H.dm = 1 }
 let P = [], cart = LS('cart') || {}, disc = LS('disc') || 0, H = LS('hdr') || { d: today() },
-    S = LS('set') || { op: CFG.OPERATOR, cities: CFG.CITIES }, cat = 'Все', Q = '', view = '', editId = '';
+    S = LS('set') || { op: CFG.OPERATOR, cities: CFG.CITIES }, cat = 'Все', Q = '', view = '';
 S.mode = S.mode || CFG.PRICE_MODE;
 if (!Array.isArray(S.cities) || !S.cities.length) S.cities = CFG.CITIES; S.op = S.op || CFG.OPERATOR;   // защита от данных старых версий
 if (typeof H != 'object' || Array.isArray(H)) H = { d: today() }; fixDate(); if (typeof cart != 'object' || Array.isArray(cart)) cart = {};
@@ -290,7 +290,10 @@ function unsnap(z) { cart = JSON.parse(z.cart); disc = z.disc; eo = z.eo; eob = 
 /* ============ 6. ШТОРКА: корзина, история, настройки ============ */
 /* Разделы (нижняя панель): Маршрут / Заявка / История / Профиль (v33: бывшее «Ещё»). Страница раздела открывается поверх каталога; кнопка «Назад» ведёт на уровень выше */
 const TAB = { shops: 'route', rplan: 'route', rall: 'route', shopc: 'route', shop: 'route', shopn: 'route', hist: 'hist', hd: 'hist', more: 'more', set: 'more', adm: 'more', dr: 'more', cart: 'main', promo: 'more' };
-const BACK = { shopc: () => shopsView(), shop: () => shopCard(skey(eSh)), shopn: () => shopsView(), rplan: () => { rtAdd = false; shopsView() }, rall: () => shopsView(), pick: () => pkBack(), hd: () => histView(),
+let RET = null;   // v37.7: откуда открыли карточку магазина — экран и положение списка, чтобы «Назад» вернул на то же место
+function cardBack() { const r = RET; RET = null; const y = r ? r.y : 0, fix = () => { const sh = document.getElementById('sheet'); if (sh && y) sh.scrollTop = y };
+  if (r && r.v == 'rall') return rgView(false, y); if (r && r.v == 'rplan') { planView(); return fix() } shopsView(); fix() }
+const BACK = { shopc: () => cardBack(), shop: () => shopCard(skey(eSh)), shopn: () => shopsView(), rplan: () => { rtAdd = false; shopsView() }, rall: () => shopsView(), pick: () => pkBack(), hd: () => histView(),
   set: () => moreView(), promo: () => moreView(), dr: () => moreView(), adm: () => moreView(), cart: () => { closeSheet(); drawList() } };
 function navSync() { const t = view ? TAB[view] || '' : 'main';
   document.querySelectorAll('.bn button').forEach(b => b.classList.toggle('on', b.dataset.t == t));
@@ -313,7 +316,7 @@ function moreView() { openSheet('more', 'Профиль'); const shp = document.
 }
 const needLogin = () => !!CFG.API_URL && !tok && !LS('pending');   // входа нет (не входили, вышли или сервер отозвал доступ); неотвеченный вопрос «Отправлено?» важнее экрана входа
 function closeSheet() { if (view == 'auth' && needLogin()) return; saveSet(); selMode = false; selSet = new Set();   // экран входа нельзя смахнуть: без входа приложением не пользуются
-  view = ''; editId = ''; admCode = null; document.body.classList.remove('sh'); navSync(); bar(); if (needLogin()) authView() }   // приглашение, показанное администратору, не переживает закрытия окна
+  view = ''; admCode = null; document.body.classList.remove('sh'); navSync(); bar(); if (needLogin()) authView() }   // приглашение, показанное администратору, не переживает закрытия окна
 function drawRc() { // выбор получателя в шапке — такой же селектор, как город; автоподбор по городу, можно сменить
   const el = $('#rch'); if (!rcp.length) { el.hidden = true; return } const c = rcPick(); el.hidden = false;
   el.innerHTML = rcp.map(r => `<option value="${esc(r.n)}">Кому: ${esc(r.n)}</option>`).join(''); el.value = c.n }
@@ -324,14 +327,6 @@ function rcPick() { // получатель: выбранный вручную, 
   return L[0][1];
 }
 const rcBlock = () => rcp.length < 2 ? '' : `<p class="m rcb">Получатель: <b>${esc(rcPick().n || 'запасной номер')}</b> · меняется на главном экране, под адресом</p>`;
-let npAt = 0;   // v34: когда цену сохранили по касанию «Готово» / Enter
-document.addEventListener('pointerdown', e => { const b = e.target && e.target.closest ? e.target.closest('[data-a="pdone"]') : null, t = b && document.querySelector('[data-np]'); if (!t || !editId) return;
-  e.preventDefault(); npAt = Date.now(); commitNp(t) });   // касание «Готово»: сохраняем сразу, поле не теряет фокус — нет «change» с перерисовкой, из-за которой нажатие попадало в новую разметку («Цена») и поле открывалось снова
-document.addEventListener('click', e => { if (!editId) return; const t = document.querySelector('[data-np]'), x = e.target; if (!t || (x && x.closest && x.closest('.npr'))) return; commitNp(t) }, true);   // v36.2: касание мимо поля цены — сохранить (если меняли) и закрыть. На click, а не pointerdown: перерисовка до click уводила нажатие на другую кнопку (v34)
-document.addEventListener('keydown', e => { const t = e.target; if (e.key == 'Enter' && t && t.dataset && t.dataset.np !== undefined) { e.preventDefault(); npAt = Date.now(); commitNp(t) } });
-function commitNp(t) { // новая цена позиции: из поля ввода (по «Готово» или при уходе из поля)
-  const n = num(t.value), id = t.dataset.np; if (editId != id) return; if (!(n > 0) && String(t.value).trim() !== '') toast('Цена должна быть больше 0 — оставлена прежняя');   // v36.3: раньше молча
-  if (n > 0 && cart[id] && find(id)) { n == find(id).pr ? delete cart[id].p : cart[id].p = n; save() } editId = ''; bar(); cartView() }
 function vatBar() { // v33: режим цен — переключатель на всю ширину; под ним — откуда взята норма точки или предупреждение, что режим не совпадает
   const nm = vatNorm(curShop(), eo), m = S.mode;
   const hint = nm && nm.m != m ? `<div class="sw q">${nm.set ? 'В карточке магазина выбрано: ' + ML[nm.m] : 'Последняя заявка в этот магазин была ' + ML[nm.m]}</div>` : nm ? `<p class="m vth">${nm.set ? 'Как выбрано в карточке магазина' : 'Как в прошлой заявке в эту точку'}</p>` : '';
@@ -346,13 +341,11 @@ function cartView() { // v30: оформление по порядку — ре�
   const who = H.s ? `<div class="ckh"><div class="ckt"><small>МАГАЗИН</small><b>${esc(H.s)}</b>${H.a || H.c ? `<span class="m">${esc(H.a || H.c)}</span>` : ''}</div><button class="ocb" data-a="ochg">Сменить</button></div>`
     : `<div class="ckt"><small>МАГАЗИН</small><div class="sw bad">Магазин не указан</div><button class="ghost" data-a="ochg">Указать магазин</button></div>`;
   const dBlock = `<div class="sum ck">${who}<label class="ckd"><b class="ckl">Дата поставки</b><span class="ckdv"><span>${esc(fdw(H.d))}</span>${ico('cal', 20)}<input type="date" id="cd" min="${eo ? '' : minD()}" value="${esc(H.d || '')}" aria-label="Дата поставки"></span></label>${!H.dm && H.t > 0 ? '<p class="m ckdh">Поставка пересчитана от даты заявки</p>' : ''}</div>`;
-  const items = L.map(p => { const id = esc(pid(p)), n = price(p), ch = n != p.pr, ed = editId == pid(p);
-    const npr = ed ? `<div class="npr"><input class="np" data-np="${id}" inputmode="decimal" value="${n}" aria-label="Новая цена"><button class="ib2 ok" data-a="pdone" data-id="${id}">Готово</button></div>` : '';   // v36.2: поле цены — отдельной строкой во всю ширину (в колонке с названием на 320 px оставалось 32 px)
-    const pr = ed ? `<span class="m">${p.g ? esc(p.g) + ' · ' : ''}новая цена за ${esc(p.u)}:</span>`
-      : ch ? `<span class="ipc"><s>${fm(p.pr)}</s><b>${tg(n)} / ${esc(p.u)}</b></span><small class="m">цена изменена</small>`
+  const items = L.map(p => { const id = esc(pid(p)), n = price(p), ch = n != p.pr;   // v37.7: ручной правки цены больше нет; «цена изменена» и «Вернуть цену» остались только для старой заявки с ручной ценой при её правке
+    const pr = ch ? `<span class="ipc"><s>${fm(p.pr)}</s><b>${tg(n)} / ${esc(p.u)}</b></span><small class="m">цена изменена</small>`
       : `<span class="m">${p.g ? esc(p.g) + ' · ' : ''}${tg(n)} / ${esc(p.u)}</span>`;
-    return `<div class="it"><div class="ckr"><img src="${esc(picU(p.f, 't') || 'logo.jpg')}" data-o="${esc(p.f || 'logo.jpg')}" onerror="imgFb(this)" decoding="async" alt=""><div class="in"><b>${esc(p.n)}</b>${pr}</div><b class="ls">${tg(Math.round(n * qty(p)))}</b></div>${npr}
-    <div class="cka"><div class="st"><button data-a="m" data-id="${id}" aria-label="Меньше">−</button><input data-q="${id}" inputmode="decimal" value="${qf(qty(p))}" aria-label="Количество"><button data-a="p" data-id="${id}" aria-label="Больше">+</button></div><span class="sp"></span>${ed ? '' : `<button class="lnk" data-a="edit" data-id="${id}" aria-label="Изменить цену">Цена</button>`}${ch && !ed ? `<button class="lnk" data-a="reset" data-id="${id}">Вернуть цену</button>` : ''}<button class="lnk bad" data-a="rm" data-id="${id}">Убрать</button></div></div>`; }).join('');
+    return `<div class="it"><div class="ckr"><img src="${esc(picU(p.f, 't') || 'logo.jpg')}" data-o="${esc(p.f || 'logo.jpg')}" onerror="imgFb(this)" decoding="async" alt=""><div class="in"><b>${esc(p.n)}</b>${pr}</div><b class="ls">${tg(Math.round(n * qty(p)))}</b></div>
+    <div class="cka"><div class="st"><button data-a="m" data-id="${id}" aria-label="Меньше">−</button><input data-q="${id}" inputmode="decimal" value="${qf(qty(p))}" aria-label="Количество"><button data-a="p" data-id="${id}" aria-label="Больше">+</button></div><span class="sp"></span>${ch ? `<button class="lnk" data-a="reset" data-id="${id}">Вернуть цену</button>` : ''}<button class="lnk bad" data-a="rm" data-id="${id}">Убрать</button></div></div>`; }).join('');
   const sum = `<div class="sum cks"><b>Скидка на весь чек</b><div class="dc">${[0, 3, 5, 10].map(x => `<button data-a="disc" data-v="${x}" class="${disc == x ? 'on' : ''}">${x ? x + '%' : 'Нет'}</button>`).join('')}<input id="dc" inputmode="decimal" placeholder="свой" value="${[0, 3, 5, 10].includes(disc) ? '' : disc}" aria-label="Своя скидка, %"></div>
   <div class="ckt2"><div class="r"><span class="m">Сумма</span><b>${tg(total())}</b></div>${disc > 0 ? `<div class="r"><span class="m">Скидка ${disc}%</span><b>−${tg(total() - final())}</b></div>` : ''}</div><div class="r t"><span>Итого</span><span>${tg(final())}</span></div><div class="m ckm">цены ${ML[S.mode]}</div></div>`;
   const asB = asOn() ? (() => { const cur = asSel(eo && histById(eo)), names = [...new Set([me, ...trs, cur].filter(Boolean))].sort((x, y) => x == me ? -1 : y == me ? 1 : x.localeCompare(y, 'ru'));   // v36: администратор оформляет или переназначает заявку от имени торгового
@@ -361,7 +354,7 @@ function cartView() { // v30: оформление по порядку — ре�
   const tBlock = `<details class="sc ck"${H.t > 0 || tOpen ? ' open' : ''}><summary>${ico('clock', 22)}<span class="cst">Время заявки<small class="m">${H.t > 0 ? 'указано вручную: ' + ft(H.t) : 'сейчас · менять, если приняли раньше'}</small></span></summary><input type="datetime-local" id="ots" max="${dtl(Date.now())}" value="${dtl(H.t > 0 ? H.t : Date.now())}"><p class="m" style="margin:6px 0 10px">Меняйте, только если заявку приняли раньше, а вносите сейчас.</p></details>`;
   $('#sb').innerHTML = `<h3 class="ckhd">Ваша заявка</h3><p class="m ckc">${L.length} ${pl3(L.length, 'позиция', 'позиции', 'позиций')}</p>` + vatBar() + banner + dBlock + asB + tBlock + `<div class="cki">${items}</div>` + sum +
     `${rcBlock()}${eo ? `<button class="send" data-a="esave">${ico('check', 20)} Сохранить изменение</button>` : `<button class="send" data-a="send">${ico('send', 22)} Отправить в WhatsApp</button>`}<button class="ghost" data-a="dsave">Сохранить как черновик</button>${eo ? '<button class="lnk clr2" data-a="eoc">Отменить правку</button>' : `<button class="lnk bad clr2" data-a="new">${ico('trash', 18)} Очистить заявку</button>`}`;   // v34: в правке «Очистить» только выходила из правки — путали с удалением
-  tOpen = false; const np = document.querySelector('[data-np]'); if (np) np.select();
+  tOpen = false;
 }
 let asOpen = false;
 const asOn = () => !!(CFG.API_URL && tok && role == 'admin' && srvV >= 36);   // v36: выбор «От имени» — только администратору и только при Code.gs 36
@@ -786,7 +779,7 @@ const vatMsg = (x, nm, vd, vs) => [vd ? (nm.set ? `Для «${x.n}» в карт
 let cMine = 0, cTot = 0, evF = 'all', evEd = '', cErr = '', cKey = '', ddL = [], eSh = null, cSh = null, cLog = null, shMode = 'route', shSt = '', shCity = null, shQ = '', cSt = '', shRg = '';   // shRg — v34: фильтр «Все магазины» по району
 function shopEditView(x) { // правка названия, города, адреса / удаление магазина в общей базе
   eSh = x; $('#sl').hidden = true; openSheet('shop', 'Магазин');
-  $('#sb').innerHTML = `<div class="sum"><b>Название</b><input id="en" maxlength="120" value="${esc(x.n)}"><b>Город</b><select id="ec">${[...new Set([...S.cities, x.c].filter(Boolean))].map(c => `<option ${c == x.c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select><b>Адрес</b><input id="ea" maxlength="300" list="stl" autocomplete="off" value="${esc(x.a)}"><b>Тип точки</b><select id="ety">${tyOpts(x.ty)}</select></div><button class="send" data-a="ssave">Сохранить</button><button class="ghost" style="color:var(--danger);border-color:var(--danger)" data-a="sdel">Удалить магазин</button>`;
+  $('#sb').innerHTML = `<div class="sum"><b>Название</b><input id="en" maxlength="120" value="${esc(x.n)}"><b>Город</b><select id="ec">${[...new Set([...S.cities, x.c].filter(Boolean))].map(c => `<option ${c == x.c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select><b>Адрес</b><input id="ea" maxlength="300" list="stl" autocomplete="off" value="${esc(x.a)}"><b>Район</b>${rgField("er", x.rg, x.c)}<b>Тип точки</b><select id="ety">${tyOpts(x.ty)}</select></div><button class="send" data-a="ssave">Сохранить</button><button class="ghost" style="color:var(--danger);border-color:var(--danger)" data-a="sdel">Удалить магазин</button>`;
 }
 function shopList() { // база без дублей (по ID, иначе название + город); магазины текущего города — выше
   const m = new Map(); base.forEach(b => { const k = b.id || norm(b.n) + '|' + norm(b.c); if (!m.has(k)) m.set(k, b) });
@@ -873,27 +866,29 @@ async function loadRg(d, force) { if (rgBusy || !rgOk() || !tok) return; const c
 const safeA = a => Array.isArray(a) ? a.filter(x => x && typeof x == 'object') : [];
 function rgOn(tr, d, id) { const c = rgC[d]; let v; (c && c.rd ? c.rd : RDS.filter(r => r.d == d)).forEach(r => { if (r.sid == id && norm(r.tr) == norm(tr)) v = !!r.on });
   shopq.forEach(q => { if (q.op == 'rday' && q.d == d && q.id == id && norm(q.tr) == norm(tr)) v = !!q.on }); return v }   // правка дня: true / false / undefined (нет)
-function rgView(top) {   // v37: при перерисовке на том же экране прокрутка сохраняется (раньше уходила в начало); top — новый день, начать сверху
-  const sh1 = document.getElementById('sheet'), keep = !top && view == 'rall' && sh1 ? sh1.scrollTop : 0;
+function rgView(top, y) {   // v37: при перерисовке на том же экране прокрутка сохраняется (раньше уходила в начало); top — новый день, начать сверху
+  const sh1 = document.getElementById('sheet'), keep = y != null ? y : !top && view == 'rall' && sh1 ? sh1.scrollTop : 0;
   openSheet('rall', 'Другой день'); const t0 = today(), dMin = addD(t0, -PDMAX), dMax = addD(t0, PDMAX); if (!rgD || rgD < dMin) rgD = dMin; if (rgD > dMax) rgD = dMax;   // v37.4: «Другой день» — от 14 дней назад до 14 вперёд; прошлые дни — только просмотр (состав по текущему шаблону дней, «пройдено» — по журналу того дня)
   const d = rgD, wd = wdOfD(d), c = rgC[d]; loadRg(d);
   const adm = role == 'admin', edTr = tr => d >= t0 && (adm || (!!me && norm(tr) == norm(me))), Tall = (rgAll() ? [...new Set([...trs, me].filter(Boolean))] : [me].filter(Boolean)).sort((a, b) => a.localeCompare(b, 'ru')),
     T = rgTr == '*' && rgAll() ? Tall : rgTr && rgAll() && Tall.some(t => norm(t) == norm(rgTr)) ? Tall.filter(t => norm(t) == norm(rgTr)) : Tall.filter(t => norm(t) == norm(me)), L = base.filter(b => b.id);   // v36.5: правит свой блок каждый (на сегодня и вперёд), любой — администратор
+  const byNm = (p, q) => (p.c || '').localeCompare(q.c || '', 'ru') || p.n.localeCompare(q.n, 'ru');   // v37.7: как в «Сегодня» — город, название
   const ev = c && c.ev ? c.ev : [], evOf = (id, tr) => ev.filter(x => x.sid == id && (!tr || norm(x.who) == norm(tr))).sort((p, q) => p.ts - q.ts);
   const plan = tr => { const own = L.filter(b => b.ow && norm(b.ow) == norm(tr) && inWeek(b, wd)), add = L.filter(b => !own.includes(b) && rgOn(tr, d, b.id) === true);
-    return { pts: own.filter(b => rgOn(tr, d, b.id) !== false).concat(add).sort((p, q) => p.n.localeCompare(q.n, 'ru')), add, out: own.filter(b => rgOn(tr, d, b.id) === false) } };
+    return { pts: own.filter(b => rgOn(tr, d, b.id) !== false).concat(add).sort(byNm), add, out: own.filter(b => rgOn(tr, d, b.id) === false) } };
   const P = {}; Tall.forEach(t => { P[t] = plan(t) });
-  const taken = new Set(Tall.flatMap(t => P[t].add.map(b => b.id))), free = L.filter(b => !b.ow && inWeek(b, wd) && !taken.has(b.id)).sort((p, q) => p.n.localeCompare(q.n, 'ru'));
+  const taken = new Set(Tall.flatMap(t => P[t].add.map(b => b.id))), free = L.filter(b => !b.ow && inWeek(b, wd) && !taken.has(b.id)).sort(byNm);
   const lc = t => t ? t[0].toLowerCase() + t.slice(1) : '', pend = (b, tr) => shopq.some(q => q.op == 'rday' && q.id == b.id && q.d == d && norm(q.tr) == norm(tr)) ? ' · ждёт отправки' : '';
   const st = (b, tr) => { const e = evOf(b.id, tr), cl = e.filter(x => x.k == 'o' || !DEFER.includes(x.val)), x = cl.length ? cl[cl.length - 1] : e[e.length - 1]; return x ? { x, done: !!cl.length } : null };   // последнее закрывающее (заявка / визит), иначе — отложенное
+  const byTm = tr => (p, q) => st(p, tr).x.ts - st(q, tr).x.ts || byNm(p, q), byDf = tr => (p, q) => (!!st(p, tr) - !!st(q, tr)) || byNm(p, q);   // v37.7: пройденные — по времени закрывающего события; непройденные — отложенные (есть событие, но не закрыто) ниже
   const sub = (x, tr) => (x.k == 'o' ? 'Заявка ' + hhmm(x.ts) : 'Визит ' + hhmm(x.ts) + ' · ' + esc(lc(x.val || ''))) + (tr ? '' : ' · ' + esc(x.who));
   const tl = (node, body) => `<div class="tl">${node}${body}</div>`, addr = b => esc(b.a || b.c || 'без адреса');
   const pt = (b, tr, note, act) => { const s0 = st(b, tr), k = esc(skey(b));   // точка — как в личном маршруте: пройдена — зелёная галочка, отложена — жёлтая пунктирная, впереди — пустой кружок
     if (s0 && s0.done) return tl(`<span class="tn ok">${ico('check', 16)}</span>`, `<button class="tlp" data-a="scard" data-v="${k}"><b>${esc(b.n)}</b><span class="m">${sub(s0.x, tr)}${note || ''}</span></button>`);
     const df = !!s0; return tl(`<span class="tn ${df ? 'df' : 'nx'}"></span>`, `<div class="tlb rgr"><button class="rrow${df ? ' df' : ''}" data-a="scard" data-v="${k}"><span class="rrt"><b>${esc(b.n)}</b><span class="m">${df ? 'Отложено в ' + hhmm(s0.x.ts) + ' · ' + esc(lc(s0.x.val || '')) + (tr ? '' : ' · ' + esc(s0.x.who)) : addr(b)}${note || ''}${tr ? pend(b, tr) : ''}</span></span>${act || `<span class="rgo">${ico('chev', 20)}</span>`}</button></div>`) };
   const rm = (b, tr) => `<span class="rgx" data-a="rgrm" data-v="${esc(b.id)}" data-t="${esc(tr)}" role="button" aria-label="Убрать «${esc(b.n)}» у ${esc(tr)}">${ico('x', 18)}</span>`;
-  const blk = (tr, p) => { const edit = edTr(tr), inP = new Set(p.pts.map(b => b.id)), ext = [...new Set(ev.filter(x => norm(x.who) == norm(tr) && !inP.has(x.sid) && !free.some(b => b.id == x.sid)).map(x => x.sid))].map(byId).filter(Boolean);
-    const done = p.pts.filter(b => (st(b, tr) || {}).done), todo = p.pts.filter(b => !done.includes(b)), pct = p.pts.length ? Math.round(done.length / p.pts.length * 100) : 0;
+  const blk = (tr, p) => { const edit = edTr(tr), inP = new Set(p.pts.map(b => b.id)), ext = [...new Set(ev.filter(x => norm(x.who) == norm(tr) && !inP.has(x.sid) && !free.some(b => b.id == x.sid)).map(x => x.sid))].map(byId).filter(Boolean).sort(byTm(tr));
+    const done = p.pts.filter(b => (st(b, tr) || {}).done).sort(byTm(tr)), todo = p.pts.filter(b => !(st(b, tr) || {}).done).sort(byDf(tr)), pct = p.pts.length ? Math.round(done.length / p.pts.length * 100) : 0;
     return `<section class="rgs"><div class="rgh"><div class="rgw"><b>${esc(tr)}${norm(tr) == norm(me) ? ' <small>(вы)</small>' : ''}</b><span class="m">${p.pts.length ? p.pts.length + ' ' + pl3(p.pts.length, 'точка', 'точки', 'точек') : 'своих точек нет · свободные — внизу'}</span></div>${p.pts.length ? `<div class="rcn"><b>${done.length}<span>/${p.pts.length}</span></b><small>пройдено${ext.length ? ' · +' + ext.length + ' вне' : ''}</small></div>` : ''}</div>${p.pts.length ? `<div class="pbar"><span style="width:${pct}%"></span></div>` : ''}
       <div class="tline">${done.map(b => pt(b, tr, p.add.includes(b) ? ' · на этот день' : '')).join('')}${ext.map(b => pt(b, tr, ' · вне маршрута')).join('')}${todo.map(b => pt(b, tr, p.add.includes(b) ? ' · на этот день' : '', edit ? rm(b, tr) : '')).join('')}
       ${edit ? p.out.map(b => tl('<span class="tn nx"></span>', `<div class="tlb rgr"><div class="rrow rgo2"><span class="rrt"><b>${esc(b.n)}</b><span class="m">убрана на этот день</span></span><button class="ghost wkx" data-a="rgadd" data-v="${esc(b.id)}" data-t="${esc(tr)}">${ico('plus', 16)}<span>Вернуть</span></button></div></div>`)).join('') : ''}</div>
@@ -904,10 +899,10 @@ function rgView(top) {   // v37: при перерисовке на том же 
   const head = `<div class="seg pdseg"><button data-a="pdt">Сегодня</button><button class="on" aria-pressed="true">Другой день</button></div>${chips}`
     + `<div class="day"><button class="dnb" data-a="rgprev" aria-label="Предыдущий день"${d <= dMin ? ' disabled' : ''}>${ico('back', 22)}</button><div class="dl"><span>${esc(WDF[wd][0].toUpperCase() + WDF[wd].slice(1) + ', ' + fd(d))}</span><small>${c && c.err ? 'не загрузилось: ' + esc(c.err) : !c && rgBusy ? 'загружаю…' : rel}</small></div><button class="dnb" data-a="rgnext" aria-label="Следующий день"${d >= dMax ? ' disabled' : ''}>${ico('chev', 22)}</button></div>`
     + `<div class="dsw">${c && c.err ? '<button class="lnk dall" data-a="rgretry">Повторить</button>' : ''}</div>`;
-  const fdone = free.filter(b => (st(b, '') || {}).done).length;
+  const fdone = free.filter(b => (st(b, '') || {}).done).length, freeL = free.filter(b => (st(b, '') || {}).done).sort(byTm('')).concat(free.filter(b => !(st(b, '') || {}).done).sort(byDf('')));   // v37.7: пройденные по времени, затем по городу и названию, отложенные ниже
   $('#sb').innerHTML = head + `<p class="m rgn">${d < t0 ? 'Прошлый день — только просмотр. Состав — по текущим дням маршрута и правкам на этот день, а не как было тогда. «Пройдено» — по визитам и заявкам того дня.' : 'Заявки и визиты — только в сегодняшнем маршруте.'}</p>`
     + T.map(t => blk(t, P[t])).join('')
-    + `<section class="rgs"><div class="rgh"><div class="rgw"><b>Свободные точки</b><span class="m">без ответственного — в маршруте у всех</span></div>${free.length ? `<div class="rcn"><b>${fdone}<span>/${free.length}</span></b><small>пройдено</small></div>` : ''}</div>${free.length ? `<div class="pbar"><span style="width:${Math.round(fdone / free.length * 100)}%"></span></div>` : ''}<div class="tline">${free.map(b => pt(b, '')).join('') || '<p class="m wke">Нет.</p>'}</div></section>`;
+    + `<section class="rgs"><div class="rgh"><div class="rgw"><b>Свободные точки</b><span class="m">без ответственного — в маршруте у всех</span></div>${free.length ? `<div class="rcn"><b>${fdone}<span>/${free.length}</span></b><small>пройдено</small></div>` : ''}</div>${free.length ? `<div class="pbar"><span style="width:${Math.round(fdone / free.length * 100)}%"></span></div>` : ''}<div class="tline">${freeL.map(b => pt(b, '')).join('') || '<p class="m wke">Нет.</p>'}</div></section>`;
   if (keep) { const s2 = document.getElementById('sheet'); if (s2) s2.scrollTop = keep } }
 function planView() { // постоянный маршрут по дням недели и правила подсказок — отдельная страница, чтобы не мешать листу на сегодня
   if (rtDay < 0) rtDay = wdNow(); shMode = 'route'; openSheet('rplan', 'Маршрут по дням');   // v33: неделя целиком (DECISIONS п. 51)
@@ -1153,6 +1148,7 @@ const feedSub = x => { const ev = feed(x); return ev === null ? (cLog === false 
 function shopCard(v) {
   const x = shopById(v) || cSh; if (!x) return shopsView();
   if (cKey != (x.id || x.n)) { cKey = x.id || x.n; cLog = null; cMine = 0; cTot = 0; evF = 'all'; evEd = ''; cErr = ''; cSt = x.st || '-'; cVO = false; cRt = { tr: me, d: today() }; loadLog(x) } cSh = x;
+  if (view != 'shopc' && view != 'shop') { const sh0 = document.getElementById('sheet'); RET = ['shops', 'rall', 'rplan'].includes(view) ? { v: view, y: sh0 ? sh0.scrollTop : 0 } : null }   // v37.7: список, из которого пришли, и его прокрутка
   openSheet('shopc', ''); const wk = WD.filter((d, i) => inWeek(x, i));
   const sec = (id, title, sub, body, ic) => `<details class="sc cs" data-s="${id}"${(id == 'rt' ? !cOpen.has('rt0') : cOpen.has(id)) ? ' open' : ''}><summary>${ic ? ico(ic, 22) : ''}<span class="cst">${title}<small class="m"${id == 'feed' ? ' id="fsub"' : ''}>${sub}<em class="svm" id="sv-${id}">${secMark(x, id)}</em></small></span></summary>${body}</details>`;
   const visit = cVO ? `<div class="sum rv" style="margin-top:10px"><b>Результат визита</b><p class="m" style="margin:4px 0 8px">Нажмите результат — визит запишется. Комментарий — по желанию.</p><input id="vn" maxlength="500" placeholder="Комментарий (для «Другое» — обязательно)" style="margin:0 0 10px"><div class="vg vg2">${VO.map((t, i) => `<button data-a="vis" data-v="${i}"${(c0 => c0 && c0.val == t ? ' class="on" aria-pressed="true"' : '')(myToday(x))}>${t}</button>`).join('')}</div>
@@ -1162,7 +1158,7 @@ function shopCard(v) {
     <div id="stw" ${cSt == '-' ? 'hidden' : ''}><input id="stn" maxlength="500" placeholder="${stPh(cSt)}" value="${esc(x.nt || '')}" style="margin:10px 0 0"><div class="rsn"${cSt == 'ref' ? '' : ' hidden'}><p class="m" style="margin:8px 0 6px">Причина — по желанию. Частые:</p>${RSN.map(r => `<button data-a="rsn" data-v="${esc(r)}">${esc(r)}</button>`).join('')}<button data-a="rsn" data-v="">Без причины</button></div></div><div class="m" style="margin-top:10px">Действует с (необязательно — если статус был установлен раньше)</div><input type="date" id="sef" max="${today()}" style="margin-top:4px"><button class="send" style="margin-top:10px" data-a="sstsave">Сохранить статус</button>`;
   const plBody = `<div class="pr2"><input type="date" id="pld" min="${today()}" value="${x.pl ? isoDay(x.pl) : today()}" aria-label="Дата визита по плану"><button data-a="plan">${x.pl ? 'Перенести' : 'Запланировать'}</button>${x.pl ? '<button class="ghost2" data-a="planx">Убрать</button>' : ''}</div>
     <input id="fqi" maxlength="500" placeholder="Открытый вопрос / что не забыть" value="${esc(x.fq || '')}" style="margin:10px 0 0"><div class="pr2"><button data-a="fqs">Сохранить вопрос</button>${x.fq ? '<button class="ghost2" data-a="fqx">Решён</button>' : ''}</div>`;
-  const ctBody = `<input id="ict" maxlength="100" placeholder="Имя, должность" value="${esc(x.ct || '')}" style="margin:4px 0 8px"><input id="itl" maxlength="40" inputmode="tel" placeholder="Телефон" value="${esc(x.tl || '')}" style="margin:0 0 8px"><input id="irg" maxlength="100" placeholder="Район / ориентир" list="rgl" autocomplete="off" value="${esc(x.rg || '')}" style="margin:0 0 8px"><datalist id="rgl">${rgList(x.c).map(r => `<option value="${esc(r)}"></option>`).join('')}</datalist><input id="iul" maxlength="120" placeholder="Юрлицо: ИП или ТОО (как в документах)" value="${esc(x.ul || '')}" style="margin:0 0 8px"><button class="ghost" style="margin-top:0" data-a="sinfo">${ico('save', 18)} Сохранить контакт</button>`;
+  const ctBody = `<input id="ict" maxlength="100" placeholder="Имя, должность" value="${esc(x.ct || '')}" style="margin:4px 0 8px"><input id="itl" maxlength="40" inputmode="tel" placeholder="Телефон" value="${esc(x.tl || '')}" style="margin:0 0 8px"><input id="iul" maxlength="120" placeholder="Юрлицо: ИП или ТОО (как в документах)" value="${esc(x.ul || '')}" style="margin:0 0 8px"><button class="ghost" style="margin-top:0" data-a="sinfo">${ico('save', 18)} Сохранить контакт</button>`;
   const own0 = CFG.API_URL && srvV >= 31 ? `<span class="pl nt">${x.ow ? (norm(x.ow) == norm(me) ? 'Ваша точка' : 'Ответственный: ' + esc(x.ow)) : 'Точка свободна'}</span>` : '';
   $('#sb').innerHTML = `<div class="shh"><div class="shr"><div class="shk">${esc([x.ty || 'точка', x.c].filter(Boolean).join(' · ').toUpperCase())}</div><button class="ghost shed" data-a="sedit2">${ico('edit', 18)} Изменить</button></div>
     <div class="shn">${esc(x.n)}</div><div class="gom">${esc(x.a || 'без адреса')}</div>${x.ul ? `<div class="shul">${esc(x.ul)}</div>` : ''}
@@ -1331,11 +1327,12 @@ function visOp(x, act, e, extra) { // правка / отмена / восста
 }
 const afterVis = x => { recalcLocal(x); drawFeed(x); const m = document.getElementById('sml'); if (m) m.innerHTML = sumTiles(x) };
 const nwBtn = q => { const n = String(q || '').trim().replace(/\s+/g, ' ').slice(0, 120); return n.length < 2 ? '' : `<button class="ghost nwq" data-a="shnq" data-q="${esc(n)}">${ico('plus', 18)} Создать «${esc(n)}»</button>` };   // v36.5: предложение создать точку из того, что вписали в поиск
+const rgField = (id, v, c) => `<input id="${id}" maxlength="100" list="rgl" autocomplete="off" placeholder="Например: Центр" value="${esc(v || '')}"><datalist id="rgl">${rgList(c).map(r => `<option value="${esc(r)}"></option>`).join('')}</datalist>`;   // v37.7: «Район» рядом с адресом (колонка K «Район», подсказки — введённые районы города)
 function shopNew(nm) {
   openSheet('shopn', 'Новый магазин');
   $('#sb').innerHTML = `<p class="m" style="margin:0 2px 12px">Точка сразу появится у всех торговых. Дни маршрута, контакт и место можно задать потом в её карточке.</p>
   <div class="sum frm"><label><b>Название</b><input id="nn" maxlength="120" placeholder="Например: Магнум №3" value="${esc(nm || '')}"></label><label><b>Город</b><select id="nc">${S.cities.map(c => `<option ${c == (shCity || H.c) ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></label>
-  <label><b>Адрес</b><input id="na" maxlength="300" list="stl" autocomplete="off" placeholder="Улица, дом"></label><label><b>Тип точки</b><select id="nty">${tyOpts('')}</select></label><label><b>Юрлицо <span class="m">— необязательно</span></b><input id="nul" maxlength="120" placeholder="ИП или ТОО, как в документах"></label></div>
+  <label><b>Адрес</b><input id="na" maxlength="300" list="stl" autocomplete="off" placeholder="Улица, дом"></label><label><b>Район <span class="m">— необязательно</span></b>${rgField("nrg", "", shCity || H.c)}</label><label><b>Тип точки</b><select id="nty">${tyOpts('')}</select></label><label><b>Юрлицо <span class="m">— необязательно</span></b><input id="nul" maxlength="120" placeholder="ИП или ТОО, как в документах"></label></div>
   <button class="send" data-a="shns">${ico('plus', 22)} Создать точку</button>`;
 }
 
@@ -1374,7 +1371,7 @@ document.addEventListener('click', async e => {   // async: вопросы (ask)
   if (a == 'rplan') { rtDay = -1; rtAdd = false; rvK = ''; return planView() }
   if (a == 'shrt') { const on = v == '1'; if (on == cfgShare) return; const r = await admDo({ op: 'cfg', share: on }); if (r) { cfgShare = on; LS('cfgsh', on); toast(on ? 'Маршруты других торговых видны торговым' : 'Маршруты других торговых — только администраторам') } if (view == 'set') setView(); return }   // v35: сразу на сервер (нужна связь)
   if (a == 'shst') { shSt = v == shSt ? '' : v || ''; return drawShops() }   // v35: статус — кнопкой; v36: «Любого» нет — повторное нажатие снимает выбор
-  if (a == 'rgall') { rgD = addD(today(), 1); rgTr = ''; return rgView(true) }   // v37.4: «Другой день» открывается на завтра
+  if (a == 'rgall') { rgD = today(); rgTr = ''; return rgView(true) }   // v37.7: «Другой день» открывается на сегодня (в 37.4 — на завтра)
   if (a == 'rgprev' || a == 'rgnext') { const n = addD(rgD, a == 'rgnext' ? 1 : -1); if (n < addD(today(), -PDMAX) || n > addD(today(), PDMAX)) return; rgD = n; return rgView(true) }   // v37.4: от сегодня − 14 до сегодня + 14
   if (a == 'pdt') { shMode = 'route'; return shopsView() }   // v37.4: переключатель «Сегодня»
   if (a == 'pdtr') { rgTr = v || ''; return rgView(true) }   // v37.4: чей маршрут
@@ -1393,8 +1390,6 @@ document.addEventListener('click', async e => {   // async: вопросы (ask)
   else if (a == 'x') { if (e.target == b || b.classList.contains('grab')) { closeSheet(); drawList() } }
   else if (a == 'zoom') { const im = $('#lb img'); if (im) { im.dataset.f = ''; im.dataset.o = b.dataset.o || ''; im.onerror = () => imgFb(im); im.src = b.dataset.src } $('#lb').classList.add('on') }
   else if (a == 'lbx') $('#lb').classList.remove('on');
-  else if (a == 'edit') { editId = id; cartView() }
-  else if (a == 'pdone') { if (Date.now() - npAt < 800) return; const t = document.querySelector('[data-np]'); if (t && editId) commitNp(t); else { editId = ''; cartView() } }   // v34: уже сохранено по касанию «Готово» (pointerdown) — второй раз не перерисовываем
   else if (a == 'reset') { delete cart[id].p; save(); bar(); cartView() }
   else if (a == 'disc') { disc = +v; save(); bar(); cartView() }
   else if (a == 'new') { const z = snap(); cart = {}; disc = 0; eo = ''; H.t = 0; save(); closeSheet(); drawList(); toast('Изменено: заявка очищена', () => unsnap(z)) }
@@ -1486,8 +1481,8 @@ document.addEventListener('click', async e => {   // async: вопросы (ask)
     cSaved((on ? 'Добавлена: «' : 'Убрана: «') + x.n + '» · ' + where, () => { put(!on); if (view == 'shopc' && cSh === x) shopCard(skey(x)) }) }
   else if (a == 'shns') { const n = $('#nn').value.trim().replace(/\s+/g, ' '), c = $('#nc').value, ad = $('#na').value.trim(), ty = $('#nty').value; if (!n) return;
     { const r = await dupAsk(n, c, ad); if (!r) return; if (r !== 'new') { cKey = ''; return shopCard(skey(r)) } }   // v35: одноимённый — «это он?», новый — только с адресом
-    const ul = String($('#nul').value || '').trim().slice(0, 120), o = upShop(n, c, ad, newSid()); o.ty = ty; if (ul) o.ul = ul; LS('base', base);
-    if (CFG.API_URL) { shopq.push({ n, c, a: ad, id: o.id, ty }); if (ul) shopq.push({ op: 'info', id: o.id, n, c, a: ad, ct: '', tl: '', rg: '', ul }); LS('shopq', shopq); sync() } cKey = ''; shopCard(o.id) }   // v33: юрлицо — отдельной операцией после создания
+    const ul = String($('#nul').value || '').trim().slice(0, 120), rg = $('#nrg').value.trim().slice(0, 100), o = upShop(n, c, ad, newSid()); o.ty = ty; if (ul) o.ul = ul; if (rg) o.rg = rg; LS('base', base);
+    if (CFG.API_URL) { shopq.push({ n, c, a: ad, id: o.id, ty }); if (ul || rg) shopq.push({ op: 'info', id: o.id, n, c, a: ad, ct: '', tl: '', rg, ul }); LS('shopq', shopq); sync() } cKey = ''; shopCard(o.id) }   // v33: юрлицо (v37.7: и район) — отдельной операцией после создания
   else if (a == 'sord') orderAt(cSh)
   else if (a == 'sst') { cSt = v; document.querySelectorAll('.sg button').forEach(e => e.classList.toggle('on', e.dataset.v == v)); $('#stw').hidden = v == '-'; $('#stn').placeholder = stPh(v); document.querySelectorAll('.rsn').forEach(e => { e.hidden = v != 'ref' }) }
   else if (a == 'sstsave') { const x = cSh, none = cSt == '-', st = none ? '' : cSt, nt = none ? '' : $('#stn').value.trim(); if (!cSt) return say('Выберите статус');
@@ -1500,9 +1495,9 @@ document.addEventListener('click', async e => {   // async: вопросы (ask)
     if (a == 'snbc' && !await ask('Очистить заметку о «' + x.n + '»? Её увидят пустой все торговые.', 'Очистить', '', true)) return;
     const put = v => { x.nb = v; LS('base', base); shopq.push({ op: 'note', id: x.id, n: x.n, c: x.c || '', a: x.a || '', nb: v }); LS('shopq', shopq); sync() };
     put(nb); shopCard(skey(x)); cSaved(nb ? 'Заметка сохранена' : 'Заметка очищена', () => { put(pv); if (view == 'shopc' && cSh === x) shopCard(skey(x)) }) }
-  else if (a == 'sinfo') { const x = cSh, pv = { ct: x.ct || '', tl: x.tl || '', rg: x.rg || '', ul: x.ul || '' }, put = () => { if (CFG.API_URL) { shopq.push({ op: 'info', id: x.id || '', n: x.n, c: x.c, a: x.a, ct: x.ct, tl: x.tl, rg: x.rg, ul: x.ul }); LS('shopq', shopq); sync() } }; x.ct = $('#ict').value.trim(); x.tl = $('#itl').value.trim(); x.rg = $('#irg').value.trim(); x.ul = String($('#iul').value || '').trim().slice(0, 120); LS('base', base);
+  else if (a == 'sinfo') { const x = cSh, pv = { ct: x.ct || '', tl: x.tl || '', rg: x.rg || '', ul: x.ul || '' }, put = () => { if (CFG.API_URL) { shopq.push({ op: 'info', id: x.id || '', n: x.n, c: x.c, a: x.a, ct: x.ct, tl: x.tl, rg: x.rg, ul: x.ul }); LS('shopq', shopq); sync() } }; x.ct = $('#ict').value.trim(); x.tl = $('#itl').value.trim(); x.ul = String($('#iul').value || '').trim().slice(0, 120); LS('base', base);
     if (['ct', 'tl', 'rg', 'ul'].every(k => (x[k] || '') == pv[k])) return toast('Контакт не изменился');
-    put(); shopCard(x.id || 'n:' + x.n); cSaved('Контакт, район и юрлицо сохранены', () => { Object.assign(x, pv); LS('base', base); put(); if (view == 'shopc' && cSh === x) shopCard(skey(x)) }) }
+    put(); shopCard(x.id || 'n:' + x.n); cSaved('Контакт и юрлицо сохранены', () => { Object.assign(x, pv); LS('base', base); put(); if (view == 'shopc' && cSh === x) shopCard(skey(x)) }) }
   else if (a == 'vis') { cVO = false; const x = cSh, nt = $('#vn').value.trim(), val = VO[+v], vt = $('#vt'), fresh = $('#vd').value == today() && vt.value == vt.dataset.t0, ts = fresh ? Date.now() : tsOf($('#vd').value, vt.value), my = myLast(x);   // время не трогали — берём момент нажатия
     const er = tsErr(ts); if (er) return say(er); if (val == 'Другое' && !nt) return say('Для результата «Другое» напишите комментарий');
     if (fresh && CFG.API_URL && (myToday(x) || (val == VO[0] && srvAuto()))) { await visitSwitch(x, val, nt); if (view == 'shopc') shopCard(x.id || 'n:' + x.n); return }   // v37: «Взяли заказ» — через заявку (визит сервер запишет сам); сегодня визит уже есть — заменить, отменить или добавить по правилам маршрута
@@ -1528,11 +1523,11 @@ document.addEventListener('click', async e => {   // async: вопросы (ask)
     if ((x.pl || 0) == pv.pl && (x.fq || '') == pv.fq) return toast('Без изменений');
     saveMeta(x); shopCard(x.id || 'n:' + x.n); cSaved({ plan: 'Визит по плану на ' + fd(isoDay(x.pl || Date.now())) + ' сохранён', planx: 'План визита убран', fqs: 'Вопрос сохранён', fqx: 'Вопрос отмечен решённым' }[a], () => { Object.assign(x, pv); saveMeta(x); if (view == 'shopc' && cSh === x) shopCard(skey(x)) }) }
   else if (a == 'slog') { cLog = null; cErr = ''; shopCard(cSh.id || 'n:' + cSh.n); loadLog(cSh) }
-  else if (a == 'ssave') { const n = $('#en').value.trim().replace(/\s+/g, ' '), c = $('#ec').value, ad = $('#ea').value.trim(), ty = $('#ety').value; if (!n) return;
+  else if (a == 'ssave') { const n = $('#en').value.trim().replace(/\s+/g, ' '), c = $('#ec').value, ad = $('#ea').value.trim(), rg = $('#er').value.trim().slice(0, 100), ty = $('#ety').value; if (!n) return;
     { const m = sameName(n, c, eSh); if (m.length && (!ad || m.some(b => norm(b.a) == norm(ad)))) return say(ad ? '«' + n + '» по этому адресу в этом городе уже есть' : 'В этом городе уже есть «' + n + '» — укажите адрес, чтобы их различать') }   // v35: одноимённые — только с разными адресами
-    const old = eSh.n; eSh.n = n; eSh.c = c; eSh.a = ad; eSh.ty = ty; LS('base', base);
+    const old = eSh.n, rg0 = eSh.rg || ''; eSh.n = n; eSh.c = c; eSh.a = ad; eSh.ty = ty; eSh.rg = rg; LS('base', base);
     if (curShop() === eSh || (H.sid && H.sid == eSh.id)) { H.s = n; H.a = ad; H.c = c; cities(); $('#s').value = n; $('#a').value = ad; save() }
-    if (CFG.API_URL) { shopq.push({ op: 'edit', id: eSh.id || '', old, n, c, a: ad, ty }); LS('shopq', shopq); sync() } cKey = ''; shopCard(eSh.id || 'n:' + n); cSaved('Название, адрес и тип сохранены') }
+    if (CFG.API_URL) { shopq.push({ op: 'edit', id: eSh.id || '', old, n, c, a: ad, ty }); if (rg != rg0) shopq.push({ op: 'info', id: eSh.id || '', n, c, a: ad, ct: eSh.ct || '', tl: eSh.tl || '', rg, ul: eSh.ul || '' }); LS('shopq', shopq); sync() } cKey = ''; shopCard(eSh.id || 'n:' + n); cSaved('Название, адрес, район и тип сохранены') }   // v37.7: район пишет операция info с текущими контактом, телефоном и юрлицом (иначе они бы стёрлись)
   else if (a == 'sdel') { if (!await ask('Удалить магазин «' + eSh.n + '» из общей базы? Старые заявки и журнал сохранятся.', 'Удалить', '', true)) return;
     const x = eSh; base = base.filter(b => b !== x); LS('base', base);
     if (H.sid && H.sid == x.id || norm(H.s) == norm(x.n)) { clrShop(); $('#s').value = ''; $('#a').value = ''; save(); shopWarn() }
@@ -1544,7 +1539,7 @@ document.addEventListener('click', async e => {   // async: вопросы (ask)
   else if (a == 'hfok') { hfC = true; $('#sl').hidden = true; drawHf() }
   else if (a == 'padd') { const n = $('#s').value.trim().replace(/\s+/g, ' '); if (!n) return; H.a = ($('#a').value || '').trim(); const r = await dupAsk(n, H.c, H.a); if (!r) return; $('#sl').hidden = true; if (r !== 'new') return selShop(r);   // v35: «Продукты» уже есть — спрашиваем
     H.s = n; $('#s').value = n; addShop(n); save(); shopWarn() }
-  else if (a == 'pyes') { const o = LS('pending'); localStorage.removeItem('pending'); if (!o) return; commitOrder(o); goHome() }   // заявка ушла — обратно к маршруту, к следующей точке
+  else if (a == 'pyes') { const o = LS('pending'); localStorage.removeItem('pending'); if (!o) return; const gx = o.h && o.h.sid ? shopById(o.h.sid) : null, near = !o.ed && !o.as && isMine(o) && Date.now() - nz(o.ts) < 3 * 36e5; commitOrder(o); goHome(); if (gx && near) setTimeout(() => geoOffer(gx), 300) }   // заявка ушла — обратно к маршруту, к следующей точке. v37.7: после возврата из WhatsApp — один раз спросить место точки, если его нет (раньше вопрос задавала только отметка визита; «Взяли заказ» с 37.0 идёт через заявку)
   else if (a == 'pno') { localStorage.removeItem('pending'); closeSheet() }
   else if (a == 'drafts') draftView(); else if (a == 'dsave') draftSave();
   else if (a == 'dopen') { const st = lines().length; if (st && !await stashAsk('черновик')) return;
@@ -1590,7 +1585,6 @@ document.addEventListener('change', e => { const t = e.target;
   if (t.dataset.q !== undefined) { const p = find(t.dataset.q); if (!p) return; let v = num(t.value), m = '';   // v36.3: ввод количества — те же границы, что у сервера
     if (v < 0) { v = 0 } if (v > QMAX) { v = QMAX; m = 'Не больше 100 000 ' + p.u } else if (!frac(p) && v != Math.round(v)) { v = Math.max(1, Math.round(v)); m = 'В «' + p.u + '» — только целые: ' + v + ' ' + p.u }
     setQ(p, v); if (m) toast(m) }
-  else if (t.dataset.np !== undefined) commitNp(t)
   else if (t.id == 'dc') { const v0 = num(t.value), v = Math.min(DMAX, Math.max(0, Math.round(v0 * 10) / 10)); disc = v; save(); bar(); cartView(); if (v != v0) toast(v0 < 0 ? 'Скидка не может быть меньше 0' : 'Скидка — не больше ' + DMAX + '%') }   // v36.3: было без нижней границы (−5 % увеличивало итог)
   else if (t.id == 'rch') { H.r = t.value; save() }
   else if (t.id == 'ots') { const v = t.value ? new Date(t.value).getTime() : 0, o = eo && histById(eo);   // когда заявка сделана: не в будущем и не старше года

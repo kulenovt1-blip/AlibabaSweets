@@ -19,7 +19,7 @@ const DEMO = [['Финики','Финики FINDI caramel','150г','1704','1976'
 
 /* ============ 2. ХЕЛПЕРЫ И СОСТОЯНИЕ ============ */
 /* Версия сборки: должна совпадать с <meta name="ver"> в index.html. Если файлы на хостинге разных версий — покажем красную плашку. */
-const VER = '37.8';
+const VER = '37.9';
 const NEED = 36;   // нужная версия Code.gs на сервере
 { const m = document.querySelector('meta[name=ver]');
   if (!m || m.content != VER) document.body.insertAdjacentHTML('afterbegin', '<div style="background:#C82B27;color:#fff;padding:12px;font-weight:800">Файлы сайта разных версий. Загрузите ВСЕ файлы из архива заново (index.html, styles.css, app.js, sw.js) и обновите страницу дважды.</div>') }
@@ -124,8 +124,8 @@ function delOrder(id, ts) { // ts — время удаления; 0 — вер�
 }
 // Позиция в корзине: cart[id] = { q: количество, p: ручная цена (необязательно) }
 const pid = p => p.n + '|' + p.g + '|' + p.u;
-const step = p => p.u == 'кг' ? .5 : 1;
-const frac = p => /^(кг|г|гр|л)$/i.test(String(p.u || '').trim());   // v36.3: дробное количество — только весовые единицы; «шт» и прочие — целые
+const step = p => 1;   // v37.9: шаг во всех единицах — 1 (весовой «кг» — целые килограммы, решение владельца 27.10.2026)
+const frac = p => /^(г|гр|л)$/i.test(String(p.u || '').trim());   // v36.3: дробное количество — только мелкие весовые единицы («г», «гр», «л»); «шт», «кг» и прочие — целые (v37.9: «кг» теперь целые)
 const QMAX = 1e5, DMAX = 50, DASK = 20;   // v36.3: границы как у сервера (количество ≤ 100 000); скидка до 50 %, выше 20 % — переспросить при отправке
 const qty = p => cart[pid(p)]?.q || 0;
 const price = p => cart[pid(p)]?.p ?? p.pr;
@@ -210,7 +210,7 @@ function drawChips() {
     `<button class="chip${c == cat ? ' on' : ''}${sp.includes(c) ? ' sp' : ''}" data-a="cat" data-v="${esc(c)}">${esc(c)}</button>`).join('');
 }
 const ctl = p => { const id = esc(pid(p)), q = qty(p); if (!p.pr) return `<button class="add" disabled>Нет цены ${S.mode == 'vat' ? 'с НДС' : 'без НДС'}</button>`;   // кнопка «В заявку» или степпер
-  return q ? `<div class="st"><button data-a="m" data-id="${id}">−</button><input data-q="${id}" inputmode="decimal" value="${qf(q)}"><button data-a="p" data-id="${id}">+</button></div>`
+  return q ? `<div class="st"><button data-a="m" data-id="${id}">−</button><input data-q="${id}" inputmode="${frac(p) ? 'decimal' : 'numeric'}" value="${qf(q)}"><button data-a="p" data-id="${id}">+</button></div>`
            : `<button class="add" data-a="p" data-id="${id}">${ico('plus', 18)} В заявку</button>`; };
 function drawCv() { const b = $('#cvb'), l = UI.cv == 'list'; b.innerHTML = ico(l ? 'grid' : 'menu', 20) + '<span>' + (l ? 'Плитка' : 'Список') + '</span>'; if (b.setAttribute) b.setAttribute('aria-label', l ? 'Показать каталог плиткой' : 'Показать каталог списком') }   // кнопка показывает, на что переключит
 function drawList() {
@@ -222,6 +222,7 @@ function drawList() {
   el.innerHTML = l.map((p, i) => `<article class="pc" style="--i:${Math.min(i, 8)}"><button class="fv${isFav(p) ? ' on' : ''}" data-a="fav" data-id="${esc(pid(p))}" aria-label="В избранное">${ico('star', 18)}</button><button class="ph" data-a="zoom" data-src="${esc(picU(p.f, 'z') || 'logo.jpg')}" data-o="${esc(p.f || 'logo.jpg')}" aria-label="Увеличить фото"><img src="${esc(picU(p.f, 't') || 'logo.jpg')}" data-o="${esc(p.f || 'logo.jpg')}" onerror="imgFb(this)" loading="lazy" decoding="async" alt="">${p.g ? `<span class="tag">${esc(p.g)}</span>` : ''}${bdg(p)}</button><div class="pb"><b>${esc(p.n)}</b>${p.g || p.hot || p.pm ? `<span class="gl">${esc([p.g, p.pm ? 'Продвигаем' : '', p.hot ? 'Ходовой' : ''].filter(Boolean).join(' · '))}</span>` : ''}<span class="pr">${p.pr ? tg(p.pr) : '—'} <small>/ ${esc(p.u)}</small></span>${pvl(p)}<div class="ctl" data-c="${esc(pid(p))}">${ctl(p)}</div></div></article>`).join('') || `<p class="empty">${cat == FAV ? 'Нажмите ★ на карточке товара — он появится здесь' : 'Ничего не найдено'}</p>`;
   el.classList.remove('swap'); void el.offsetWidth; el.classList.add('swap'); // перезапуск анимации
 }
+const nxQ = (p, d) => { const q = qty(p), s = step(p); return frac(p) ? q + d * s : d > 0 ? Math.floor(q / s + 1e-9) * s + s : Math.ceil(q / s - 1e-9) * s - s };   // v37.9: «+»/«−» от дробного количества старой заявки (2,5 кг) идут к ближайшему целому: 3 / 2
 function setQ(p, v) {
   const k = pid(p), old = qty(p), prev = cart[k]; v = Math.max(0, Math.round(v * 100) / 100) || 0;
   if (!v) delete cart[k]; else cart[k] = { ...cart[k], q: v };
@@ -348,7 +349,7 @@ function cartView() { // v30: оформление по порядку — ре�
     const pr = ch ? `<span class="ipc"><s>${fm(p.pr)}</s><b>${tg(n)} / ${esc(p.u)}</b></span><small class="m">цена изменена</small>`
       : `<span class="m">${p.g ? esc(p.g) + ' · ' : ''}${tg(n)} / ${esc(p.u)}</span>`;
     return `<div class="it"><div class="ckr"><img src="${esc(picU(p.f, 't') || 'logo.jpg')}" data-o="${esc(p.f || 'logo.jpg')}" onerror="imgFb(this)" decoding="async" alt=""><div class="in"><b>${esc(p.n)}</b>${pr}</div><b class="ls">${tg(Math.round(n * qty(p)))}</b></div>
-    <div class="cka"><div class="st"><button data-a="m" data-id="${id}" aria-label="Меньше">−</button><input data-q="${id}" inputmode="decimal" value="${qf(qty(p))}" aria-label="Количество"><button data-a="p" data-id="${id}" aria-label="Больше">+</button></div><span class="sp"></span>${ch ? `<button class="lnk" data-a="reset" data-id="${id}">Вернуть цену</button>` : ''}<button class="lnk bad" data-a="rm" data-id="${id}">Убрать</button></div></div>`; }).join('');
+    <div class="cka"><div class="st"><button data-a="m" data-id="${id}" aria-label="Меньше">−</button><input data-q="${id}" inputmode="${frac(p) ? 'decimal' : 'numeric'}" value="${qf(qty(p))}" aria-label="Количество"><button data-a="p" data-id="${id}" aria-label="Больше">+</button></div><span class="sp"></span>${ch ? `<button class="lnk" data-a="reset" data-id="${id}">Вернуть цену</button>` : ''}<button class="lnk bad" data-a="rm" data-id="${id}">Убрать</button></div></div>`; }).join('');
   const sum = `<div class="sum cks"><b>Скидка на весь чек</b><div class="dc">${[0, 3, 5, 10].map(x => `<button data-a="disc" data-v="${x}" class="${disc == x ? 'on' : ''}">${x ? x + '%' : 'Нет'}</button>`).join('')}<input id="dc" inputmode="decimal" placeholder="свой" value="${[0, 3, 5, 10].includes(disc) ? '' : disc}" aria-label="Своя скидка, %"></div>
   <div class="ckt2"><div class="r"><span class="m">Сумма</span><b>${tg(total())}</b></div>${disc > 0 ? `<div class="r"><span class="m">Скидка ${disc}%</span><b>−${tg(total() - final())}</b></div>` : ''}</div><div class="r t"><span>Итого</span><span>${tg(final())}</span></div><div class="m ckm">цены ${ML[S.mode]}</div></div>`;
   const asB = asOn() ? (() => { const cur = asSel(eo && histById(eo)), names = [...new Set([me, ...trs, cur].filter(Boolean))].sort((x, y) => x == me ? -1 : y == me ? 1 : x.localeCompare(y, 'ru'));   // v36: администратор оформляет или переназначает заявку от имени торгового
@@ -1385,7 +1386,7 @@ document.addEventListener('click', async e => {   // async: вопросы (ask)
   if (a == 'cvis') { cVO = !cVO; return shopCard(skey(cSh)) }
   if (a == 'cat') { cat = v; drawChips(); drawList() }
   else if (a == 'fav') { fav = isFav(p) ? fav.filter(k => k != id) : [...fav, id]; LS('fav', fav); drawChips(); if (cat == FAV) drawList(); else b.classList.toggle('on', isFav(p)) }
-  else if (a == 'm') setQ(p, qty(p) - step(p)); else if (a == 'p') setQ(p, qty(p) + step(p));
+  else if (a == 'm') setQ(p, nxQ(p, -1)); else if (a == 'p') setQ(p, nxQ(p, 1));
   else if (a == 'rm') { const prev = cart[id]; delete cart[id]; save(); bar(); cartView(); drawList(); toast('Изменено: «' + (p ? p.n : 'товар') + '» убран', () => { cart[id] = prev; save(); bar(); drawList(); if (view == 'cart') cartView() }) }
   else if (a == 'splr') { prodP = load(); splash() }   // загрузочный экран: «Повторить» при первом запуске без интернета
   else if (a == 'undo') { const f = toastFn; toastFn = null; toastM = ''; $('#toast').className = ''; if (f) f() }

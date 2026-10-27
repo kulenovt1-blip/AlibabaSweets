@@ -13,7 +13,7 @@
    v37.2: новое имя кэша (убрать все точки с вопросом, вид только в настройках, автосохранение настроек).
    v37.1: исправление — новое имя кэша (число точек в маршруте при быстрых нажатиях).
    Кэш фото при выпуске чистится от полноразмерных оригиналов: показываются лёгкие копии img/t/ и img/z/ (WebP). */
-const C = 'ab-v37-9', IMG = 'ab-img', NET_MS = 4000;
+const C = 'ab-v37-10', IMG = 'ab-img', NET_MS = 4000;
 const A = ['./', 'index.html', 'styles.css', 'app.js', 'logo.jpg', 'favicon.ico', 'favicon-32.png', 'manifest.webmanifest'];   // иконки установки (icon-*.png) в кэш не кладём: нужны только при установке на экран, их берёт сам браузер
 let stale = false;   // страница этого запуска открыта из кэша: сеть не ответила вовремя
 self.addEventListener('install', e => { self.skipWaiting(); e.waitUntil(caches.open(C).then(c => c.addAll(A.map(u => new Request(u, { cache: 'reload' }))))) });

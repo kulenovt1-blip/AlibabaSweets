@@ -481,6 +481,8 @@ body.sh #toast{bottom:calc(var(--bnh) + 12px + env(safe-area-inset-bottom,0px))}
 .ipc{margin-top:2px;display:inline-flex;align-items:baseline;flex-wrap:wrap;gap:6px;background:var(--accent-tint);color:var(--on-accent-tint);border-radius:8px;padding:3px 8px;font-size:calc(14px*var(--fz))}.ipc s{opacity:.8}.ipc b{font-weight:800;white-space:nowrap}
 .cka{display:flex;align-items:center;flex-wrap:wrap;gap:6px 2px}.cka .sp{flex:1}
 .cka .st{display:grid;grid-template-columns:48px 64px 48px;gap:4px}.cka .st button{width:48px;height:48px}
+.cka .cku{margin-left:8px;font-weight:700;font-size:calc(16px*var(--fz));color:var(--ink-2);white-space:nowrap}   /* v37.10: единица рядом с количеством в корзине */
+@media(max-width:340px){.cka{column-gap:0}.cka .cku{margin-left:4px}.cka .lnk{padding:0 4px}}   /* v37.10: на самых узких экранах «Убрать» остаётся в одной строке со степпером */
 .cka .st input{width:64px;min-height:48px;height:48px;border:1px solid var(--line-strong);background:var(--surface)}
 .cka .lnk{min-height:44px;padding:0 8px;font-size:calc(15px*var(--fz))}
 .lnk.bad{color:var(--danger)}

@@ -657,3 +657,10 @@ button.pfc:active{transform:none;opacity:.92}
 .rtw button.on{background:var(--primary);color:var(--on-primary);border-color:var(--primary)}.rtw button.in.on{box-shadow:inset 0 0 0 2px var(--success)}
 .rth{margin:0 0 10px}
 .pkbar .ok{flex:1 1 0;min-width:0;white-space:normal;line-height:1.15;padding:6px 10px}
+/* 37.11: выгрузка в Excel («История» → «Выгрузить в Excel») */
+.hxb{margin-top:16px}
+.hxq{margin:0 0 10px}.hxq button{font-size:calc(14px*var(--fz));line-height:1.15}
+.hxd{display:grid;grid-template-columns:1fr 1fr;gap:8px}.hxd label{display:flex;flex-direction:column;gap:2px;min-width:0}.hxd input{margin:0;min-width:0;width:100%}
+.hxi{margin:10px 2px 4px}.hxe{margin:12px 2px 0;color:var(--danger,#b3261e);font-weight:600}.hxn{margin:16px 2px 0;font-size:calc(14px*var(--fz))}
+.hxr{display:flex;flex-direction:column;gap:2px;margin-top:12px;padding:12px 14px;background:var(--surface);border:1px solid var(--line-strong);border-radius:14px}.hxr b{font-weight:800;font-size:calc(18px*var(--fz))}.hxr .m{overflow-wrap:anywhere}
+@media(max-width:340px){.hxd{grid-template-columns:1fr}}   /* 37.11: на самых узких экранах поля «С» и «По» — друг под другом */

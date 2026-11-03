@@ -19,7 +19,7 @@ const DEMO = [['Финики','Финики FINDI caramel','150г','1704','1976'
 
 /* ============ 2. ХЕЛПЕРЫ И СОСТОЯНИЕ ============ */
 /* Версия сборки: должна совпадать с <meta name="ver"> в index.html. Если файлы на хостинге разных версий — покажем красную плашку. */
-const VER = '37.10';
+const VER = '37.11';
 const NEED = 36;   // нужная версия Code.gs на сервере
 { const m = document.querySelector('meta[name=ver]');
   if (!m || m.content != VER) document.body.insertAdjacentHTML('afterbegin', '<div style="background:#C82B27;color:#fff;padding:12px;font-weight:800">Файлы сайта разных версий. Загрузите ВСЕ файлы из архива заново (index.html, styles.css, app.js, sw.js) и обновите страницу дважды.</div>') }
@@ -290,14 +290,14 @@ function unsnap(z) { cart = JSON.parse(z.cart); disc = z.disc; eo = z.eo; eob = 
 
 /* ============ 6. ШТОРКА: корзина, история, настройки ============ */
 /* Разделы (нижняя панель): Маршрут / Заявка / История / Профиль (v33: бывшее «Ещё»). Страница раздела открывается поверх каталога; кнопка «Назад» ведёт на уровень выше */
-const TAB = { shops: 'route', rplan: 'route', rall: 'route', shopc: 'route', shop: 'route', shopn: 'route', hist: 'hist', hd: 'hist', more: 'more', set: 'more', adm: 'more', dr: 'more', cart: 'main', promo: 'more' };
+const TAB = { shops: 'route', rplan: 'route', rall: 'route', shopc: 'route', shop: 'route', shopn: 'route', hist: 'hist', hd: 'hist', hx: 'hist', more: 'more', set: 'more', adm: 'more', dr: 'more', cart: 'main', promo: 'more' };
 const OPEN = new Set();   // v37.8: раскрытые блоки-<details> в списках («Отказались…», «Стоит заехать», «Недавно удалённые») — перерисовка (конец синхронизации, возврат из карточки) не должна их сворачивать
 const dOpen = k => OPEN.has(k) ? ' open' : '';
 document.addEventListener('toggle', e => { const d = e.target, k = d && d.dataset && d.dataset.o; if (!k) return; if (d.open) OPEN.add(k); else OPEN.delete(k) }, true);   // toggle не всплывает — ловим на перехвате
 let RET = null;   // v37.7: откуда открыли карточку магазина — экран и положение списка, чтобы «Назад» вернул на то же место
 function cardBack() { const r = RET; RET = null; const y = r ? r.y : 0, fix = () => { const sh = document.getElementById('sheet'); if (sh && y) sh.scrollTop = y };
   if (r && r.v == 'rall') return rgView(false, y); if (r && r.v == 'rplan') { planView(); return fix() } shopsView(); fix() }
-const BACK = { shopc: () => cardBack(), shop: () => shopCard(skey(eSh)), shopn: () => shopsView(), rplan: () => { rtAdd = false; shopsView() }, rall: () => shopsView(), pick: () => pkBack(), hd: () => histView(),
+const BACK = { shopc: () => cardBack(), shop: () => shopCard(skey(eSh)), shopn: () => shopsView(), rplan: () => { rtAdd = false; shopsView() }, rall: () => shopsView(), pick: () => pkBack(), hd: () => histView(), hx: () => histView(),
   set: () => moreView(), promo: () => moreView(), dr: () => moreView(), adm: () => moreView(), cart: () => { closeSheet(); drawList() } };
 function navSync() { const t = view ? TAB[view] || '' : 'main';
   document.querySelectorAll('.bn button').forEach(b => b.classList.toggle('on', b.dataset.t == t));
@@ -424,7 +424,7 @@ function histView() { // вкладки «Мои» / «Все заявки»; п
   if (yr) { const y = new Date(a).getFullYear(), bk = d && Array.isArray(d.bk) ? d.bk : null;   // год — по месяцам: сумма и число заявок, нажатие открывает месяц
     list = `<div class="hmy">${MN.map((m, i) => { const t = new Date(y, i, 1).getTime(); if (t > now) return ''; const z = bk && bk[i]; return `<button class="hmr" data-a="hpm" data-v="${t}"><span>${m}</span><small class="m">${z ? nn(z) : ''}</small><b>${z ? tg(z.sum) : '…'}</b></button>` }).reverse().join('')}</div>` }
   else { let last = -1; list = act.map(x => { const dd = dayMs(x.ts || 0), h = p != 'd' && dd != last ? (last = dd, (() => { const z = act.filter(y => dayMs(y.ts || 0) == dd); return `<h3 class="sub hdd">${esc(lblDay(dd))} · ${z.length} · ${tg(z.reduce((s, y) => s + (+y.sum || 0), 0))}</h3>` })()) : ''; return h + card(x) }).join('') || emptyMsg }   // неделя и месяц — по дням
-  $('#sb').innerHTML = tabs + trSel + seg + plate + sts + `<div class="hcl">${list}</div>`
+  $('#sb').innerHTML = tabs + trSel + seg + plate + sts + `<div class="hcl">${list}</div>` + `<button class="ghost hxb" data-a="hxp">${ico('down', 18)} Выгрузить в Excel</button>`   // 37.11
   + (trash.length ? `<details class="htr" data-o="htr"${dOpen('htr')}><summary>${ico('trash', 20)}<span><b>Недавно удалённые: ${trash.length}</b> · вернуть можно ещё ${left(tLeft)}</span></summary>` + trash.map(x => `<div class="hc hcd"><div class="hch"><span class="hct"><b>${esc(x.h.s || '—')}</b><span class="m">${ft(x.ts)} · ${tg(x.sum)}${isMine(x) ? '' : ' · ' + esc(x.trader)}</span><span class="m">Можно вернуть ещё ${left(x)}</span>${delq.some(o => o.id == x.id) ? '<span class="m">' + pendChip() + ' (удаление)</span>' : ''}</span><button class="ocb" data-a="hres" data-v="${esc(x.id)}">Вернуть</button></div></div>`).join('') + '</details>' : '');
 }
 /* v31. «Продвигать товары» (только администратор): отметка хранится на листе «Продвигать» и сразу видна торговым после синхронизации */
@@ -480,7 +480,7 @@ function setView() {
   <details class="sc"><summary>Города и прайс</summary><b>Города (через запятую)</b><input id="ct" value="${esc(S.cities.join(', '))}"><button class="ghost" data-a="rl">Обновить прайс</button>${standalone ? '' : `<button class="ghost" data-a="inst">${ico('plus', 18)} Установить на главный экран</button>`}</details>
   <details class="sc"><summary>Получатели</summary><p class="m" style="margin:0 0 8px;line-height:1.5">${rl}</p>
     <details class="mini"><summary>Запасной номер WhatsApp</summary><input id="op" inputmode="tel" value="${esc(S.op)}" placeholder="77001234567"><p class="m" style="margin:0">Используется, только если лист «Получатели» пуст. Код страны и номер, без + и пробелов.</p></details></details>
-  <details class="sc"><summary>Файлы</summary><p class="m" style="margin:0 0 8px">Таблица заявок открывается в Excel. Файл данных телефона переносит черновики, избранное и неотправленное на другой телефон или на другой адрес сайта.</p><button class="ghost" data-a="csv">${ico('save', 18)} Экспорт истории заявок (CSV)</button><button class="ghost" data-a="bak">${ico('down', 18)} Сохранить данные устройства (файл)</button><button class="ghost" data-a="imp">${ico('up', 18)} Загрузить данные из файла</button><input type="file" id="impf" accept=".json,application/json" hidden></details>
+  <details class="sc"><summary>Файлы</summary><p class="m" style="margin:0 0 8px">Выгрузка заявок в Excel — в «Истории», кнопка внизу. Файл данных телефона переносит черновики, избранное и неотправленное на другой телефон или на другой адрес сайта.</p><button class="ghost" data-a="bak">${ico('down', 18)} Сохранить данные устройства (файл)</button><button class="ghost" data-a="imp">${ico('up', 18)} Загрузить данные из файла</button><input type="file" id="impf" accept=".json,application/json" hidden></details>
   <details class="sc"><summary>Служебная информация</summary><div class="m" style="font-size:13px;line-height:1.5">Версия: ${VER}${CFG.API_URL ? ' · Code.gs: ' + (srvV || 'не определена') + (srvV && srvV < NEED ? ' (устарел!)' : '') : ''} · адрес: ${esc(location.origin)}<br>Товаров: ${P.length} (с ценой с НДС: ${P.filter(p => p.pv).length}, без НДС: ${P.filter(p => p.pn).length})<br>Режим цен: ${S.mode == 'vat' ? 'с НДС' : 'без НДС'}<br>${CFG.API_URL ? `База: ${syncErr ? 'ошибка: ' + esc(lastErr) : 'подключена'} · торговых в списке: ${trs.length} · профиль: ${esc(me || 'не выбран')}<br>Ждут отправки: заявок ${outbox.length}, правок магазинов ${shopq.length}, визитов ${visq.length}<br>Последняя ошибка синхронизации: ${errL ? ft(errL.t) + ' — ' + esc(errL.m) + (errL.q ? ' (в очереди было ' + errL.q + ')' : '') : 'не было'}` : 'База заявок не подключена (API_URL пуст)'}</div><button class="ghost" data-a="dgtg">Диагностика (временная): ${LS('diag') ? 'открыть отчёт' : 'включить'}</button></details>`;   // v37.2: кнопки «Сохранить» нет — города и запасной номер сохраняются сами (saveSet), как и всё остальное в настройках
 }
 
@@ -1443,7 +1443,12 @@ document.addEventListener('click', async e => {   // async: вопросы (ask)
   else if (a == 'dretry') { dayErr = 0; histView() }
   else if (a == 'inst') { if (instEv) { instEv.prompt(); instEv.userChoice.finally(() => { instEv = null; hideInst() }) } else say('Android (Chrome): меню ⋮ → «Установить приложение» или «Добавить на главный экран».\niPhone (Safari): «Поделиться» → «На экран Домой».') }
   else if (a == 'instx') { LS('instx', 1); hideInst() }
-  else if (a == 'csv') exportCsv();
+  else if (a == 'hxp') xpOpen();   // 37.11: выгрузка в Excel (вместо CSV из «Настроек»)
+  else if (a == 'hxq') { const now = Date.now(), r = v == 'pm' ? pRange('m', pShift('m', pRange('m', now)[0], -1)) : pRange(v, now); xpSet(r[0], r[1]) }
+  else if (a == 'hxw') { if (!XP.busy) { XP.mine = v == '1'; if (XP.mine) XP.tr = ''; XP.err = ''; XP.done = null; hxView() } }
+  else if (a == 'hxgo') xpGo();
+  else if (a == 'hxdl') xpDl();
+  else if (a == 'hxsh') xpShare();
   else if (a == 'sedit') { cKey = ''; shopCard(ddL[+v].id || 'n:' + ddL[+v].n); $('#sl').hidden = true }
   else if (a == 'shops') shopsView(); else if (a == 'shm') { shMode = v; shopsView() }
   else if (a == 'scard') { cKey = ''; shopCard(v) } else if (a == 'sedit2') shopEditView(cSh)
@@ -1596,6 +1601,9 @@ document.addEventListener('change', e => { const t = e.target;
   else if (t.id == 'cd') { pickD(t.value); save(); fill(); cartView() }
   else if (t.id == 'cas') { H.as = t.value; save(); cartView() }   // v36: «От имени» (администратор)
   else if (t.id == 'htr') { hTr = t.value; histView() }
+  else if (t.id == 'hxtr') { if (XP && !XP.busy) { XP.tr = t.value; XP.err = ''; XP.done = null; hxView() } }
+  else if (t.id == 'hxa' || t.id == 'hxb') { if (XP && !XP.busy) { const A = xIso(($('#hxa') || {}).value), B = xIso(($('#hxb') || {}).value); if (!A || !B) return hxView();   // 37.11: «с» позже «по» — меняем местами; длина — не больше года
+    const lo = Math.min(A, B), hi = Math.max(A, B), e = dayMs(hi + 36 * 36e5); if ((e - lo) / XD > XMAX + 0.5) { toast('Не больше года за раз'); return hxView() } xpSet(lo, e) } }
   else if (t.id == 'tys') { cSh.ty = t.value; saveMeta(cSh); cSaved('Тип точки сохранён') }
   else if (t.id == 'sht') { shT = t.value; if (view == 'pick') pickBody(); else shopsView() }
   else if (/^rt(p|v|o|q|vd|od)$/.test(t.id)) { const k = { rtp: 'plan', rtv: 'visit', rto: 'order', rtq: 'q', rtvd: 'vd', rtod: 'od' }[t.id]; RT[k] = t.type == 'checkbox' ? t.checked : Math.max(1, Math.min(365, +t.value || RT0[k])); LS('rt', RT); drawShops() }
@@ -1637,17 +1645,152 @@ function showInst() { if (standalone || LS('instx') || !instEv || document.getEl
   d.innerHTML = `<span>Установите приложение на главный экран</span><button data-a="inst">Установить</button><button class="ix" data-a="instx" aria-label="Скрыть">${ico('x', 16)}</button>`; document.body.prepend(d) }
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); instEv = e; showInst() });
 window.addEventListener('appinstalled', () => { instEv = null; hideInst() });
-// Экспорт истории в CSV (разделитель «;», кодировка UTF-8 с BOM — открывается в Excel)
-function exportCsv() {
-  const q = v => { v = String(v == null ? '' : v); if (/^[=+\-@\t\r]/.test(v)) v = "'" + v; return /[;"\n\r]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v }, n = v => String(v == null ? '' : v).replace('.', ','),
-    dt = ts => { if (!ts) return ''; const d = new Date(ts), z = k => String(k).padStart(2, '0'); return d.getFullYear() + '-' + z(d.getMonth() + 1) + '-' + z(d.getDate()) + ' ' + z(d.getHours()) + ':' + z(d.getMinutes()) },
-    list = allHist().filter(x => !x.del).sort((a, b) => (a.ts || 0) - (b.ts || 0));
-  if (!list.length) return say('Нет заявок для выгрузки');
-  const rows = [['Создана', 'Торговый', 'Магазин', 'Город', 'Адрес', 'Получатель', 'Поставка на', 'Цены', 'Скидка %', 'Сумма заявки', 'Товар', 'Граммовка', 'Ед.', 'Кол-во', 'Цена', 'Сумма позиции']];
-  list.forEach(x => { const h = x.h || {}, head = [dt(x.ts), x.trader || '', h.s || '', h.c || '', h.a || '', (x.rc && x.rc.n) || '', h.d || '', x.m == 'vat' ? 'с НДС' : 'без НДС', n(x.disc || 0), n(x.sum)];
-    (x.items && x.items.length ? x.items : [null]).forEach(i => rows.push(head.concat(i ? [i.n, i.g || '', i.u || '', n(i.q), n(i.p), n(Math.round(i.p * i.q))] : ['', '', '', '', '', ''])) ) });
-  const blob = new Blob(['\ufeff' + rows.map(r => r.map(q).join(';')).join('\r\n')], { type: 'text/csv;charset=utf-8' }), a = document.createElement('a');
-  a.href = URL.createObjectURL(blob); a.download = 'zayavki-' + today() + '.csv'; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove() }, 1500) }
+/* 37.11. Выгрузка истории в Excel (.xlsx) за выбранный период — по образцу Money Manager: период → «Собрать файл» → «Поделиться» / «Скачать».
+   Три листа: «Заявки» (строка — заявка), «Позиции» (строка — товар), «Итоги» (всего, по дням, торговым, магазинам, товарам). Строки — по времени оформления (ts), от старых к новым.
+   Заявки старше загруженного окна — с сервера кусками по 40 дней (q: 'range', как «История»; Code.gs не менялся); затем allHist() — как на экране «История» (неотправленные с устройства тоже входят, удалённые — нет).
+   Файл собирается на устройстве без библиотек: zip без сжатия + XML. Строки в файле — только текстом (shared strings), формулой не становятся */
+const XD = 864e5, XMAX = 366;   // длина периода — не больше года за раз
+let XP = null;   // { a, e — [начало, конец) в мс, mine, tr, busy, pg: [i, n], err, done: { blob, name, n, sum, pend } }
+const xIso = s => { const m = /^(\d{4})-(\d\d)-(\d\d)$/.exec(String(s || '')); return m ? new Date(+m[1], +m[2] - 1, +m[3]).getTime() : 0 };   // «2026-11-03» → полночь по местному времени
+const xDs = t => { const d = new Date(t), z = k => String(k).padStart(2, '0'); return z(d.getDate()) + '.' + z(d.getMonth() + 1) + '.' + d.getFullYear() };   // 03.11.2026
+const xSer = t => { const d = new Date(t); return (t - d.getTimezoneOffset() * 6e4) / XD + 25569 };   // мс → дата Excel (дни с 30.12.1899, местное время)
+const xTm = t => { const d = new Date(t); return (d.getHours() * 60 + d.getMinutes() + 1 / 120) / 1440 };   // время суток для Excel; +полсекунды, чтобы 09:05 не показывалось как 09:04 (LibreOffice отбрасывает доли)
+const XLAT = { а: 'a', б: 'b', в: 'v', г: 'g', д: 'd', е: 'e', ё: 'e', ж: 'zh', з: 'z', и: 'i', й: 'y', к: 'k', л: 'l', м: 'm', н: 'n', о: 'o', п: 'p', р: 'r', с: 's', т: 't', у: 'u', ф: 'f', х: 'h', ц: 'ts', ч: 'ch', ш: 'sh', щ: 'sch', ъ: '', ы: 'y', ь: '', э: 'e', ю: 'yu', я: 'ya', ә: 'a', ғ: 'g', қ: 'k', ң: 'n', ө: 'o', ұ: 'u', ү: 'u', һ: 'h', і: 'i' };
+const xLat = s => String(s).split('').map(c => { const l = c.toLowerCase(), t = XLAT[l]; return t == null ? c : c == l ? t : t.charAt(0).toUpperCase() + t.slice(1) }).join('').replace(/[^A-Za-z0-9.\-]+/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');   // «Заявки Айгуль 01.10-31.10.2026» → «Zayavki_Aygul_01.10-31.10.2026»
+const xLast = (x = XP) => Math.min(x.e - XD, dayMs(Date.now()));   // последний день периода для поля «по» (не позже сегодня)
+function xpOpen() { const mine = !CFG.API_URL || histTab == 'mine', [a, e] = pRange(hP, histDay || Date.now());   // по умолчанию — то, что открыто в «Истории»
+  XP = { a, e, mine, tr: mine ? '' : hTr, busy: 0, pg: null, err: '', done: null }; hxView() }
+function xpSet(a, e) { if (XP.busy) return; XP.a = a; XP.e = e; XP.err = ''; XP.done = null; hxView() }
+function xpWho(x = XP) { return x.mine ? (CFG.API_URL ? 'мои заявки' + (me ? ' (' + me + ')' : '') : 'заявки этого телефона') : x.tr ? 'торговый ' + x.tr : 'все торговые' }
+function hxView() { if (!XP) return xpOpen(); openSheet('hx', 'Выгрузка в Excel'); const x = XP, now = Date.now(), t0 = dayMs(now);
+  const q = [['w', 'Эта неделя', pRange('w', now)], ['m', 'Этот месяц', pRange('m', now)], ['pm', 'Прошлый месяц', pRange('m', pShift('m', pRange('m', now)[0], -1))], ['y', 'Этот год', pRange('y', now)]];
+  const names = [...new Set([...trs, ...allHist().map(trOf)].filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ru'));
+  const who = CFG.API_URL ? `<div class="seg htab">${[[1, 'Мои'], [0, 'Все заявки']].map(([k, t]) => `<button data-a="hxw" data-v="${k}" class="${+x.mine == k ? 'on' : ''}" ${x.busy ? 'disabled' : ''}>${t}</button>`).join('')}</div>`
+    + (x.mine ? '' : `<select id="hxtr" class="htrs" ${x.busy ? 'disabled' : ''}><option value="">Все торговые</option>${names.map(n => `<option ${n == x.tr ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select>`) : '';
+  const per = `<div class="seg sg4 hps hxq">${q.map(([k, t, r]) => `<button data-a="hxq" data-v="${k}" class="${r[0] == x.a && r[1] == x.e ? 'on' : ''}" ${x.busy ? 'disabled' : ''}>${t}</button>`).join('')}</div>`
+    + `<div class="hxd"><label><span class="m">С</span><input type="date" id="hxa" value="${isoDay(x.a)}" max="${isoDay(t0)}" ${x.busy ? 'disabled' : ''}></label><label><span class="m">По</span><input type="date" id="hxb" value="${isoDay(xLast())}" max="${isoDay(t0)}" ${x.busy ? 'disabled' : ''}></label></div>`;
+  const days = Math.round((Math.min(x.e, t0 + XD) - x.a) / XD), info = `<p class="m hxi">${xDs(x.a)} – ${xDs(xLast())} · ${days} ${days % 10 == 1 && days % 100 != 11 ? 'день' : [2, 3, 4].includes(days % 10) && ![12, 13, 14].includes(days % 100) ? 'дня' : 'дней'} · ${esc(xpWho())}</p>`;
+  const sh = 'navigator' in window && navigator.canShare && x.done && (() => { try { return navigator.canShare({ files: [new File([x.done.blob], x.done.name, { type: x.done.blob.type })] }) } catch (e) { return false } })();
+  const act = x.busy ? `<button class="send" disabled>${x.pg ? 'Загружаю заявки: ' + x.pg[0] + ' из ' + x.pg[1] + '…' : 'Собираю файл…'}</button>`
+    : x.done ? `<div class="hxr"><b>Готово: ${x.done.n} ${plZ(x.done.n)} · ${tg(x.done.sum)}</b><span class="m">${esc(x.done.name)}</span>${x.done.pend ? `<span class="m">Из них ещё не отправлены с этого телефона: ${x.done.pend}</span>` : ''}</div>`
+      + (sh ? `<button class="send" data-a="hxsh">${ico('send', 20)} Поделиться</button><button class="ghost" data-a="hxdl">${ico('down', 18)} Скачать</button>` : `<button class="send" data-a="hxdl">${ico('down', 20)} Скачать файл</button>`)
+    : `${x.err ? `<p class="m hxe">${esc(x.err)}</p>` : ''}<button class="send" data-a="hxgo">${ico('file', 20)} ${x.err ? 'Повторить' : 'Собрать файл'}</button>`;
+  $('#sb').innerHTML = who + per + info + act + `<p class="m hxn">В файле три листа: «Заявки» — строка на заявку, «Позиции» — строка на товар, «Итоги» — по дням, торговым, магазинам и товарам. Порядок — по времени заявки, сверху вниз. Удалённые заявки не входят.</p>` }
+async function xpLoad() { // заявки периода, которых нет в загруженном окне (свои — 30 дн., чужие — 7 дн.), — с сервера кусками по 40 дней
+  if (!CFG.API_URL || !tok) return; const end = Math.min(XP.e, winFrom(XP.mine)); if (XP.a >= end) return;
+  const parts = []; for (let t = XP.a; t < end; t += 40 * XD) parts.push([t, Math.min(t + 40 * XD, end)]);
+  const need = parts.filter(([a, b]) => !(dayC['x:' + a + ':' + b] && Date.now() - dayC['x:' + a + ':' + b].t < 12e4)); if (!need.length) return;
+  if (!navigator.onLine) throw new Error('Нет связи: заявки старше ' + xDs(end) + ' хранятся на сервере. Подключитесь к интернету и повторите.');
+  for (let i = 0; i < need.length; i++) { XP.pg = [i + 1, need.length]; if (view == 'hx') hxView(); const [a, b] = need[i];
+    const r = await call({ q: 'range', from: a, to: b, undo: CFG.UNDO_HOURS }); if (!r || r.error) throw new Error('Сервер не отдал заявки' + (r && r.error ? ' (' + r.error + ')' : '') + '. Повторите позже.');
+    dayC['x:' + a + ':' + b] = { t: Date.now(), hist: safeL(r.hist) } } }
+async function xpGo() { if (!XP || XP.busy) return; XP.busy = 1; XP.err = ''; XP.done = null; hxView();
+  try { await xpLoad(); XP.pg = null; if (view == 'hx') hxView(); const x = XP, pend = new Set(outbox.map(o => o.id));
+    const L = allHist().filter(o => !o.del && (o.ts || 0) >= x.a && (o.ts || 0) < x.e && (x.mine ? isMine(o) : !x.tr || trOf(o) == x.tr)).sort((p, q) => (p.ts || 0) - (q.ts || 0));
+    if (!L.length) throw new Error('За этот период заявок нет — файл не собран.');
+    const blob = xlsxBlob(xpSheets(L, x)), y0 = new Date(x.a).getFullYear(), y1 = new Date(xLast()).getFullYear(), ds = t => xDs(t).slice(0, 5);
+    const name = xLat('Zayavki ' + (x.mine ? (CFG.API_URL && me ? me + ' ' : '') : x.tr ? x.tr + ' ' : '') + (y0 == y1 ? ds(x.a) + '-' + xDs(xLast()) : xDs(x.a) + '-' + xDs(xLast()))) + '.xlsx';   // имя латиницей: Chromium теряет имя файла с кириллицей при скачивании (проверено в Chromium 37.11) — файл назывался бы «download»
+    x.done = { blob, name, n: L.length, sum: L.reduce((s, o) => s + nz(o.sum), 0), pend: L.filter(o => pend.has(o.id)).length } }
+  catch (e) { XP.err = e && e.message || 'Не получилось собрать файл'; XP.pg = null } finally { XP.busy = 0; if (view == 'hx') hxView() } }
+function xpDl() { const d = XP && XP.done; if (!d) return; const a = document.createElement('a'); a.href = URL.createObjectURL(d.blob); a.download = d.name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove() }, 4e4); toast('Файл сохранён в «Загрузки»') }
+async function xpShare() { const d = XP && XP.done; if (!d) return;
+  try { await navigator.share({ files: [new File([d.blob], d.name, { type: d.blob.type })], title: d.name }) } catch (e) { if (e && e.name == 'AbortError') return; xpDl() } }   // телефон не дал поделиться — просто скачиваем
+// Доля скидки по позициям: сумма «со скидкой» по позициям в точности равна сумме заявки (метод наибольших остатков)
+function xpAlloc(o) { const it = o.items || [], s = it.map(i => Math.round(nz(i.p) * nz(i.q))), S = s.reduce((a, b) => a + b, 0), T = Math.round(nz(o.sum));
+  if (!(S > 0)) return s.map(() => 0); const raw = s.map(v => T * v / S), r = raw.map(Math.floor); let k = T - r.reduce((a, b) => a + b, 0);
+  raw.map((v, i) => [v - r[i], i]).sort((p, q) => q[0] - p[0]).forEach(([, i]) => { if (k > 0) { r[i]++; k-- } }); return r }
+// Листы книги. Ячейка: null — пусто; число или строка; { v, s } — со стилем (номера стилей — xlsxStyles: 1 шапка, 2 дата, 3 время, 4 сумма, 5/6/12 итог, 7 заголовок, 8 пояснение, 9 доля, 10 раздел)
+function xpSheets(L, x) { const C = (v, s) => ({ v, s }), H = a => a.map(t => C(t, 1)), dd = t => C(Math.round(xSer(dayMs(t))), 2);
+  const fromAs = L.some(o => o.as || (o.by && o.by != trOf(o))), oby = o => o.as ? me : o.by && o.by != trOf(o) ? o.by : '';
+  const nIt = o => o.items && o.items.length ? o.items.length : Object.keys(o.cart || {}).length, shopK = o => o.h && o.h.sid || [o.h && o.h.s, o.h && o.h.c, o.h && o.h.a].join('|');
+  // «Заявки»
+  const h1 = ['№', 'Дата', 'Время', 'Торговый', ...(fromAs ? ['Оформил'] : []), 'Город', 'Магазин', 'Адрес', 'Поставка', 'Цены', 'Позиций', 'Скидка, %', 'Сумма, ₸'];
+  const r1 = [H(h1)], tot = L.reduce((s, o) => s + nz(o.sum), 0);
+  L.forEach((o, i) => { const h = o.h || {}, dv = xIso(h.d);
+    r1.push([i + 1, dd(o.ts || 0), C(xTm(o.ts || 0), 3), trOf(o) || 'без торгового', ...(fromAs ? [oby(o)] : []), h.c || '', h.s || '', h.a || '', dv ? dd(dv) : h.d || '', o.m == 'vat' ? 'с НДС' : 'без НДС', nIt(o), nz(o.disc) || null, C(nz(o.sum), 4)]) });
+  const w1 = h1.length, fl1 = r1.length; r1.push([]);
+  const t1 = Array.from({ length: w1 }, () => C('', 5)); t1[0] = C('Итого', 5); t1[1] = C(L.length + ' ' + plZ(L.length), 5); t1[w1 - 3] = C(L.reduce((s, o) => s + nIt(o), 0), 12); t1[w1 - 1] = C(tot, 6); r1.push(t1);
+  // «Позиции»
+  const h2 = ['№ заявки', 'Дата', 'Магазин', 'Город', 'Торговый', 'Товар', 'Граммовка', 'Ед.', 'Кол-во', 'Цена, ₸', 'Сумма, ₸', 'Со скидкой, ₸'], r2 = [H(h2)], prod = new Map(); let s2 = 0, s3 = 0;
+  L.forEach((o, i) => { const h = o.h || {}, head = [i + 1, dd(o.ts || 0), h.s || '', h.c || '', trOf(o) || ''];
+    if (!o.items || !o.items.length) { r2.push([...head, 'позиции не сохранены', '', '', null, null, null, C(nz(o.sum), 4)]); s3 += nz(o.sum); return }
+    const al = xpAlloc(o); o.items.forEach((it, j) => { const sm = Math.round(nz(it.p) * nz(it.q)); s2 += sm; s3 += al[j];
+      r2.push([...head, it.n || '', it.g || '', it.u || '', nz(it.q), C(nz(it.p), 4), C(sm, 4), C(al[j], 4)]);
+      const k = [it.n, it.g, it.u].join('|'), z = prod.get(k) || { n: it.n || '', g: it.g || '', u: it.u || '', q: 0, s: 0 }; z.q += nz(it.q); z.s += al[j]; prod.set(k, z) }) });
+  const fl2 = r2.length; r2.push([]); const t2 = Array.from({ length: h2.length }, () => C('', 5)); t2[0] = C('Итого', 5); t2[10] = C(s2, 6); t2[11] = C(s3, 6); r2.push(t2);
+  r2.push([]); r2.push([C('«Со скидкой» — скидка заявки, разделённая между её позициями; итог по колонке равен сумме заявок.', 8)]);
+  // «Итоги»
+  const wF = x.mine ? (CFG.API_URL && me ? 'Торговый: ' + me : '') : x.tr ? 'Торговый: ' + x.tr : 'Торговые: все', at = xDs(Date.now()) + ' ' + new Date().toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' });   // файл уходит оператору — от третьего лица, без «мои» (решение владельца 03.11.2026)
+  const r3 = [[C('Итоги', 7)], [C('Период: ' + xDs(x.a) + ' – ' + xDs(xLast(x)), 8)], ...(wF ? [[C(wF, 8)]] : []), [C(me ? 'Выгрузил: ' + me + ', ' + at : 'Выгружено: ' + at, 8)], [C('Удалённые заявки не входят', 8)]];
+  const pend = L.filter(o => outbox.some(y => y.id == o.id)).length; if (pend) r3.push([C('Ещё не дошли до сервера (в файле есть): ' + pend, 8)]);
+  const blk = (t, h, rows) => { r3.push([]); r3.push([C(t, 10)]); r3.push(H(h)); rows.forEach(r => r3.push(r)) };
+  blk('Всего', ['Заявок', 'Сумма, ₸', 'Средний чек, ₸'], [[L.length, C(tot, 4), C(Math.round(tot / L.length), 4)]]);
+  const byD = new Map(); L.forEach(o => { const d = dayMs(o.ts || 0), z = byD.get(d) || { n: 0, s: 0 }; z.n++; z.s += nz(o.sum); byD.set(d, z) });
+  blk('По дням', ['Дата', 'Заявок', 'Сумма, ₸'], [...byD].map(([d, z]) => [dd(d), z.n, C(z.s, 4)]));
+  const byT = new Map(); L.forEach(o => { const t = trOf(o) || 'без торгового', z = byT.get(t) || { n: 0, s: 0 }; z.n++; z.s += nz(o.sum); byT.set(t, z) });
+  blk('По торговым', ['Торговый', 'Заявок', 'Сумма, ₸', 'Доля'], [...byT].sort((p, q) => q[1].s - p[1].s).map(([t, z]) => [t, z.n, C(z.s, 4), C(tot ? z.s / tot : 0, 9)]));
+  const byS = new Map(); L.forEach(o => { const k = shopK(o), h = o.h || {}, z = byS.get(k) || { n: 0, s: 0 }; z.n++; z.s += nz(o.sum); z.t = o.ts || 0; z.nm = h.s || ''; z.c = h.c || ''; z.a = h.a || ''; byS.set(k, z) });   // название — из последней заявки (L по времени)
+  blk('По магазинам', ['Магазин', 'Город', 'Адрес', 'Заявок', 'Сумма, ₸', 'Последняя заявка'], [...byS.values()].sort((p, q) => q.s - p.s).map(z => [z.nm, z.c, z.a, z.n, C(z.s, 4), dd(z.t)]));
+  blk('По товарам', ['Товар', 'Граммовка', 'Ед.', 'Кол-во', 'Сумма со скидкой, ₸'], [...prod.values()].sort((p, q) => q.s - p.s).map(z => [z.n, z.g, z.u, Math.round(z.q * 1000) / 1000, C(z.s, 4)]));
+  const W1 = [6, 12, 7, 16, ...(fromAs ? [16] : []), 16, 26, 26, 12, 10, 9, 10, 14];
+  return [{ n: 'Заявки', w: W1, r: r1, fz: 1, fl: [w1, fl1] }, { n: 'Позиции', w: [9, 12, 26, 16, 16, 34, 11, 6, 9, 11, 12, 14], r: r2, fz: 1, fl: [h2.length, fl2] }, { n: 'Итоги', w: [32, 16, 22, 12, 18, 18], r: r3 }] }
+// Книга .xlsx: XML-части → zip без сжатия (метод 0). Проверено разбором в openpyxl и LibreOffice (37.11)
+const xEsc = s => String(s).replace(/[\x00-\x08\x0B\x0C\x0E-\x1F￾￿]/g, '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const xCol = i => { let s = ''; i++; while (i > 0) { const m = (i - 1) % 26; s = String.fromCharCode(65 + m) + s; i = Math.floor((i - 1) / 26) } return s };
+const xlsxStyles = () => '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+  + '<numFmts count="3"><numFmt numFmtId="164" formatCode="dd.mm.yyyy"/><numFmt numFmtId="165" formatCode="hh:mm"/><numFmt numFmtId="166" formatCode="#,##0"/></numFmts>'
+  + '<fonts count="4"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="14"/><name val="Calibri"/></font><font><i/><sz val="10"/><color rgb="FF6B6B6B"/><name val="Calibri"/></font></fonts>'
+  + '<fills count="4"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFEDEDED"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFFFF2CC"/><bgColor indexed="64"/></patternFill></fill></fills>'
+  + '<borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left/><right/><top/><bottom style="thin"><color rgb="FF9E9E9E"/></bottom><diagonal/></border></borders>'
+  + '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="13">'
+  + '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'
+  + '<xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf>'
+  + '<xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyAlignment="1"><alignment horizontal="center"/></xf>'
+  + '<xf numFmtId="165" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyAlignment="1"><alignment horizontal="center"/></xf>'
+  + '<xf numFmtId="166" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>'
+  + '<xf numFmtId="0" fontId="1" fillId="3" borderId="0" xfId="0" applyFont="1" applyFill="1"/>'
+  + '<xf numFmtId="166" fontId="1" fillId="3" borderId="0" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1"/>'
+  + '<xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/>'
+  + '<xf numFmtId="0" fontId="3" fillId="0" borderId="0" xfId="0" applyFont="1"/>'
+  + '<xf numFmtId="9" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>'
+  + '<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>'
+  + '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'
+  + '<xf numFmtId="166" fontId="1" fillId="3" borderId="0" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1"/>'
+  + '</cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>';
+function xlsxParts(sheets) { const ss = [], si = new Map(), sx = s => { s = String(s); if (!si.has(s)) { si.set(s, ss.length); ss.push(s) } return si.get(s) };
+  const NS = 'xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"', X = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+  const ws = sheets.map((sh, k) => { const rows = sh.r.map((r, i) => '<row r="' + (i + 1) + '">' + r.map((c, j) => { if (c == null) return ''; const o = typeof c == 'object' ? c : { v: c }, ref = xCol(j) + (i + 1), st = o.s ? ' s="' + o.s + '"' : '';
+      if (typeof o.v == 'number') return Number.isFinite(o.v) ? '<c r="' + ref + '"' + st + '><v>' + o.v + '</v></c>' : '';
+      if (o.v == null || o.v === '') return o.s ? '<c r="' + ref + '"' + st + '/>' : '';
+      return '<c r="' + ref + '"' + st + ' t="s"><v>' + sx(o.v) + '</v></c>' }).join('') + '</row>').join('');
+    const view = '<sheetViews><sheetView workbookViewId="0"' + (k ? '' : ' tabSelected="1"') + '>' + (sh.fz ? '<pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/><selection pane="bottomLeft" activeCell="A2" sqref="A2"/>' : '') + '</sheetView></sheetViews>';
+    return X + '<worksheet ' + NS + '>' + view + '<sheetFormatPr defaultRowHeight="15"/><cols>' + sh.w.map((w, j) => '<col min="' + (j + 1) + '" max="' + (j + 1) + '" width="' + w + '" customWidth="1"/>').join('') + '</cols><sheetData>' + rows + '</sheetData>'
+      + (sh.fl ? '<autoFilter ref="A1:' + xCol(sh.fl[0] - 1) + sh.fl[1] + '"/>' : '') + '</worksheet>' });
+  const dn = sheets.map((sh, k) => sh.fl ? '<definedName name="_xlnm._FilterDatabase" localSheetId="' + k + '" hidden="1">\'' + xEsc(sh.n) + '\'!$A$1:$' + xCol(sh.fl[0] - 1) + '$' + sh.fl[1] + '</definedName>' : '').join('');
+  const P = { '[Content_Types].xml': X + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+      + sheets.map((s, k) => '<Override PartName="/xl/worksheets/sheet' + (k + 1) + '.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>').join('')
+      + '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/><Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/></Types>',
+    '_rels/.rels': X + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>',
+    'xl/workbook.xml': X + '<workbook ' + NS + '><bookViews><workbookView activeTab="0"/></bookViews><sheets>' + sheets.map((s, k) => '<sheet name="' + xEsc(s.n) + '" sheetId="' + (k + 1) + '" r:id="rId' + (k + 1) + '"/>').join('') + '</sheets>' + (dn ? '<definedNames>' + dn + '</definedNames>' : '') + '</workbook>',
+    'xl/_rels/workbook.xml.rels': X + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' + sheets.map((s, k) => '<Relationship Id="rId' + (k + 1) + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet' + (k + 1) + '.xml"/>').join('')
+      + '<Relationship Id="rId' + (sheets.length + 1) + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="rId' + (sheets.length + 2) + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/></Relationships>',
+    'xl/styles.xml': xlsxStyles() };
+  ws.forEach((x, k) => { P['xl/worksheets/sheet' + (k + 1) + '.xml'] = x });
+  P['xl/sharedStrings.xml'] = X + '<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="' + ss.length + '" uniqueCount="' + ss.length + '">' + ss.map(s => '<si><t xml:space="preserve">' + xEsc(s) + '</t></si>').join('') + '</sst>';
+  return P }
+let xCrcT = null;
+function xCrc(b) { if (!xCrcT) { xCrcT = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; xCrcT[n] = c >>> 0 } }
+  let c = 0xFFFFFFFF; for (let i = 0; i < b.length; i++) c = xCrcT[(c ^ b[i]) & 255] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0 }
+function xZip(files) { // zip без сжатия: локальные заголовки + данные, центральный каталог, конец каталога
+  const te = new TextEncoder(), loc = [], cen = []; let off = 0;
+  Object.keys(files).forEach(nm => { const n = te.encode(nm), d = te.encode(files[nm]), crc = xCrc(d), h = new DataView(new ArrayBuffer(30)), c = new DataView(new ArrayBuffer(46));
+    [[0, 0x04034b50, 4], [4, 20, 2], [6, 0x0800, 2], [8, 0, 2], [10, 0, 2], [12, 0x21, 2], [14, crc, 4], [18, d.length, 4], [22, d.length, 4], [26, n.length, 2], [28, 0, 2]].forEach(([p, v, s]) => s == 4 ? h.setUint32(p, v, true) : h.setUint16(p, v, true));
+    [[0, 0x02014b50, 4], [4, 20, 2], [6, 20, 2], [8, 0x0800, 2], [10, 0, 2], [12, 0, 2], [14, 0x21, 2], [16, crc, 4], [20, d.length, 4], [24, d.length, 4], [28, n.length, 2], [30, 0, 2], [32, 0, 2], [34, 0, 2], [36, 0, 2], [38, 0, 4], [42, off, 4]].forEach(([p, v, s]) => s == 4 ? c.setUint32(p, v, true) : c.setUint16(p, v, true));
+    loc.push(new Uint8Array(h.buffer), n, d); cen.push(new Uint8Array(c.buffer), n); off += 30 + n.length + d.length });
+  const cs = cen.reduce((s, x) => s + x.length, 0), e = new DataView(new ArrayBuffer(22)), k = Object.keys(files).length;
+  [[0, 0x06054b50, 4], [4, 0, 2], [6, 0, 2], [8, k, 2], [10, k, 2], [12, cs, 4], [16, off, 4], [20, 0, 2]].forEach(([p, v, s]) => s == 4 ? e.setUint32(p, v, true) : e.setUint16(p, v, true));
+  return [...loc, ...cen, new Uint8Array(e.buffer)] }
+const xlsxBlob = sheets => new Blob(xZip(xlsxParts(sheets)), { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
 // Резервная копия данных этого устройства (черновики, избранное, очередь отправки, настройки) — для нового телефона и переезда на другой хостинг.
 // Токена входа, роли и пароля в ней нет (ключей tok и role нет в списке BAK): на новом устройстве нужно войти заново
 const BAK = ['cart', 'disc', 'hdr', 'set', 'me', 'fav', 'drafts', 'hist', 'outbox', 'shopq', 'visq', 'delq', 'eo', 'msw', 'rw', 'rd', 'vatp', 'geono'];   // vatp — режим цен магазинов (v30); вид приложения (ui) не переносится: он под конкретный телефон

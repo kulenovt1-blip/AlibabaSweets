@@ -2,7 +2,7 @@
 <html lang="ru"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="ver" content="38.0">
+<meta name="ver" content="38.1">
 <meta name="theme-color" content="#F3F3EE">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="favicon.ico" sizes="any">
@@ -44,7 +44,7 @@ window.addEventListener('error', function (e) {
 <script>setTimeout(function () { var s = document.getElementById('splash'); if (s && !window.__splOwn) s.hidden = true }, 6000)   /* запасной путь: app.js не загрузился — экран не должен висеть */</script>
 
 <!-- СТРОКА СОСТОЯНИЯ (v33: логотип и название с рабочих экранов убраны; разделы — в нижней панели) -->
-<header class="top"><div class="toph"><h1 class="ttl">Заявка</h1><div class="seg sm" id="seg" aria-label="Режим цен"></div></div><p id="sy">Приём заявок</p></header>
+<header class="top"><div class="toph"><div class="tlh"><h1 class="ttl">Заявка</h1><p id="sy">Приём заявок</p></div><div class="rcol"><div class="seg sm" id="seg" aria-label="Режим цен"></div><div id="rtw"></div></div></div></header>
 
 <!-- ДАННЫЕ О КЛИЕНТЕ -->
 <!-- v33: магазин выбран — карточка «Магазин · адрес · поставка» и «Сменить»; иначе (или после «Сменить») — поля -->

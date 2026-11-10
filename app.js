@@ -19,7 +19,7 @@ const DEMO = [['Финики','Финики FINDI caramel','150г','1704','1976'
 
 /* ============ 2. ХЕЛПЕРЫ И СОСТОЯНИЕ ============ */
 /* Версия сборки: должна совпадать с <meta name="ver"> в index.html. Если файлы на хостинге разных версий — покажем красную плашку. */
-const VER = '38.0';
+const VER = '38.1';
 const NEED = 36;   // нужная версия Code.gs на сервере
 { const m = document.querySelector('meta[name=ver]');
   if (!m || m.content != VER) document.body.insertAdjacentHTML('afterbegin', '<div style="background:#C82B27;color:#fff;padding:12px;font-weight:800">Файлы сайта разных версий. Загрузите ВСЕ файлы из архива заново (index.html, styles.css, app.js, sw.js) и обновите страницу дважды.</div>') }
@@ -172,7 +172,9 @@ const rtOn = () => S.mode == 'vat' && !!S.rt && retroOK();   // ретро бы�
 const cm = () => rtOn() ? 'vatr' : S.mode;   // режим цен одним ключом: vat / vatr (с НДС, ретро) / net
 const noRt = p => rtOn() && !(p.pt > 0);   // ретро включено, а ретро-цены у товара нет: берётся обычная цена с НДС, в заявке пометка «без ретро»
 let rtAp = false;   // с каким состоянием ретро последний раз считались цены
-const applyMode = () => { rtAp = rtOn(); P.forEach(p => p.pr = S.mode == 'vat' ? (rtOn() && p.pt > 0 ? p.pt : p.pv) : p.pn) };   // pr — актуальная цена в выбранном режиме (0 = не указана)
+let rkAp = null;   // 38.1: была ли кнопка «Ретро» в шапке при последней прорисовке (прайс и версия сервера приходят позже первой прорисовки)
+const segSync = () => { if (retroOK() !== rkAp) drawSeg() };
+const applyMode = () => { rtAp = rtOn(); P.forEach(p => p.pr = S.mode == 'vat' ? (rtOn() && p.pt > 0 ? p.pt : p.pv) : p.pn); segSync() };   // pr — актуальная цена в выбранном режиме (0 = не указана)
 async function load() {
   let rows, err = '';
   const cached = LS('prod2'); let early = false;
@@ -495,7 +497,8 @@ function setView() {
 }
 
 /* ============ 6б. РЕЖИМ ЦЕН (с НДС / без НДС) ============ */
-function drawSeg() { $('#seg').innerHTML = [['vat', 'с НДС'], ['net', 'без НДС']].map(([k, t]) => `<button data-a="mode" data-v="${k}" class="${S.mode == k ? 'on' : ''}">${t}</button>`).join('') + (S.mode == 'vat' && retroOK() ? `<button data-a="rt" data-v="${rtOn() ? '0' : '1'}" class="rtb${rtOn() ? ' on' : ''}" aria-pressed="${rtOn()}">Ретро</button>` : '') }   // v38: в шапке каталога — кнопка «Ретро» (только при «с НДС»)
+function drawSeg() { rkAp = retroOK(); $('#seg').innerHTML = [['net', 'без НДС'], ['vat', 'с НДС']].map(([k, t]) => `<button data-a="mode" data-v="${k}" class="${S.mode == k ? 'on' : ''}">${t}</button>`).join('');   // 38.2: «с НДС» справа — «Ретро» стоит под ним
+  $('#rtw').innerHTML = S.mode == 'vat' && retroOK() ? `<button data-a="rt" data-v="${rtOn() ? '0' : '1'}" class="rtc${rtOn() ? ' on' : ''}" aria-pressed="${rtOn()}"><i></i>Ретро</button>` : '' }   // кнопка «Ретро» в строке статуса (только при «с НДС»)
 function adoptMode(m, rt) { // v38: заявка, черновик или повтор несут и режим цен, и ретро
   const r = m == 'vat' && rt ? 1 : 0; if (!m || (m == S.mode && r == (S.rt ? 1 : 0))) return;
   S.mode = m; S.rt = r; LS('set', S); applyMode(); drawSeg() }
@@ -624,7 +627,7 @@ async function sync() { // отправляет накопленные заяв�
     if (!again) {   // v37: пока шла отправка, в очередь добавили ещё — обновление данных (init) сделаем в конце, когда очередь опустеет (серия нажатий не прерывается лишними обновлениями)
     const d = await call({ q: 'init', undo: CFG.UNDO_HOURS }), sh = safeL(d.hist); let bf = false;   // bf — база магазинов обновлена с сервера в этом проходе
     if (d.me) { role = d.me.role == 'admin' ? 'admin' : 'trader'; LS('role', role) }   // роль — только для показа кнопок; права проверяет сервер
-    trs = (Array.isArray(d.traders) ? d.traders : []).map(String); srvV = nz(d.srv); LS('srv', srvV); if (rtOn() != rtAp) { applyMode(); drawSeg(); if (!view) drawList(); bar(); if (view == 'cart') cartView() }   // v38: сервер оказался 38 — ретро включается, цены пересчитываются
+    trs = (Array.isArray(d.traders) ? d.traders : []).map(String); srvV = nz(d.srv); LS('srv', srvV); segSync(); if (rtOn() != rtAp) { applyMode(); drawSeg(); if (!view) drawList(); bar(); if (view == 'cart') cartView() }   // v38: сервер оказался 38 — ретро включается, цены пересчитываются
     if (Array.isArray(d.rcp)) { rcp = d.rcp; LS('rcp', rcp); drawRc() }
     if (Array.isArray(d.hot)) { hotL = d.hot.filter(x => x && typeof x.k == 'string'); LS('hot', hotL) } if (Array.isArray(d.promo)) { promoL = d.promo.map(String); LS('promo', promoL) }   // v31: «Ходовые» и «Продвигать» — с сервера
     if (Array.isArray(d.reasons)) { RSN = d.reasons.map(String).slice(0, 12); LS('rsn', RSN) } if (Array.isArray(d.hot) || Array.isArray(d.promo)) { applyFlags(); drawChips(); if (!view) drawList() }
@@ -719,7 +722,7 @@ async function doAuth() {
   if (r.error == 'key') return err('Войти нельзя: ' + OLDSRV + '.');
   if (r.error || typeof r.token != 'string' || !r.token) return err('Сервер не выдал вход' + (r.error ? ': ' + r.error : '') + '.');
   const nm = String(r.name || name); if (other(nm)) return err(other(nm));   // очередь остаётся за прежним профилем и к новому не привязывается
-  tok = r.token; me = nm; role = r.role == 'admin' ? 'admin' : 'trader'; LS('tok', tok); LS('me', me); LS('role', role); authNeed = false; if (nz(r.srv)) { srvV = nz(r.srv); LS('srv', srvV) }
+  tok = r.token; me = nm; role = r.role == 'admin' ? 'admin' : 'trader'; LS('tok', tok); LS('me', me); LS('role', role); authNeed = false; if (nz(r.srv)) { srvV = nz(r.srv); LS('srv', srvV); segSync() }
   $('#sb').innerHTML = ''; closeSheet(); drawList(); toast('Вы вошли: ' + me); sync(); if (!Object.keys(cart).length && !eo) goHome();   // поля с паролем убираем со страницы сразу
 }
 /* --- администратор: профили, приглашения, роли, заявки без торгового. Кнопки — только удобство: каждое действие сервер проверяет сам --- */

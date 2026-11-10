@@ -666,6 +666,14 @@ button.pfc:active{transform:none;opacity:.92}
 @media(max-width:340px){.hxd{grid-template-columns:1fr}}   /* 37.11: на самых узких экранах поля «С» и «По» — друг под другом */
 
 /* v38: ретро — подпункт «с НДС» */
-.seg.sm .rtb{margin-left:3px;border:1px solid var(--line,rgba(0,0,0,.18));background:transparent;color:var(--ink-2)}.seg.sm .rtb.on{background:var(--accent);color:var(--on-accent);border-color:var(--accent);font-weight:800}
+/* 38.1: правая колонка шапки — «без НДС | с НДС» и под ней «Ретро» такой же ширины (границы совпадают); слева заголовок и статус */
+.tlh{flex:1 1 0;min-width:min-content;display:flex;flex-direction:column;justify-content:space-between}.rcol{flex:none;position:relative;display:grid;grid-template-columns:auto auto;gap:8px 3px;padding:3px}   /* 38.1: «Ретро» — в той же сетке, что кнопки: стоит ровно под «с НДС», границы совпадают с ней */
+.rcol::before{content:'';grid-row:1;grid-column:1/-1;margin:-3px;background:var(--surface-sunken);border-radius:12px}
+.rcol #seg{display:contents}.rcol #seg button{grid-row:1;position:relative}.rcol #seg button:nth-child(1){grid-column:1}.rcol #seg button:nth-child(2){grid-column:2}#rtw{grid-column:2;grid-row:2}.toph{align-items:stretch}
+.tlh #sy{margin:2px 0 0}
+#rtw:empty{display:none}.rtc{width:100%;min-height:44px;padding:0 8px;justify-content:center;border-radius:12px;box-sizing:border-box;border:1px solid var(--line,rgba(0,0,0,.18));background:transparent;color:var(--ink-2);font-weight:700;font-size:calc(15px*var(--fz));display:inline-flex;align-items:center;gap:6px}
+.rtc i{flex:none;width:18px;height:18px;border-radius:5px;border:2px solid currentColor;display:inline-block;position:relative;box-sizing:border-box}
+.rtc.on{background:var(--accent-tint);color:var(--ink);border-color:var(--accent);font-weight:800}
+.rtc.on i{background:var(--ink);border-color:var(--ink)}.rtc.on i::after{content:"";position:absolute;left:4px;top:0;width:5px;height:10px;border:solid var(--bg);border-width:0 2px 2px 0;transform:rotate(45deg)}
 .vatb .seg.rts button{min-height:46px;font-size:calc(16px*var(--fz))}.vatb .seg.rts button.on{background:var(--accent);color:var(--on-accent)}
 .nrt{display:inline-block;margin-left:4px;padding:1px 7px;border-radius:8px;background:var(--accent-tint);color:var(--ink);font-weight:700;font-size:calc(12px*var(--fz))}

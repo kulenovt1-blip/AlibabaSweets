@@ -664,3 +664,8 @@ button.pfc:active{transform:none;opacity:.92}
 .hxi{margin:10px 2px 4px}.hxe{margin:12px 2px 0;color:var(--danger,#b3261e);font-weight:600}.hxn{margin:16px 2px 0;font-size:calc(14px*var(--fz))}
 .hxr{display:flex;flex-direction:column;gap:2px;margin-top:12px;padding:12px 14px;background:var(--surface);border:1px solid var(--line-strong);border-radius:14px}.hxr b{font-weight:800;font-size:calc(18px*var(--fz))}.hxr .m{overflow-wrap:anywhere}
 @media(max-width:340px){.hxd{grid-template-columns:1fr}}   /* 37.11: на самых узких экранах поля «С» и «По» — друг под другом */
+
+/* v38: ретро — подпункт «с НДС» */
+.seg.sm .rtb{margin-left:3px;border:1px solid var(--line,rgba(0,0,0,.18));background:transparent;color:var(--ink-2)}.seg.sm .rtb.on{background:var(--accent);color:var(--on-accent);border-color:var(--accent);font-weight:800}
+.vatb .seg.rts button{min-height:46px;font-size:calc(16px*var(--fz))}.vatb .seg.rts button.on{background:var(--accent);color:var(--on-accent)}
+.nrt{display:inline-block;margin-left:4px;padding:1px 7px;border-radius:8px;background:var(--accent-tint);color:var(--ink);font-weight:700;font-size:calc(12px*var(--fz))}

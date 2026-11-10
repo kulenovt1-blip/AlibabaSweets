@@ -1,5 +1,10 @@
 /* Али-Баба: приём заявок. Вставьте в Расширения → Apps Script ТОЙ ЖЕ таблицы, где лежит прайс.
  *
+ * v38 — ретро-цены и автокопия таблицы.
+ *  • Ретро: флаг заявки rt (только при «с НДС») и nr у позиций без ретро-цены; в колонке «Режим цен» — «с НДС, ретро». Без этой версии флаг не сохранится.
+ *  • Автокопия: меню «Али-Баба → Автокопия: включить». Раз в сутки (около 4:00) копия таблицы в папку «AlibabaSweets-backup» на Диске: 14 ежедневных и 8 воскресных,
+ *    старые уходят в корзину Диска. Нужно разрешить доступ к Диску и к триггерам. TOKEN_KEY и PEPPER в копию не попадают — сохраните их отдельно.
+ *
  * v37 — быстрее при очереди, время работы сервера в ответе, автоматический визит «Взяли заказ».
  *  • Каждый ответ без ошибки несёт поле t = { ms: сколько работал скрипт, lw: сколько ждал общую блокировку } — по нему приложение показывает, где уходит время.
  *  • batch: до BATCH_MAX обычных записей одним запросом ({tok, batch: [{shop}|{visit}|{visitOp}|{visitCancel}|{order}|{orderOp}, …]}). Ответ — {ok, batch: [ответ на каждую]}.
@@ -37,7 +42,7 @@
  *  • Все операции идут по постоянному ID события и безопасны при повторной отправке.
  *  • Сводка магазина (посл. заказ / посл. визит) всегда ПЕРЕСЧИТЫВАЕТСЯ из записей (recalcShops), а не «двигается» инкрементом.
  *  • Сверка старых данных: reconcileDryRun() (ничего не меняет, пишет отчёт в лист «Сверка») и reconcileApply() (после просмотра отчёта). */
-const SRV = 37;           // версия серверной части (видна в «Настройки → Служебная информация»)
+const SRV = 38;           // версия серверной части (видна в «Настройки → Служебная информация»)
 const SHOP_HEAD = ['Магазин', 'Город', 'Адрес', 'ID', 'Статус', 'Заметка', 'Кем (статус)', 'Когда (статус, мс)', 'Контакт', 'Телефон', 'Район', 'Посл. заказ (мс)', 'Посл. визит (мс)', 'Итог визита', 'Кем (визит)', 'Тип', 'План визита (мс)', 'Открытый вопрос',
   'Дни маршрута', 'Ответственный', 'Цены (НДС)', 'Широта', 'Долгота', 'Точность места, м', 'Место: кем', 'Место: когда',   // v31: колонки S–Z
   'Юрлицо', 'Заметки'];   // v35: AB — постоянные заметки о точке   // v33: колонка AA — ИП / ТОО точки (только название; в текст заявки не идёт)
@@ -149,7 +154,7 @@ function readOp(d, ctx) {                 // торговые, магазины,
     return { ok: 1, d: day, share: all, rd: routeDays(ctx, Date.now(), day, day).filter(r => r.d == day), ev } }                                          // v35: итоги за период «Истории» (день / неделя / месяц / год), прошлый такой же и по месяцам                                    // v31: итоги за периоды (границы присылает приложение — в местном времени торгового)
   if (d.q == 'prev') { const sid = str(d.sid, 64); if (!sid || !ID_RE.test(sid)) return { error: 'range' }; return { ok: 1, sid, items: prevItems(sid) } }   // v31: «Брал раньше»
   if (d.q != 'init') return { error: 'action' };
-  const traders = readTraders().map(x => x.n), ag = agg(), shops = ensureIds().map(x => { const o = pub(x), l = ag.lm[x.id]; if (l) { o.lm = l[0]; o.lmt = l[1] } return o });   // lm — режим цен последней заявки в точку (по всем торговым)
+  const traders = readTraders().map(x => x.n), ag = agg(), shops = ensureIds().map(x => { const o = pub(x), l = ag.lm[x.id]; if (l) { o.lm = l[0]; o.lmt = l[1]; o.lr = l[2] ? 1 : 0 } return o });   // lm — режим цен последней заявки в точку (по всем торговым)
   // окно: заявки всех торговых за 7 дней + свои (и заявки без торгового — только для просмотра) за 30 дней; остальное приложение запрашивает по дню (q=range)
   const hist = ordersIn(now - 30 * D, now + D, undo, now).filter(o => (+o.ts || 0) >= now - 7 * D || !o.trader || same(o.trader, user));
   return { srv: SRV, me: meOut, traders, shops, rcp: recipients(), hist: hist.reverse(), hot: ag.hot, reasons: ag.reasons, promo: readPromo().map(x => x.k), rd: routeDays(ctx, now), cfg: { share: shareRoute() } };   // v35: rd — маршрут на день; cfg.share — «Общий маршрут» открыт торговым   // v35: rd — маршрут на день
@@ -241,6 +246,7 @@ function cleanOrder(o, now) {            // заявка: только разр�
   const disc = o.disc == null || o.disc === '' ? 0 : o.disc; if (!rng(disc, 0, 100)) return { err: 'disc' };
   if (!rng(o.sum, 0, 1e9)) return { err: 'sum' };
   if (o.m != 'vat' && o.m != 'net') return { err: 'm' };
+  let rt = 0; if (o.rt != null && o.rt !== '' && o.rt !== 0 && o.rt !== false) { if ((o.rt !== 1 && o.rt !== true) || o.m != 'vat') return { err: 'rt' }; rt = 1 }   // v38: «ретро» — только к ценам с НДС; без НДС ретро не бывает
   const cart = {}, ck = o.cart == null ? [] : (typeof o.cart == 'object' && !Array.isArray(o.cart) ? Object.keys(o.cart) : null);
   if (!ck || ck.length > 300) return { err: 'cart' };
   for (const k of ck) { const x = o.cart[k]; if (k.length > 250 || !x || typeof x != 'object' || !rng(x.q, 0, 1e5) || !(+x.q > 0)) return { err: 'cart' };
@@ -249,13 +255,15 @@ function cleanOrder(o, now) {            // заявка: только разр�
   for (const x of it) { if (!x || typeof x != 'object') return { err: 'items' };
     const n = str(x.n, 200), g = str(x.g, 60), u = str(x.u, 20);
     if (!n || g === null || u === null || !rng(x.q, 0, 1e5) || !(+x.q > 0) || !rng(x.p, 0, 1e8) || !rng(x.o == null ? x.p : x.o, 0, 1e8)) return { err: 'items' };
-    items.push({ n, g, u, q: +x.q, p: +x.p, o: +(x.o == null ? x.p : x.o) }) }
+    const it1 = { n, g, u, q: +x.q, p: +x.p, o: +(x.o == null ? x.p : x.o) }; if (rt && (x.nr === 1 || x.nr === true)) it1.nr = 1;   // v38: nr — у позиции нет ретро-цены, взята обычная цена с НДС
+    items.push(it1) }
   if (!items.length && !ck.length) return { err: 'empty' };
   if (items.length) { const tot = Math.round(items.reduce((z, x) => z + x.p * x.q, 0)), f = Math.round(tot * (1 - +disc / 100));   // та же формула, что в приложении
     if (Math.abs(f - +o.sum) > 2) return { err: 'sum' } }
   let rc = null; if (o.rc != null) { if (typeof o.rc != 'object') return { err: 'rc' }; const n = str(o.rc.n, 80), p = str(o.rc.p, 20); if (n === null || p === null || /\D/.test(p)) return { err: 'rc' }; rc = { n, p } }
   const text = str(o.text, 20000, true); if (text === null) return { err: 'text' };
   const r = { id, ts, trader: '', h: { d, c, s, a, sid }, cart, disc: +disc, sum: +o.sum, m: o.m, rc: rc || { n: '', p: '' }, text, items };
+  if (rt) r.rt = 1;
   if (ed) r.ed = ed;
   return { o: r };
 }
@@ -514,7 +522,7 @@ function jlog(e) {                       // добавляет событие; �
 function hasLog(id) { const s = jSheet(), n = s.getLastRow(); return n > 1 && s.getRange(2, 2, n - 1, 1).getValues().flat().map(String).indexOf(String(id)) >= 0 }
 
 /* ---------- Заявки ---------- */
-const vat = o => o.m == 'vat' ? 'с НДС' : 'без НДС';
+const vat = o => o.m == 'vat' ? (o.rt ? 'с НДС, ретро' : 'с НДС') : 'без НДС';   // v38: ретро — отметка в колонке «Режим цен» и флаг rt в JSON
 function saveOrder(o0, ctx) {            // создание заявки (повтор того же ID не создаёт дубль, а лечит возможные хвосты прошлой попытки)
   const now = Date.now(), adm = ctx.role == 'admin' && !ctx.legacy;
   const w = adm && o0 && o0.ed ? { name: ctx.user } : who(ctx, o0 && o0.trader); if (w.reason) return no(w.reason);   // администратор правит и чужие заявки: имя владельца в запросе не его, владельцем остаётся прежний торговый
@@ -862,13 +870,13 @@ function aggDrop() { const c = cache(); if (c) try { c.put('aggv', Date.now().to
 function ordNarrow() {                   // заявки без JSON: торговый, режим, сумма, удаление, ID магазина, дата оформления. Быстро даже на большом листе
   const s = ordSheet(), n = s.getLastRow(); if (n < 2) return []; const k = n - 1, col = (c, w) => s.getRange(2, c, k, w || 1).getValues();
   const A = col(1), C = col(3), Hm = col(8), J = col(10), MP = col(13, 4);
-  return A.map((a, i) => ({ r: i + 2, reg: ms(a[0]), tr: T(C[i][0]), m: vmOf(Hm[i][0]), sum: +J[i][0] || 0, del: (+MP[i][1] || 0) || (isD(MP[i][0]) ? MP[i][0].getTime() : 0), sid: T(MP[i][2]), ts: +MP[i][3] || ms(a[0]) }));
+  return A.map((a, i) => ({ r: i + 2, reg: ms(a[0]), tr: T(C[i][0]), m: vmOf(Hm[i][0]), rt: /ретро/i.test(T(Hm[i][0])) ? 1 : 0, sum: +J[i][0] || 0, del: (+MP[i][1] || 0) || (isD(MP[i][0]) ? MP[i][0].getTime() : 0), sid: T(MP[i][2]), ts: +MP[i][3] || ms(a[0]) }));
 }
 const normR = t => T(t).replace(/\s+/g, ' ').toLowerCase().replace(/ё/g, 'е');
 function agg() {                          // для init: режим последней заявки по точкам, «Ходовые», частые причины «Отказались». Кеш 10 минут
   const key = 'agg:' + aggVer(), c = cGet(key); if (c) return c;
   const now = Date.now(), O = ordNarrow(), lm = {};
-  O.forEach(o => { if (o.del || !o.sid || !o.m) return; const l = lm[o.sid]; if (!l || o.ts > l[1]) lm[o.sid] = [o.m, o.ts] });
+  O.forEach(o => { if (o.del || !o.sid || !o.m) return; const l = lm[o.sid]; if (!l || o.ts > l[1]) lm[o.sid] = [o.m, o.ts, o.rt ? 1 : 0] });
   const hot = [], from = now - HOT_DAYS * 864e5, rows = O.filter(o => !o.del && o.ts >= from && o.ts <= now + FUT);
   if (rows.length) { const s = ordSheet(), a = Math.min(...rows.map(o => o.r)), b = Math.max(...rows.map(o => o.r)), L = s.getRange(a, 12, b - a + 1, 1).getValues(), want = new Set(rows.map(o => o.r)), cnt = {};
     L.forEach((r, i) => { if (!want.has(a + i)) return; let o; try { o = JSON.parse(r[0]) } catch (_) { return } const seen = new Set();
@@ -984,6 +992,49 @@ function reconcileApply(confirmed) {     // применяет ТОЛЬКО од
 }
 
 /* ---------- Меню таблицы «Али-Баба». Запускает только тот, у кого есть право редактировать таблицу; через веб-адрес скрипта эти функции недоступны ---------- */
+/* ---------- Автокопия таблицы (v38) ---------- */
+// Раз в сутки полная копия таблицы кладётся в папку «AlibabaSweets-backup» на Диске владельца. Ежедневные — 14 последних, воскресные — 8 последних.
+// Удаляются (в корзину Диска) только файлы с именем AS_ГГГГ-ММ-ДД_d / _w в этой папке; чужие файлы не трогаются. Сначала копия создаётся, потом старые убираются.
+// Секреты (TOKEN_KEY, PEPPER) лежат в свойствах скрипта и в копию не попадают — их нужно сохранить отдельно.
+const BK_FOLDER = 'AlibabaSweets-backup', BK_KEEP_D = 14, BK_KEEP_W = 8, BK_HOUR = 4, BK_RE = /^AS_(\d{4}-\d\d-\d\d)_(d|w)$/;
+function bkFolder() {                    // папка копий: по сохранённому ID, иначе по имени, иначе создаётся
+  const id = props().getProperty('BK_FOLDER_ID');
+  if (id) { try { const f = DriveApp.getFolderById(id); if (f && !(f.isTrashed && f.isTrashed())) return f } catch (_) {} }
+  const it = DriveApp.getFoldersByName(BK_FOLDER), f = it.hasNext() ? it.next() : DriveApp.createFolder(BK_FOLDER);
+  props().setProperty('BK_FOLDER_ID', f.getId()); return f;
+}
+function bkName(now) {                   // имя копии по дате таблицы; воскресная — «_w»
+  const d = Utilities.formatDate(now, SpreadsheetApp.getActive().getSpreadsheetTimeZone(), 'yyyy-MM-dd'), p = d.split('-').map(Number);
+  return 'AS_' + d + '_' + (new Date(Date.UTC(p[0], p[1] - 1, p[2])).getUTCDay() == 0 ? 'w' : 'd');
+}
+function bkRotate(folder) {              // оставляет новейшие по имени; возвращает число убранных
+  const it = folder.getFiles(), all = []; while (it.hasNext()) { const f = it.next(), m = BK_RE.exec(f.getName()); if (m) all.push({ f, d: m[1], k: m[2] }) }
+  let n = 0;
+  ['d', 'w'].forEach(k => all.filter(x => x.k == k).sort((a, b) => a.d < b.d ? 1 : a.d > b.d ? -1 : 0).slice(k == 'd' ? BK_KEEP_D : BK_KEEP_W).forEach(x => { x.f.setTrashed(true); n++ }));
+  return n;
+}
+function backupRun() {                   // вызывается триггером раз в сутки; ошибка не пропадает молча — остаётся в свойстве BK_LAST (видна в меню)
+  const now = new Date(); let r;
+  try {
+    const folder = bkFolder(), name = bkName(now), it = folder.getFilesByName(name);
+    if (it.hasNext()) r = { ok: 1, ts: now.getTime(), name, skip: 1 };   // за сегодня уже есть
+    else { withLock(() => { SpreadsheetApp.flush && SpreadsheetApp.flush(); DriveApp.getFileById(SpreadsheetApp.getActive().getId()).makeCopy(name, folder) }); r = { ok: 1, ts: now.getTime(), name, del: bkRotate(folder) } }
+  } catch (err) { r = { ok: 0, ts: now.getTime(), err: String(err && err.message || err).slice(0, 200) } }
+  props().setProperty('BK_LAST', JSON.stringify(r)); return r;
+}
+function bkTriggers() { return ScriptApp.getProjectTriggers().filter(t => t.getHandlerFunction() == 'backupRun') }
+function bkSetup() { bkTriggers().forEach(t => ScriptApp.deleteTrigger(t)); ScriptApp.newTrigger('backupRun').timeBased().everyDays(1).atHour(BK_HOUR).create(); return backupRun() }   // папку создаст сам backupRun; отказ в доступе к Диску попадёт в BK_LAST, а не оборвёт меню
+function bkStop() { const t = bkTriggers(); t.forEach(x => ScriptApp.deleteTrigger(x)); return t.length }
+function bkState() {
+  let l = null; try { l = JSON.parse(props().getProperty('BK_LAST') || 'null') } catch (_) {}
+  const tz = SpreadsheetApp.getActive().getSpreadsheetTimeZone(), f = ts => Utilities.formatDate(new Date(ts), tz, 'yyyy-MM-dd HH:mm');
+  return 'Автокопия: ' + (bkTriggers().length ? 'включена (ежедневно около ' + BK_HOUR + ':00)' : 'выключена') + '\nПоследний запуск: ' + (!l ? 'ещё не было' : l.ok ? f(l.ts) + ' — ' + (l.skip ? 'копия за этот день уже была' : 'создана ' + l.name + (l.del ? ', убрано старых: ' + l.del : '')) : f(l.ts) + ' — ОШИБКА: ' + l.err) + '\nПапка на Диске: ' + BK_FOLDER;
+}
+function menuBkOn() { const ui = SpreadsheetApp.getUi(), r = bkSetup(); ui.alert(r.ok ? 'Автокопия включена. Первая копия создана.\n\n' + bkState() : 'Автокопия включена, но первая копия не создалась: ' + r.err + '\n\nПроверьте, что разрешён доступ к Диску.') }
+function menuBkOff() { const n = bkStop(); SpreadsheetApp.getUi().alert(n ? 'Автокопия выключена. Уже созданные копии остались на Диске.' : 'Автокопия и так не была включена.') }
+function menuBkNow() { const r = backupRun(); SpreadsheetApp.getUi().alert(r.ok ? bkState() : 'Копия не создалась: ' + r.err) }
+function menuBkState() { SpreadsheetApp.getUi().alert(bkState()) }
+
 function onOpen() { try { SpreadsheetApp.getUi().createMenu('Али-Баба')
   .addItem('Доступ: назначить администратора и выдать приглашение', 'menuAdmin')
   .addItem('Доступ: выдать приглашение профилю (сброс пароля)', 'menuInvite')
@@ -992,6 +1043,8 @@ function onOpen() { try { SpreadsheetApp.getUi().createMenu('Али-Баба')
   .addItem('Доступ: ключ для устройств со старой версией (на время перехода)', 'menuLegacyKey')
   .addItem('Доступ: замер скорости хеширования', 'menuBench')
   .addItem('Доступ: число итераций хеширования', 'menuIter')
+  .addSeparator()
+  .addItem('Автокопия: включить (ежедневно)', 'menuBkOn').addItem('Автокопия: сделать копию сейчас', 'menuBkNow').addItem('Автокопия: состояние', 'menuBkState').addItem('Автокопия: выключить', 'menuBkOff')
   .addSeparator()
   .addItem('Сверка: пробный прогон (ничего не меняет)', 'menuRecDry').addItem('Сверка: применить исправления', 'menuRecApply').addToUi() } catch (_) {} }
 // Сверка из меню: раньше она отрабатывала молча (только лист «Сверка»), и было непонятно, выполнилась ли она

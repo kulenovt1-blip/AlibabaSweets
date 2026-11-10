@@ -19,7 +19,7 @@ const DEMO = [['Финики','Финики FINDI caramel','150г','1704','1976'
 
 /* ============ 2. ХЕЛПЕРЫ И СОСТОЯНИЕ ============ */
 /* Версия сборки: должна совпадать с <meta name="ver"> в index.html. Если файлы на хостинге разных версий — покажем красную плашку. */
-const VER = '37.11';
+const VER = '37.12';
 const NEED = 36;   // нужная версия Code.gs на сервере
 { const m = document.querySelector('meta[name=ver]');
   if (!m || m.content != VER) document.body.insertAdjacentHTML('afterbegin', '<div style="background:#C82B27;color:#fff;padding:12px;font-weight:800">Файлы сайта разных версий. Загрузите ВСЕ файлы из архива заново (index.html, styles.css, app.js, sw.js) и обновите страницу дважды.</div>') }
@@ -239,7 +239,8 @@ function bar(bump) {
 
 /* ============ 5. ТЕКСТ ЗАЯВКИ (строгий формат) ============ */
 function text() {
-  let t = `Заявка на ${fd(H.d)}${H.c ? ` (${H.c})` : ''} магазин ${H.s || ''}${H.a ? `, ${H.a}` : ''}\n`;   // v36.3: без «()» и висящей запятой, когда города или адреса нет
+  const ul = String((curShop() || {}).ul || '').replace(/\s+/g, ' ').trim();   // v37.12: ИП / ТОО точки из карточки магазина — отдельной строкой под шапкой; пусто — строки нет
+  let t = `Заявка на ${fd(H.d)}${H.c ? ` (${H.c})` : ''} магазин ${H.s || ''}${H.a ? `, ${H.a}` : ''}\n${ul ? ul + '\n' : ''}`;   // v36.3: без «()» и висящей запятой, когда города или адреса нет
   lines().forEach(p => { const n = price(p);
     t += `${p.n}${p.g ? `(${p.g})` : ''} - ${qf(qty(p))}${p.u}${n != p.pr ? ` по ${n} (было ${p.pr})` : ''};\n`; });
   const label = CFG.SHOW_VAT_LABEL ? (S.mode == 'vat' ? ' (с НДС)' : ' (без НДС)') : '';

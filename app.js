@@ -19,7 +19,7 @@ const DEMO = [['Финики','Финики FINDI caramel','150г','1704','1976'
 
 /* ============ 2. ХЕЛПЕРЫ И СОСТОЯНИЕ ============ */
 /* Версия сборки: должна совпадать с <meta name="ver"> в index.html. Если файлы на хостинге разных версий — покажем красную плашку. */
-const VER = '38.1';
+const VER = '38.2';
 const NEED = 36;   // нужная версия Code.gs на сервере
 { const m = document.querySelector('meta[name=ver]');
   if (!m || m.content != VER) document.body.insertAdjacentHTML('afterbegin', '<div style="background:#C82B27;color:#fff;padding:12px;font-weight:800">Файлы сайта разных версий. Загрузите ВСЕ файлы из архива заново (index.html, styles.css, app.js, sw.js) и обновите страницу дважды.</div>') }
@@ -436,7 +436,7 @@ function histView() { // вкладки «Мои» / «Все заявки»; п
   if (yr) { const y = new Date(a).getFullYear(), bk = d && Array.isArray(d.bk) ? d.bk : null;   // год — по месяцам: сумма и число заявок, нажатие открывает месяц
     list = `<div class="hmy">${MN.map((m, i) => { const t = new Date(y, i, 1).getTime(); if (t > now) return ''; const z = bk && bk[i]; return `<button class="hmr" data-a="hpm" data-v="${t}"><span>${m}</span><small class="m">${z ? nn(z) : ''}</small><b>${z ? tg(z.sum) : '…'}</b></button>` }).reverse().join('')}</div>` }
   else { let last = -1; list = act.map(x => { const dd = dayMs(x.ts || 0), h = p != 'd' && dd != last ? (last = dd, (() => { const z = act.filter(y => dayMs(y.ts || 0) == dd); return `<h3 class="sub hdd">${esc(lblDay(dd))} · ${z.length} · ${tg(z.reduce((s, y) => s + (+y.sum || 0), 0))}</h3>` })()) : ''; return h + card(x) }).join('') || emptyMsg }   // неделя и месяц — по дням
-  $('#sb').innerHTML = tabs + trSel + seg + plate + sts + `<div class="hcl">${list}</div>` + `<button class="ghost hxb" data-a="hxp">${ico('down', 18)} Выгрузить в Excel</button>`   // 37.11
+  $('#sb').innerHTML = tabs + trSel + seg + plate + sts + `<div class="hcl">${list}</div>` + `<button class="ghost hxb" data-a="hxp">${ico('down', 18)} Выгрузить заявки</button>`   // 37.11; 38.2: кнопка называлась «Выгрузить в Excel» — теперь из тех же данных можно получить и текст
   + (trash.length ? `<details class="htr" data-o="htr"${dOpen('htr')}><summary>${ico('trash', 20)}<span><b>Недавно удалённые: ${trash.length}</b> · вернуть можно ещё ${left(tLeft)}</span></summary>` + trash.map(x => `<div class="hc hcd"><div class="hch"><span class="hct"><b>${esc(x.h.s || '—')}</b><span class="m">${ft(x.ts)} · ${tg(x.sum)}${isMine(x) ? '' : ' · ' + esc(x.trader)}</span><span class="m">Можно вернуть ещё ${left(x)}</span>${delq.some(o => o.id == x.id) ? '<span class="m">' + pendChip() + ' (удаление)</span>' : ''}</span><button class="ocb" data-a="hres" data-v="${esc(x.id)}">Вернуть</button></div></div>`).join('') + '</details>' : '');
 }
 /* v31. «Продвигать товары» (только администратор): отметка хранится на листе «Продвигать» и сразу видна торговым после синхронизации */
@@ -1467,6 +1467,7 @@ document.addEventListener('click', async e => {   // async: вопросы (ask)
   else if (a == 'hxw') { if (!XP.busy) { XP.mine = v == '1'; if (XP.mine) XP.tr = ''; XP.err = ''; XP.done = null; hxView() } }
   else if (a == 'hxgo') xpGo();
   else if (a == 'hxdl') xpDl();
+  else if (a == 'hxcp') xpCopy();
   else if (a == 'hxsh') xpShare();
   else if (a == 'sedit') { cKey = ''; shopCard(ddL[+v].id || 'n:' + ddL[+v].n); $('#sl').hidden = true }
   else if (a == 'shops') shopsView(); else if (a == 'shm') { shMode = v; shopsView() }
@@ -1669,7 +1670,7 @@ window.addEventListener('appinstalled', () => { instEv = null; hideInst() });
    Заявки старше загруженного окна — с сервера кусками по 40 дней (q: 'range', как «История»; Code.gs не менялся); затем allHist() — как на экране «История» (неотправленные с устройства тоже входят, удалённые — нет).
    Файл собирается на устройстве без библиотек: zip без сжатия + XML. Строки в файле — только текстом (shared strings), формулой не становятся */
 const XD = 864e5, XMAX = 366;   // длина периода — не больше года за раз
-let XP = null;   // { a, e — [начало, конец) в мс, mine, tr, busy, pg: [i, n], err, done: { blob, name, n, sum, pend } }
+let XP = null;   // { a, e — [начало, конец) в мс, mine, tr, busy, pg: [i, n], err, show — показать текст в поле (если буфер не дался), done: { blob, name, text, n, sum, pend } }
 const xIso = s => { const m = /^(\d{4})-(\d\d)-(\d\d)$/.exec(String(s || '')); return m ? new Date(+m[1], +m[2] - 1, +m[3]).getTime() : 0 };   // «2026-11-03» → полночь по местному времени
 const xDs = t => { const d = new Date(t), z = k => String(k).padStart(2, '0'); return z(d.getDate()) + '.' + z(d.getMonth() + 1) + '.' + d.getFullYear() };   // 03.11.2026
 const xSer = t => { const d = new Date(t); return (t - d.getTimezoneOffset() * 6e4) / XD + 25569 };   // мс → дата Excel (дни с 30.12.1899, местное время)
@@ -1678,10 +1679,10 @@ const XLAT = { а: 'a', б: 'b', в: 'v', г: 'g', д: 'd', е: 'e', ё: 'e', ж
 const xLat = s => String(s).split('').map(c => { const l = c.toLowerCase(), t = XLAT[l]; return t == null ? c : c == l ? t : t.charAt(0).toUpperCase() + t.slice(1) }).join('').replace(/[^A-Za-z0-9.\-]+/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');   // «Заявки Айгуль 01.10-31.10.2026» → «Zayavki_Aygul_01.10-31.10.2026»
 const xLast = (x = XP) => Math.min(x.e - XD, dayMs(Date.now()));   // последний день периода для поля «по» (не позже сегодня)
 function xpOpen() { const mine = !CFG.API_URL || histTab == 'mine', [a, e] = pRange(hP, histDay || Date.now());   // по умолчанию — то, что открыто в «Истории»
-  XP = { a, e, mine, tr: mine ? '' : hTr, busy: 0, pg: null, err: '', done: null }; hxView() }
+  XP = { a, e, mine, tr: mine ? '' : hTr, busy: 0, pg: null, err: '', done: null, show: 0 }; hxView() }
 function xpSet(a, e) { if (XP.busy) return; XP.a = a; XP.e = e; XP.err = ''; XP.done = null; hxView() }
 function xpWho(x = XP) { return x.mine ? (CFG.API_URL ? 'мои заявки' + (me ? ' (' + me + ')' : '') : 'заявки этого телефона') : x.tr ? 'торговый ' + x.tr : 'все торговые' }
-function hxView() { if (!XP) return xpOpen(); openSheet('hx', 'Выгрузка в Excel'); const x = XP, now = Date.now(), t0 = dayMs(now);
+function hxView() { if (!XP) return xpOpen(); openSheet('hx', 'Выгрузка заявок'); const x = XP, now = Date.now(), t0 = dayMs(now);
   const q = [['w', 'Эта неделя', pRange('w', now)], ['m', 'Этот месяц', pRange('m', now)], ['pm', 'Прошлый месяц', pRange('m', pShift('m', pRange('m', now)[0], -1))], ['y', 'Этот год', pRange('y', now)]];
   const names = [...new Set([...trs, ...allHist().map(trOf)].filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ru'));
   const who = CFG.API_URL ? `<div class="seg htab">${[[1, 'Мои'], [0, 'Все заявки']].map(([k, t]) => `<button data-a="hxw" data-v="${k}" class="${+x.mine == k ? 'on' : ''}" ${x.busy ? 'disabled' : ''}>${t}</button>`).join('')}</div>`
@@ -1690,11 +1691,13 @@ function hxView() { if (!XP) return xpOpen(); openSheet('hx', 'Выгрузка 
     + `<div class="hxd"><label><span class="m">С</span><input type="date" id="hxa" value="${isoDay(x.a)}" max="${isoDay(t0)}" ${x.busy ? 'disabled' : ''}></label><label><span class="m">По</span><input type="date" id="hxb" value="${isoDay(xLast())}" max="${isoDay(t0)}" ${x.busy ? 'disabled' : ''}></label></div>`;
   const days = Math.round((Math.min(x.e, t0 + XD) - x.a) / XD), info = `<p class="m hxi">${xDs(x.a)} – ${xDs(xLast())} · ${days} ${days % 10 == 1 && days % 100 != 11 ? 'день' : [2, 3, 4].includes(days % 10) && ![12, 13, 14].includes(days % 100) ? 'дня' : 'дней'} · ${esc(xpWho())}</p>`;
   const sh = 'navigator' in window && navigator.canShare && x.done && (() => { try { return navigator.canShare({ files: [new File([x.done.blob], x.done.name, { type: x.done.blob.type })] }) } catch (e) { return false } })();
-  const act = x.busy ? `<button class="send" disabled>${x.pg ? 'Загружаю заявки: ' + x.pg[0] + ' из ' + x.pg[1] + '…' : 'Собираю файл…'}</button>`
+  const act = x.busy ? `<button class="send" disabled>${x.pg ? 'Загружаю заявки: ' + x.pg[0] + ' из ' + x.pg[1] + '…' : 'Собираю…'}</button>`
     : x.done ? `<div class="hxr"><b>Готово: ${x.done.n} ${plZ(x.done.n)} · ${tg(x.done.sum)}</b><span class="m">${esc(x.done.name)}</span>${x.done.pend ? `<span class="m">Из них ещё не отправлены с этого телефона: ${x.done.pend}</span>` : ''}</div>`
-      + (sh ? `<button class="send" data-a="hxsh">${ico('send', 20)} Поделиться</button><button class="ghost" data-a="hxdl">${ico('down', 18)} Скачать</button>` : `<button class="send" data-a="hxdl">${ico('down', 20)} Скачать файл</button>`)
-    : `${x.err ? `<p class="m hxe">${esc(x.err)}</p>` : ''}<button class="send" data-a="hxgo">${ico('file', 20)} ${x.err ? 'Повторить' : 'Собрать файл'}</button>`;
-  $('#sb').innerHTML = who + per + info + act + `<p class="m hxn">В файле три листа: «Заявки» — строка на заявку, «Позиции» — строка на товар, «Итоги» — по дням, торговым, магазинам и товарам. Порядок — по времени заявки, сверху вниз. Удалённые заявки не входят.</p>` }
+      + `<button class="send" data-a="hxcp">${ico('menu', 20)} Скопировать текстом</button>`   // 38.2
+      + (x.show ? `<textarea class="hxt" readonly rows="9" onfocus="this.select()">${esc(x.done.text)}</textarea>` : '')
+      + (sh ? `<button class="ghost" data-a="hxsh">${ico('send', 18)} Поделиться файлом</button><button class="ghost" data-a="hxdl">${ico('down', 18)} Скачать Excel</button>` : `<button class="ghost" data-a="hxdl">${ico('down', 18)} Скачать Excel</button>`)
+    : `${x.err ? `<p class="m hxe">${esc(x.err)}</p>` : ''}<button class="send" data-a="hxgo">${ico('file', 20)} ${x.err ? 'Повторить' : 'Собрать'}</button>`;
+  $('#sb').innerHTML = who + per + info + act + `<p class="m hxn">Текстом — список заявок: магазин, дата, сумма и итог. В файле три листа: «Заявки» — строка на заявку, «Позиции» — строка на товар, «Итоги» — по дням, торговым, магазинам и товарам. Порядок — по времени заявки, сверху вниз. Удалённые заявки не входят.</p>` }
 async function xpLoad() { // заявки периода, которых нет в загруженном окне (свои — 30 дн., чужие — 7 дн.), — с сервера кусками по 40 дней
   if (!CFG.API_URL || !tok) return; const end = Math.min(XP.e, winFrom(XP.mine)); if (XP.a >= end) return;
   const parts = []; for (let t = XP.a; t < end; t += 40 * XD) parts.push([t, Math.min(t + 40 * XD, end)]);
@@ -1703,14 +1706,20 @@ async function xpLoad() { // заявки периода, которых нет 
   for (let i = 0; i < need.length; i++) { XP.pg = [i + 1, need.length]; if (view == 'hx') hxView(); const [a, b] = need[i];
     const r = await call({ q: 'range', from: a, to: b, undo: CFG.UNDO_HOURS }); if (!r || r.error) throw new Error('Сервер не отдал заявки' + (r && r.error ? ' (' + r.error + ')' : '') + '. Повторите позже.');
     dayC['x:' + a + ':' + b] = { t: Date.now(), hist: safeL(r.hist) } } }
-async function xpGo() { if (!XP || XP.busy) return; XP.busy = 1; XP.err = ''; XP.done = null; hxView();
+async function xpGo() { if (!XP || XP.busy) return; XP.busy = 1; XP.err = ''; XP.done = null; XP.show = 0; hxView();
   try { await xpLoad(); XP.pg = null; if (view == 'hx') hxView(); const x = XP, pend = new Set(outbox.map(o => o.id));
     const L = allHist().filter(o => !o.del && (o.ts || 0) >= x.a && (o.ts || 0) < x.e && (x.mine ? isMine(o) : !x.tr || trOf(o) == x.tr)).sort((p, q) => (p.ts || 0) - (q.ts || 0));
     if (!L.length) throw new Error('За этот период заявок нет — файл не собран.');
     const blob = xlsxBlob(xpSheets(L, x)), y0 = new Date(x.a).getFullYear(), y1 = new Date(xLast()).getFullYear(), ds = t => xDs(t).slice(0, 5);
     const name = xLat('Zayavki ' + (x.mine ? (CFG.API_URL && me ? me + ' ' : '') : x.tr ? x.tr + ' ' : '') + (y0 == y1 ? ds(x.a) + '-' + xDs(xLast()) : xDs(x.a) + '-' + xDs(xLast()))) + '.xlsx';   // имя латиницей: Chromium теряет имя файла с кириллицей при скачивании (проверено в Chromium 37.11) — файл назывался бы «download»
-    x.done = { blob, name, n: L.length, sum: L.reduce((s, o) => s + nz(o.sum), 0), pend: L.filter(o => pend.has(o.id)).length } }
+    x.done = { blob, name, text: xpText(L), n: L.length, sum: L.reduce((s, o) => s + nz(o.sum), 0), pend: L.filter(o => pend.has(o.id)).length } }
   catch (e) { XP.err = e && e.message || 'Не получилось собрать файл'; XP.pg = null } finally { XP.busy = 0; if (view == 'hx') hxView() } }
+// 38.2. Итог текстом (в мессенджер): заявка — три строки «номер) магазин / дата / сумма», в конце одна строка «Итого». Список L — тот же, что в файле, поэтому «Итого» равно сумме в Excel
+function xpText(L) { const tot = L.reduce((s, o) => s + nz(o.sum), 0);
+  return L.map((o, i) => (i + 1) + ') ' + ((o.h && o.h.s) || 'без названия') + '\n' + xDs(o.ts || 0) + '\n' + tg(o.sum)).join('\n\n') + '\n\nИтого: ' + L.length + ' ' + plZ(L.length) + ', ' + tg(tot) }
+async function xpCopy() { const d = XP && XP.done; if (!d) return;
+  try { await navigator.clipboard.writeText(d.text); XP.show = 0; toast('Текст скопирован') }
+  catch (e) { XP.show = 1; if (view == 'hx') hxView(); toast('Не удалось скопировать: выделите текст ниже') } }   // нет буфера или браузер не разрешил — показываем текст в поле
 function xpDl() { const d = XP && XP.done; if (!d) return; const a = document.createElement('a'); a.href = URL.createObjectURL(d.blob); a.download = d.name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove() }, 4e4); toast('Файл сохранён в «Загрузки»') }
 async function xpShare() { const d = XP && XP.done; if (!d) return;
   try { await navigator.share({ files: [new File([d.blob], d.name, { type: d.blob.type })], title: d.name }) } catch (e) { if (e && e.name == 'AbortError') return; xpDl() } }   // телефон не дал поделиться — просто скачиваем

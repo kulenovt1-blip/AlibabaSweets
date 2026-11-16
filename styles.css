@@ -659,6 +659,7 @@ button.pfc:active{transform:none;opacity:.92}
 .pkbar .ok{flex:1 1 0;min-width:0;white-space:normal;line-height:1.15;padding:6px 10px}
 /* 37.11: выгрузка в Excel («История» → «Выгрузить в Excel») */
 .hxb{margin-top:16px}
+.hxt{display:block;width:100%;box-sizing:border-box;margin-top:10px;padding:10px 12px;border:1px solid var(--line-strong);border-radius:12px;background:var(--surface);color:inherit;font:inherit;font-size:calc(14px*var(--fz));line-height:1.4;resize:vertical}
 .hxq{margin:0 0 10px}.hxq button{font-size:calc(14px*var(--fz));line-height:1.15}
 .hxd{display:grid;grid-template-columns:1fr 1fr;gap:8px}.hxd label{display:flex;flex-direction:column;gap:2px;min-width:0}.hxd input{margin:0;min-width:0;width:100%}
 .hxi{margin:10px 2px 4px}.hxe{margin:12px 2px 0;color:var(--danger,#b3261e);font-weight:600}.hxn{margin:16px 2px 0;font-size:calc(14px*var(--fz))}
